@@ -40,12 +40,13 @@ public final class FirmwareActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0d1620);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);scroll.addView(root);
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(dp(20),i.getSystemWindowInsetTop()+dp(20),dp(20),i.getSystemWindowInsetBottom()+dp(16));return i;});
-        TextView brand=label(root,"OpenSAAB",15);brand.setTextColor(0xff73dcc4);
+        root.addView(new BrandHeader(this,"OpenSAAB T2"));
         heading=label(root,"Welcome to OpenSAAB",28);subtitle=label(root,"Let’s get your diagnostic software ready.",16);
         current=label(root,"Checking your setup…",14);
 
         welcomePanel=panel(root);
         label(welcomePanel,"A little setup, then you’re ready",20);
+        button(welcomePanel,"Check device compatibility",()->DeviceCompatibility.show(this));
         label(welcomePanel,"1. Choose your Saab software and language. English for North America is selected to get you started.",16);
         label(welcomePanel,"2. Connect to the internet to download it. We’ll check the download and unpack it for your first run.",16);
         label(welcomePanel,bundledSupport?"3. This development build includes the communication firmware and prepares it automatically.":"3. Import the three communication firmware files from your existing Tech2Win installation. They are not included in this app.",16);

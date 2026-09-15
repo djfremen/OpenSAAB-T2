@@ -6,6 +6,8 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 [Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.2) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
+**Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
+
 ## What you can test
 
 - Original Tech2 firmware menus with touch gestures, a collapsible keypad and console.
@@ -18,7 +20,7 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 ## Compatibility and limits
 
-Android 8+ with a 64-bit ARM Android system is required. Pixel 7 is the current physical-phone baseline. Head units are experimental and have not been validated for this release; QLED describes the display and does not establish Android ABI or USB-host support. Adapter screens currently use a portrait layout.
+Android 8+ with a 64-bit ARM Android system is required. Pixel 7 is the current physical-phone baseline; a Mate 20 X owner has also confirmed installation and a Chipsoft DTC read. Head units are experimental and have not been validated for this release; QLED describes the display and does not establish Android ABI or USB-host support. Adapter screens currently use a portrait layout.
 
 | Adapter / feature | Preview status |
 |---|---|

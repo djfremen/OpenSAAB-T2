@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.checker" android:versionCode="1" android:versionName="0.1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
+    <application android:label="OpenSAAB System Check" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+        </activity>
+    </application>
+</manifest>

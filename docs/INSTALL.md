@@ -4,6 +4,8 @@ Original OpenSAAB code is licensed under MPL-2.0; modified covered source must r
 
 Release: v0.1.0-preview.2, first public developer preview.
 
+**Unsure whether your device is supported?** Run the separate [OpenSAAB System Check](SYSTEM_REQUIREMENTS.md) first. It works on 32-bit Android too; the main emulator APK does not.
+
 1. Start at https://www.opensaab.com/ or the official releases page: https://github.com/djfremen/OpenSAAB-T2/releases.
 2. Download **OpenSAAB-T2-arm64-v8a.apk**. You need Android 8 or newer and a 64-bit ARM Android installation. Some car head units use a 32-bit Android system despite having a 64-bit processor; those are not supported by this APK.
 3. Open the download. Android may ask you to allow installation from that browser or file manager. Allow that source, then return to the installer. You can turn that permission off afterward. Do not disable Play Protect.

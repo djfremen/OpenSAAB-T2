@@ -76,7 +76,9 @@ public final class MainActivity extends Activity {
         button(extras,"DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this));
         Button updates=new Button(this);updates.setText("Check for updates");updates.setAllCaps(false);
         updates.setOnClickListener(v->{if(running){status.setText("Stop firmware before checking for updates");return;}com.opensaab.usb.AppUpdates.show(this);});
-        root.addView(updates,new LinearLayout.LayoutParams(-1,-2));
+        LinearLayout systemActions = row(root);
+        systemActions.addView(updates,new LinearLayout.LayoutParams(0,-2,1));
+        button(systemActions,"System check",()->com.opensaab.usb.DeviceCompatibility.show(this));
         console=label("Console: waiting for firmware",11);
         console.setTypeface(Typeface.MONOSPACE);
         consoleScroll = new ScrollView(this); consoleScroll.addView(console);
