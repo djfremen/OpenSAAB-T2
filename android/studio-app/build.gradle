@@ -1,0 +1,63 @@
+plugins { id 'com.android.application' }
+
+def repo = rootProject.projectDir
+def generated = layout.buildDirectory.dir('generated/opensaab')
+def python = providers.environmentVariable('OPENSAAB_PYTHON').getOrElse('python3')
+def bundleSupport = providers.gradleProperty('bundleSupport').map { it.toBoolean() }.getOrElse(true)
+
+tasks.register('buildRust', Exec) {
+    workingDir repo
+    def sdk = android.sdkDirectory
+    environment 'ANDROID_NDK_HOME', providers.environmentVariable('ANDROID_NDK_HOME')
+        .getOrElse(new File(sdk, 'ndk/android-ndk-r29').path)
+    environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
+    commandLine 'sh', new File(repo, 'scripts/android/build-headless.sh')
+}
+tasks.register('prepareAndroidInputs', Exec) {
+    dependsOn 'buildRust'
+    workingDir repo
+    commandLine python, new File(repo, 'scripts/android/prepare-studio-inputs.py'), generated.get().asFile
+    if (bundleSupport) args '--bundle-support'
+}
+
+android {
+    namespace 'com.opensaab.tech2'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.opensaab.tech2'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '0.1-dev'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    sourceSets.main {
+        java.srcDirs = [new File(repo, 'android/tech2-app'), new File(repo, 'android/shared')]
+        java.exclude 'res/**'
+        res.srcDirs = [new File(repo, 'android/tech2-app/res')]
+        manifest.srcFile generated.map { it.file('AndroidManifest.xml') }.get().asFile
+        assets.srcDirs = [generated.map { it.dir('assets') }.get().asFile]
+        jniLibs.srcDirs = [generated.map { it.dir('jniLibs') }.get().asFile]
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildTypes {
+        debug { debuggable true }
+        release { debuggable false; minifyEnabled false }
+    }
+    packaging.jniLibs {
+        useLegacyPackaging = true
+        // Standalone Rust executables: preserve available native symbols.
+        keepDebugSymbols += ['**/*.so']
+    }
+}
+tasks.named('preBuild') { dependsOn 'prepareAndroidInputs' }
+tasks.register('verifyDebugApk', Exec) {
+    dependsOn 'assembleDebug'
+    workingDir repo
+    commandLine python, new File(repo, 'scripts/android/check-apk-firmware.py'),
+        layout.buildDirectory.file('outputs/apk/debug/app-debug.apk').get().asFile
+    if (bundleSupport) args '--allow-bundled-support'
+}

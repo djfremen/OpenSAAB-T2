@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.tech2">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <application android:name="com.opensaab.usb.OpenSaabApplication" android:label="OpenSAAB T2" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:debuggable="true" android:extractNativeLibs="true" android:allowBackup="false" android:enableOnBackInvokedCallback="true" android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity android:name="com.opensaab.usb.SupportReportActivity" android:exported="false" />
+        <provider android:name="com.opensaab.usb.SupportReportProvider" android:authorities="com.opensaab.tech2.support-reports" android:exported="false" android:grantUriPermissions="true" />
+        <activity android:name="com.opensaab.usb.FirmwareActivity" android:exported="false" />
+        <provider android:name="com.opensaab.usb.DtcReportProvider" android:authorities="com.opensaab.tech2.dtc-reports" android:exported="false" android:grantUriPermissions="true" />
+        <activity android:name="com.opensaab.usb.ChipsoftUsbActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name="com.opensaab.usb.AdapterDetectorActivity" android:exported="false" />
+        <activity android:name="com.opensaab.usb.NanoProbeActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,14 @@
+<!-- Shared SDK-only builds resolve these by name in ProjectSupport. Keep them if shrinking is enabled. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@string/project_support_*" tools:ignore="UnusedResources">
+    <string name="project_support_button">Support OpenSAAB · Buy me a beer</string>
+    <string name="project_support_title">Help keep OpenSAAB moving</string>
+    <string name="project_support_message">I’ve put my own time into bringing OpenSAAB to life. If it helps you, consider buying me a beer or supporting development. Contributions help fund adapter testing, documentation and ongoing work.\n\nSupport is voluntary. It does not unlock features, purchase vehicle security access or guarantee compatibility. Testing, documentation and code contributions are welcome too.</string>
+    <string name="project_support_external">Continue opens the project’s donation page in your browser. No vehicle data or diagnostic logs are added to the link.</string>
+    <string name="project_support_pending">The donation page is not available yet. Thank you for supporting the project through testing and feedback.</string>
+    <string name="project_support_donate">Continue to donation page</string>
+    <string name="project_support_close">Close</string>
+    <string name="project_support_no_browser">No browser is available to open the donation page.</string>
+    <string name="project_support_wait">Finish the current session before opening project support.</string>
+    <!-- Set only to the maintainer-confirmed HTTPS destination. Never invent a payment account. -->
+    <string name="project_support_url" translatable="false">https://ko-fi.com/djfremen</string>
+</resources>

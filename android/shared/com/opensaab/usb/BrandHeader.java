@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+package com.opensaab.usb;
+
+import android.content.Context;
+import android.widget.*;
+import android.view.Gravity;
+
+/** Shared in-app use of the approved launcher identity. */
+public final class BrandHeader extends LinearLayout {
+    public BrandHeader(Context context,String title){
+        super(context);setGravity(Gravity.CENTER_VERTICAL);setBackgroundColor(0xff071525);
+        int pad=Math.round(8*getResources().getDisplayMetrics().density);setPadding(pad,pad,pad,pad);
+        ImageView logo=new ImageView(context);logo.setImageDrawable(context.getApplicationInfo().loadIcon(context.getPackageManager()));
+        logo.setContentDescription("OpenSAAB logo");int size=Math.round(48*getResources().getDisplayMetrics().density);
+        addView(logo,new LayoutParams(size,size));
+        TextView name=new TextView(context);name.setText(title);name.setTextSize(20);name.setTextColor(0xffeaf4f7);name.setPadding(pad,0,0,0);
+        addView(name,new LayoutParams(0,-2,1));
+    }
+}

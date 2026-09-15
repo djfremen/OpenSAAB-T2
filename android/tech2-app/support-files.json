@@ -1,0 +1,17 @@
+{
+  "eprom.bin": {
+    "source": "eprom.bin",
+    "bytes": 262144,
+    "sha256": "57273924277abf9352ad0aa03f571aa2b16a97645f9be14c734f6b813ac2864d"
+  },
+  "opsys.dwn": {
+    "source": "extracted/opsys.dwn",
+    "bytes": 229352,
+    "sha256": "b1be24953eab84e0e8d0235e1b6b84e0c6c38d0043ea2586eddd51f08683ff3e"
+  },
+  "candi.bin": {
+    "source": "dumps/candi/candi.bin",
+    "bytes": 65544,
+    "sha256": "74d8a93a75ec3ddddc4fbd28a436e198a69bb55320a344ae5ee68a95b4bccf8b"
+  }
+}
