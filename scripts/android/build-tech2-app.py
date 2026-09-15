@@ -10,12 +10,20 @@ import zipfile
 import argparse
 import re
 import xml.etree.ElementTree as ET
+from build_profiles import PROFILES, validate_elf
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
 parser.add_argument('--version-name', default='0.1-dev')
 parser.add_argument('--version-code', type=int, default=1)
+parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
+profile = PROFILES[args.profile]
+experimental = args.profile == 'headunit-arm32'
+if experimental and args.release:
+    parser.error('headunit-arm32 is development-only; no public release channel has been validated')
+if experimental:
+    args.version_name = '0.1-headunit-arm32-dev'
 if args.version_code < 1 or args.version_code > 2100000000:
     parser.error('version-code must be between 1 and 2100000000')
 if args.release and (args.version_name == '0.1-dev' or args.version_code == 1):
@@ -44,14 +52,20 @@ for name, spec in (support.items() if bundle_support else []):
     if len(data) != spec['bytes'] or hashlib.sha256(data).hexdigest() != spec['sha256']:
         raise SystemExit(f'Bundled support file does not match the approved build profile: {name}')
 build = repo / ('target/android-tech2-release' if args.release else 'target/android-tech2-app')
+if experimental:
+    build = repo / 'target/android-headunit-arm32'
 classes = build / 'classes'
 shutil.rmtree(classes, ignore_errors=True)
 classes.mkdir(parents=True, exist_ok=True)
-emulator = repo / 'target/aarch64-linux-android/release/tech2-emu'
-probe = repo / 'target/aarch64-linux-android/release/nano-usb-probe'
-chipsoft = repo / 'target/aarch64-linux-android/release/chipsoft-usb-probe'
+native_root = repo / 'target' / profile.rust_target / 'release'
+emulator = native_root / 'tech2-emu'
+probe = native_root / 'nano-usb-probe'
+chipsoft = native_root / 'chipsoft-usb-probe'
 if not emulator.is_file() or not probe.is_file() or not chipsoft.is_file():
     raise SystemExit('Build the Android Rust emulator with build-headless.sh first.')
+for executable in (emulator, probe, chipsoft):
+    with executable.open('rb') as stream:
+        validate_elf(stream.read(20), profile)
 env = dict(os.environ, JAVA_HOME=str(jdk), PATH=str(jdk / 'bin') + os.pathsep + os.environ['PATH'])
 
 def run(*args):
@@ -65,6 +79,18 @@ unsigned = build / 'unsigned.apk'
 ns = 'http://schemas.android.com/apk/res/android'
 ET.register_namespace('android', ns)
 manifest = ET.parse(source / 'AndroidManifest.xml')
+if experimental:
+    manifest.getroot().set('package', profile.package)
+    app = manifest.getroot().find('application')
+    app.set('{'+ns+'}label', profile.label)
+    ET.SubElement(app, 'meta-data', {'{'+ns+'}name': 'com.opensaab.build_profile',
+                                    '{'+ns+'}value': args.profile})
+    for activity in app.findall('activity'):
+        if activity.get('{'+ns+'}name') == '.MainActivity':
+            activity.set('{'+ns+'}name', 'com.opensaab.tech2.MainActivity')
+    for provider in app.findall('provider'):
+        key = '{'+ns+'}authorities'
+        provider.set(key, provider.get(key).replace('com.opensaab.tech2.', profile.package+'.'))
 manifest.getroot().set('{'+ns+'}versionName', args.version_name)
 manifest.getroot().set('{'+ns+'}versionCode', str(args.version_code))
 manifest.getroot().find('application').set('{'+ns+'}debuggable', 'false' if args.release else 'true')
@@ -85,12 +111,14 @@ with zipfile.ZipFile(unsigned, 'a') as z:
         z.write(support_root / spec['source'], 'assets/system/' + name, compress_type=zipfile.ZIP_DEFLATED)
     # Package the standalone Rust ELF as an extracted native executable; all
     # executable code is shipped in the APK, never downloaded into app data.
-    z.write(emulator, 'lib/arm64-v8a/libtech2_emu.so')
-    z.write(probe, 'lib/arm64-v8a/libnano_probe.so')
-    z.write(chipsoft, 'lib/arm64-v8a/libchipsoft_probe.so')
+    z.write(emulator, f'lib/{profile.abi}/libtech2_emu.so')
+    z.write(probe, f'lib/{profile.abi}/libnano_probe.so')
+    z.write(chipsoft, f'lib/{profile.abi}/libchipsoft_probe.so')
 aligned = build / 'aligned.apk'
 run(bt / 'zipalign', '-f', '4', unsigned, aligned)
 apk = build / ('OpenSAAB-T2-arm64-v8a.apk' if args.release else 'opensaab-tech2.apk')
+if experimental:
+    apk = build / 'OpenSAAB-T2-headunit-armeabi-v7a-dev.apk'
 if args.release:
     keystore = os.environ.get('OPENSAAB_RELEASE_KEYSTORE')
     password_file = os.environ.get('OPENSAAB_RELEASE_PASSWORD_FILE')
@@ -102,5 +130,5 @@ else:
     run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
         '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
-run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, *(['--allow-bundled-support'] if bundle_support else []))
+run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []))
 print(apk)

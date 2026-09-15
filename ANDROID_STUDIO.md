@@ -1,5 +1,7 @@
 # Build OpenSAAB T2
 
+These default commands and Android Studio's `app` configuration build ARM64. The separate experimental 32-bit head-unit build has its own package, output and command: [Android build targets](docs/ANDROID_BUILD_TARGETS.md).
+
 ## Requirements
 
 - Rust 1.93 or newer; `rustup target add aarch64-linux-android`.

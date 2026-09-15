@@ -16,6 +16,11 @@ public final class AppUpdates {
     private static final String API="https://api.github.com/repos/djfremen/OpenSAAB-T2/releases?per_page=20";
     private static final java.util.concurrent.atomic.AtomicBoolean checking=new java.util.concurrent.atomic.AtomicBoolean();
     public static void show(Activity a){
+        if(AppBuildProfile.isHeadunit32(a)){
+            new AlertDialog.Builder(a).setTitle("32-bit head-unit development build")
+                .setMessage("This experimental build has no published update channel yet. ARM64 phone releases cannot update it. Use the separately labeled head-unit test APK supplied for this branch.")
+                .setPositiveButton("OK",null).show();return;
+        }
         if(FirmwareGate.sessionActive() || SecurityAccessView.workflowBusy()){
             Toast.makeText(a,"Finish the vehicle session before checking for updates.",Toast.LENGTH_LONG).show();return;
         }

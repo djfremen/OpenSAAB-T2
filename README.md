@@ -1,5 +1,7 @@
 # OpenSAAB T2
 
+**Head-unit development branch:** experimental 32-bit ARM work is isolated under the explicit `headunit-arm32` build profile. The published ARM64 APK remains unchanged. See [build targets and separation rules](docs/ANDROID_BUILD_TARGETS.md).
+
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
 **First public developer preview: v0.1.0-preview.2.**

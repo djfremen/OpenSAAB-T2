@@ -30,7 +30,7 @@ def run(*args):
     subprocess.run([str(arg) for arg in args], check=True, env=env)
 run(jdk/'bin/javac', '-source', '8', '-target', '8', '-classpath', android, '-d', classes,
     source/'com/opensaab/checker/MainActivity.java',
-    *[shared/name for name in ('CompatibilityCheck.java', 'DeviceCompatibility.java', 'BrandHeader.java')])
+    *[shared/name for name in ('CompatibilityCheck.java', 'DeviceCompatibility.java', 'BrandHeader.java', 'AppBuildProfile.java')])
 run(bt/'d8', '--min-api', '21', '--lib', android, '--output', build, *sorted(classes.rglob('*.class')))
 unsigned = build/'unsigned.apk'
 run(bt/'aapt', 'package', '-f', '-M', source/'AndroidManifest.xml', '-S', repo/'android/tech2-app/res', '-I', android, '-F', unsigned)

@@ -6,10 +6,12 @@ import hashlib
 import zipfile
 import re
 from pathlib import PurePosixPath, Path
+from build_profiles import PROFILES, validate_elf
 
-NATIVE = {'lib/arm64-v8a/libtech2_emu.so', 'lib/arm64-v8a/libnano_probe.so', 'lib/arm64-v8a/libchipsoft_probe.so'}
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
-def check(path, allow_bundled_support=False):
+def check(path, allow_bundled_support=False, profile_name='arm64'):
+    profile = PROFILES[profile_name]
+    native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     with zipfile.ZipFile(path) as apk:
         names = apk.namelist()
         if len(names) != len(set(names)):
@@ -46,10 +48,9 @@ def check(path, allow_bundled_support=False):
                 if set(receipt) != {'source_repository','source_commit','version_name','version_code','source_license'} or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0':
                     raise ValueError('Unexpected source metadata')
                 continue
-            if name in NATIVE:
+            if name in native:
                 with apk.open(info) as source:
-                    if source.read(4) != b'\x7fELF':
-                        raise ValueError(f'Native program is not ELF: {name}')
+                    validate_elf(source.read(20), profile)
                 continue
             # Apart from the pinned support files, allow only the compiled manifest,
             # DEX, resource table, small UI resources and Android signing metadata.
@@ -57,8 +58,8 @@ def check(path, allow_bundled_support=False):
                 name.startswith('res/') and PurePosixPath(name).suffix.lower() in {'.xml','.png','.webp','.jpg','.jpeg'} and info.file_size <= 1024*1024)
             if not allowed:
                 raise ValueError(f'Unexpected APK payload (Saab program images must be downloaded/imported): {name}')
-        if not NATIVE.issubset(apk.namelist()):
+        if not native.issubset(apk.namelist()):
             raise ValueError('Missing emulator or USB executable')
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');args=parser.parse_args();check(args.apk,args.allow_bundled_support)
+    parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile)

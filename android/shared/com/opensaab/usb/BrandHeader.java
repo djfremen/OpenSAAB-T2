@@ -9,6 +9,7 @@ import android.view.Gravity;
 public final class BrandHeader extends LinearLayout {
     public BrandHeader(Context context,String title){
         super(context);setGravity(Gravity.CENTER_VERTICAL);setBackgroundColor(0xff071525);
+        if(AppBuildProfile.isHeadunit32(context)) title += " · 32-bit development";
         int pad=Math.round(8*getResources().getDisplayMetrics().density);setPadding(pad,pad,pad,pad);
         ImageView logo=new ImageView(context);logo.setImageDrawable(context.getApplicationInfo().loadIcon(context.getPackageManager()));
         logo.setContentDescription("OpenSAAB logo");int size=Math.round(48*getResources().getDisplayMetrics().density);

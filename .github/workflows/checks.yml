@@ -17,3 +17,5 @@ jobs:
         run: cargo +1.98.0 test --locked --no-default-features
       - name: Java protocol, report and request-gate tests
         run: JAVA_HOME="$JAVA_HOME_17_X64" python3 scripts/android/test-request-gate.py
+      - name: Android build architecture isolation
+        run: python3 scripts/android/test-build-profiles.py

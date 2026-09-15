@@ -37,6 +37,7 @@ public final class SupportReports {
     public static JSONObject collect(Context c,String description)throws Exception{
         JSONObject report=new JSONObject().put("format",1).put("created_utc",java.time.Instant.now().toString()).put("description",description.length()>2000?description.substring(0,2000):description);
         android.content.pm.PackageInfo p=c.getPackageManager().getPackageInfo(c.getPackageName(),0);
+        report.put("build_profile",AppBuildProfile.name(c)).put("apk_abi",AppBuildProfile.abi(c));
         report.put("app",c.getPackageName()).put("version",p.versionName==null?"development":p.versionName).put("version_code",p.versionCode).put("android_api",android.os.Build.VERSION.SDK_INT).put("device_model",android.os.Build.MODEL).put("abis",new JSONArray(Arrays.asList(android.os.Build.SUPPORTED_ABIS)));
         report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts cover bounded log tails only.");
         JSONArray runs=new JSONArray();File files=c.getFilesDir();

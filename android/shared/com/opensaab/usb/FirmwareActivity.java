@@ -46,7 +46,7 @@ public final class FirmwareActivity extends Activity {
 
         welcomePanel=panel(root);
         label(welcomePanel,"A little setup, then you’re ready",20);
-        label(welcomePanel,CompatibilityCheck.verdict(Build.VERSION.SDK_INT,Build.SUPPORTED_ABIS,new StatFs(getFilesDir().getAbsolutePath()).getAvailableBytes()),14);
+        label(welcomePanel,CompatibilityCheck.verdict(Build.VERSION.SDK_INT,Build.SUPPORTED_ABIS,new StatFs(getFilesDir().getAbsolutePath()).getAvailableBytes(),AppBuildProfile.abi(this)),14);
         button(welcomePanel,"Check device compatibility",()->DeviceCompatibility.show(this));
         label(welcomePanel,"1. Choose your Saab software and language. English for North America is selected to get you started.",16);
         label(welcomePanel,"2. Connect to the internet to download it. We’ll check the download and unpack it for your first run.",16);
