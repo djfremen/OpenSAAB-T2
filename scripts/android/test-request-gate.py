@@ -11,6 +11,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/javac'),'-d',output,
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
         str(repo/'android/shared/com/opensaab/usb/CompatibilityCheck.java'),
+        str(repo/'android/shared/com/opensaab/usb/InstallerChoice.java'),
         str(repo/'android/tests/CompatibilityCheckTest.java'),
         str(repo/'android/shared/com/opensaab/usb/ReleaseVersion.java'),
         str(repo/'android/tests/ReleaseVersionTest.java'),

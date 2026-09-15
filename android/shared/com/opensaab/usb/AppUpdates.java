@@ -18,7 +18,7 @@ public final class AppUpdates {
     public static void show(Activity a){
         if(AppBuildProfile.isHeadunit32(a)){
             new AlertDialog.Builder(a).setTitle("32-bit head-unit development build")
-                .setMessage("This experimental build has no published update channel yet. ARM64 phone releases cannot update it. Use the separately labeled head-unit test APK supplied for this branch.")
+                .setMessage("This is the experimental 32-bit head-unit channel. ARM64 phone releases cannot update it. Download only separately labeled head-unit releases from the project. Automatic head-unit update discovery is not enabled yet.")
                 .setPositiveButton("OK",null).show();return;
         }
         if(FirmwareGate.sessionActive() || SecurityAccessView.workflowBusy()){

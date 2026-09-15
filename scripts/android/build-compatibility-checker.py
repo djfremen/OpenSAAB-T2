@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import zipfile
 
 repo = Path(__file__).resolve().parents[2]
@@ -15,6 +16,7 @@ bt = sdk / 'build-tools/36.0.0'
 android = sdk / 'platforms/android-36/android.jar'
 build = repo / 'target/compatibility-checker'
 classes = build / 'classes'
+shutil.rmtree(classes, ignore_errors=True)
 classes.mkdir(parents=True, exist_ok=True)
 source = repo / 'android/compatibility-checker'
 shared = repo / 'android/shared/com/opensaab/usb'
@@ -30,14 +32,14 @@ def run(*args):
     subprocess.run([str(arg) for arg in args], check=True, env=env)
 run(jdk/'bin/javac', '-source', '8', '-target', '8', '-classpath', android, '-d', classes,
     source/'com/opensaab/checker/MainActivity.java',
-    *[shared/name for name in ('CompatibilityCheck.java', 'DeviceCompatibility.java', 'BrandHeader.java', 'AppBuildProfile.java')])
+    *[shared/name for name in ('CompatibilityCheck.java', 'DeviceCompatibility.java', 'BrandHeader.java', 'AppBuildProfile.java', 'InstallerChoice.java')])
 run(bt/'d8', '--min-api', '21', '--lib', android, '--output', build, *sorted(classes.rglob('*.class')))
 unsigned = build/'unsigned.apk'
 run(bt/'aapt', 'package', '-f', '-M', source/'AndroidManifest.xml', '-S', repo/'android/tech2-app/res', '-I', android, '-F', unsigned)
 with zipfile.ZipFile(unsigned, 'a') as archive:
     archive.write(build/'classes.dex', 'classes.dex')
     archive.write(repo/'LICENSE', 'assets/legal/LICENSE')
-    archive.writestr('assets/build.json', json.dumps({'source_commit':commit, 'source_repository':'https://github.com/djfremen/OpenSAAB-T2', 'product':'OpenSAAB System Check', 'version':'0.1.0'}))
+    archive.writestr('assets/build.json', json.dumps({'source_commit':commit, 'source_repository':'https://github.com/djfremen/OpenSAAB-T2', 'product':'OpenSAAB System Check', 'version':'0.2.0'}))
 aligned = build/'aligned.apk'
 apk = build/'OpenSAAB-System-Check.apk'
 run(bt/'zipalign', '-f', '4', unsigned, aligned)

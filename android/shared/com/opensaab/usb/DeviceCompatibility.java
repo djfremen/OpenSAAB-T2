@@ -23,6 +23,9 @@ public final class DeviceCompatibility {
         StatFs storage = new StatFs(context.getFilesDir().getAbsolutePath());
         long free = storage.getAvailableBytes();
         String requiredAbi = AppBuildProfile.abi(context);
+        boolean checker = "com.opensaab.checker".equals(context.getPackageName());
+        String recommended = InstallerChoice.abi(Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS);
+        if (checker && !recommended.isEmpty()) requiredAbi = recommended;
         boolean supportedAbi = CompatibilityCheck.supportsAbi(Build.SUPPORTED_ABIS, requiredAbi);
         boolean api = Build.VERSION.SDK_INT >= 26;
         ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
@@ -31,7 +34,8 @@ public final class DeviceCompatibility {
         boolean usb = context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST);
         StringBuilder text = new StringBuilder("OpenSAAB system check\n\n");
         text.append(CompatibilityCheck.verdict(Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS, free, requiredAbi));
-        text.append("\nBuild profile: ").append(AppBuildProfile.name(context));
+        if (checker) text.append("\n").append(InstallerChoice.message(Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS));
+        else text.append("\nBuild profile: ").append(AppBuildProfile.name(context));
         text.append("\n\nDevice: ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL);
         text.append("\nAndroid: ").append(Build.VERSION.RELEASE).append(" · API ").append(Build.VERSION.SDK_INT);
         text.append("\nAndroid application architectures: ").append(Arrays.toString(Build.SUPPORTED_ABIS));

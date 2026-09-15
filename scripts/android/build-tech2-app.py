@@ -20,18 +20,17 @@ parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
 profile = PROFILES[args.profile]
 experimental = args.profile == 'headunit-arm32'
-if experimental and args.release:
-    parser.error('headunit-arm32 is development-only; no public release channel has been validated')
-if experimental:
+if experimental and not args.release:
     args.version_name = '0.1-headunit-arm32-dev'
 if args.version_code < 1 or args.version_code > 2100000000:
     parser.error('version-code must be between 1 and 2100000000')
 if args.release and (args.version_name == '0.1-dev' or args.version_code == 1):
     parser.error('Release builds require explicit version-name and version-code')
 if args.release:
-    version = re.fullmatch(r'(\d{1,2})\.(\d{1,2})\.(\d{1,2})(?:-preview\.([1-9][0-9]?))?', args.version_name)
+    pattern = r'(\d{1,2})\.(\d{1,2})\.(\d{1,2})-headunit\.([1-9][0-9]?)' if experimental else r'(\d{1,2})\.(\d{1,2})\.(\d{1,2})(?:-preview\.([1-9][0-9]?))?'
+    version = re.fullmatch(pattern, args.version_name)
     if not version:
-        parser.error('Release version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-preview.N')
+        parser.error('Head-unit release requires MAJOR.MINOR.PATCH-headunit.N' if experimental else 'Release version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-preview.N')
     major, minor, patch = map(int, version.groups()[:3])
     expected = major * 10000000 + minor * 100000 + patch * 1000 + (int(version[4]) if version[4] else 999)
     if args.version_code != expected:
@@ -53,7 +52,7 @@ for name, spec in (support.items() if bundle_support else []):
         raise SystemExit(f'Bundled support file does not match the approved build profile: {name}')
 build = repo / ('target/android-tech2-release' if args.release else 'target/android-tech2-app')
 if experimental:
-    build = repo / 'target/android-headunit-arm32'
+    build = repo / ('target/android-headunit-arm32-release' if args.release else 'target/android-headunit-arm32')
 classes = build / 'classes'
 shutil.rmtree(classes, ignore_errors=True)
 classes.mkdir(parents=True, exist_ok=True)
@@ -118,7 +117,7 @@ aligned = build / 'aligned.apk'
 run(bt / 'zipalign', '-f', '4', unsigned, aligned)
 apk = build / ('OpenSAAB-T2-arm64-v8a.apk' if args.release else 'opensaab-tech2.apk')
 if experimental:
-    apk = build / 'OpenSAAB-T2-headunit-armeabi-v7a-dev.apk'
+    apk = build / ('OpenSAAB-T2-headunit-armeabi-v7a.apk' if args.release else 'OpenSAAB-T2-headunit-armeabi-v7a-dev.apk')
 if args.release:
     keystore = os.environ.get('OPENSAAB_RELEASE_KEYSTORE')
     password_file = os.environ.get('OPENSAAB_RELEASE_PASSWORD_FILE')
