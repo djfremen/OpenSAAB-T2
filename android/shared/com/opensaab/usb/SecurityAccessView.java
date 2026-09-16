@@ -34,6 +34,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private File observed;
     private boolean transferSeen,imported;
     private String failure;
+    private SecurityAccessStatus receipt;
+    private boolean receiptCardMatches,detailsAction;
+    private File receiptFile(){return new File(activity.getNoBackupFilesDir(),"security-processing-status.properties");}
 
     public SecurityAccessView(Activity activity,boolean collection,Supplier<File> session,
             BooleanSupplier running,Runnable stop,Runnable collect,Runnable resume){
@@ -51,15 +54,26 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         try{worker.execute(()->{
             String text="";
             try{if(run!=null){File f=new File(run,"native-dtc-screen.txt");if(f.isFile()&&f.length()<8192)text=new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8);}}catch(IOException ignored){}
+            SecurityAccessStatus saved=SecurityAccessStatus.read(receiptFile());
+            VehicleIdentity identity=run==null?null:VehicleSession.read(new File(run,VehicleSession.FILE));
+            try{if(identity==null||saved==null||!saved.matches(identity.vin))saved=null;}catch(Exception invalid){saved=null;}
+            final SecurityAccessStatus current=saved;
+            final boolean cardMatches=current!=null&&current.cardMatches(new File(activity.getFilesDir(),"firmware/card.bin"));
             final String screen=text;
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
                 if(observed!=run){observed=run;transferSeen=false;imported=false;failure=null;}
+                receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
                 boolean prompt=SsaData.needsAccess(screen);
                 if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
-                setVisibility(collection||prompt?VISIBLE:GONE);
-                if(imported){show("Security data loaded. Return to the firmware and repeat your task; the vehicle still verifies access.","Return to firmware");return;}
+                setVisibility(collection||prompt||receipt!=null?VISIBLE:GONE);
+                imported=receipt!=null&&receipt.sameSession(run)&&receipt.imported()&&cardMatches;
+                if(imported){show(receipt==null?"Security data loaded. Vehicle access: not yet verified.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Return to firmware");message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
+                if(!collection&&!prompt&&receipt!=null){
+                    show(receipt.summary(receipt.sameSession(run),running.getAsBoolean(),cardMatches),"Security status · details");
+                    detailsAction=true;return;
+                }
                 if(!collection){show("This task needs security access. Collect fresh data using the original firmware.\n\n"+INTERNET_REQUIRED,"Get security access");return;}
                 if(transferSeen){show("Firmware reached the TIS transfer prompt. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,"Process security data");return;}
                 String hint="Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
@@ -69,9 +83,12 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             });
         });}catch(RejectedExecutionException e){polling.set(false);}
     }
-    private void show(String text,String label){message.setText(text);action.setText(label);action.setEnabled(true);}
+    private void show(String text,String label){message.setText(text);message.setOnClickListener(null);action.setText(label);action.setEnabled(true);}
+    private void showReceipt(){if(receipt!=null)new AlertDialog.Builder(activity).setTitle("Security access status")
+        .setMessage(receipt.details(running.getAsBoolean(),receiptCardMatches)).setPositiveButton("Done",null).show();}
     private void activate(){
         if(closed||busy)return;
+        if(detailsAction){showReceipt();return;}
         if(imported){resume.run();return;}
         if(!collection||!transferSeen){
             new AlertDialog.Builder(activity).setTitle("Collect security data")
@@ -111,6 +128,18 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         });
     }
     private void process(File run,boolean allowFallback)throws Exception{
+        VehicleIdentity identity=VehicleSession.read(new File(run,VehicleSession.FILE));
+        if(identity==null)throw new IOException("No verified vehicle identity; collect again.");
+        SecurityAccessStatus attempt=new SecurityAccessStatus(identity.vin,run.getName(),java.time.Instant.now());
+        attempt.save(receiptFile());
+        try{processAttempt(run,allowFallback,identity,attempt);}
+        catch(Exception failure){
+            attempt.failed(java.time.Instant.now());
+            try{attempt.save(receiptFile());}catch(Exception persistence){failure.addSuppressed(persistence);}
+            throw failure;
+        }
+    }
+    private void processAttempt(File run,boolean allowFallback,VehicleIdentity identity,SecurityAccessStatus attempt)throws Exception{
         JSONObject snapshot=new JSONObject(new String(readBounded(new File(run,"native-security-snapshot.json"),8192),StandardCharsets.UTF_8));
         if(!"original-guest-memory".equals(snapshot.getString("origin")) || snapshot.getInt("card_offset")!=SsaData.OFFSET || snapshot.getInt("bytes")!=SsaData.SIZE
                 || !snapshot.getBoolean("ssa_memory_flash_enabled") || snapshot.getLong("ssa_erases")<1 || snapshot.getLong("ssa_programmed_bytes")<SsaData.SIZE)
@@ -119,6 +148,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         byte[] input=readBounded(new File(run,"ssa-card-after.bin"),SsaData.SIZE);
         if(Arrays.equals(before,input))throw new IOException("SSA unchanged; fresh collection required.");
         SsaData.validateInput(input);
+        if(!identity.vin.equals(SsaData.vin(input)))throw new IOException("Collected security data belongs to a different vehicle; collect again.");
         File card=new File(activity.getFilesDir(),"firmware/card.bin");
         SsaCardImport.verifyBaseline(card,before);
         String originalHash=SsaCardImport.hash(card);
@@ -133,11 +163,19 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         Files.write(new File(evidence,"response.json").toPath(),raw);
         JSONObject reply=new JSONObject(new String(raw,StandardCharsets.UTF_8));
         byte[] after=Base64.getDecoder().decode(reply.getString("SSA_DATA"));SsaData.validateReply(input,after);
+        attempt.processed(SecurityApiClient.FALLBACK.equals(result.endpoint)?"Bojer":"OpenSAAB",reply.optString("request_id",""),java.time.Instant.now());
+        attempt.save(receiptFile());
         Files.write(new File(evidence,"post-auth.bin").toPath(),after);
         // Only the original guest SSA data region changes, with a verified backup.
         String updatedHash=SsaCardImport.apply(card,before,after,originalHash,evidence,
             ()->!closed&&!running.getAsBoolean()&&session.get()==run);
-        JSONObject report=new JSONObject().put("status","security_data_imported").put("endpoint",result.endpoint)
+        attempt.imported(after,java.time.Instant.now());attempt.save(receiptFile());
+        JSONObject report=new JSONObject().put("started_utc",attempt.data.getProperty("started_utc"))
+            .put("server_reply_validated_utc",attempt.data.getProperty("processed_utc"))
+            .put("imported_utc",attempt.data.getProperty("imported_utc"))
+            .put("request_id",attempt.data.getProperty("request_id",""))
+            .put("vehicle_access_granted_utc",JSONObject.NULL)
+            .put("status","security_data_imported").put("endpoint",result.endpoint)
             .put("fallback_allowed",allowFallback).put("fallback_reason",result.fallbackReason).put("bytes",SsaData.SIZE)
             .put("source_session",run.getName()).put("original_card_sha256",originalHash).put("working_card_sha256",updatedHash)
             .put("ssa_input_sha256",sha(input)).put("ssa_output_sha256",sha(after)).put("vehicle_access_verified",false);

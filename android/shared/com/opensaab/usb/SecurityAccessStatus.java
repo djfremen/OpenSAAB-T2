@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: MPL-2.0
+package com.opensaab.usb;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+/** Local processing receipt. API success and a card import never establish vehicle access. */
+public final class SecurityAccessStatus {
+    public final Properties data=new Properties();
+    private static final DateTimeFormatter DISPLAY=DateTimeFormatter.ofPattern("MMM d, HH:mm:ss z",Locale.getDefault()).withZone(ZoneId.systemDefault());
+    public SecurityAccessStatus(String vin,String session,Instant now)throws Exception{
+        data.setProperty("schema","1");data.setProperty("vehicle_hash",hash(vin.getBytes(StandardCharsets.US_ASCII)));
+        data.setProperty("source_session",session);data.setProperty("started_utc",now.toString());
+        data.setProperty("stage","processing");
+    }
+    private SecurityAccessStatus(){}
+    public void processed(String provider,String requestId,Instant now){
+        data.setProperty("provider",provider);data.setProperty("processed_utc",now.toString());data.setProperty("stage","processed");
+        if(requestId!=null&&requestId.matches("OSSEC-[a-f0-9]{32}"))data.setProperty("request_id",requestId);
+    }
+    public void imported(byte[] ssa,Instant now)throws Exception{
+        if(!data.containsKey("processed_utc"))throw new IllegalStateException("No validated server reply");
+        data.setProperty("ssa_hash",hash(ssa));data.setProperty("imported_utc",now.toString());data.setProperty("stage","imported");
+    }
+    public void failed(Instant now){data.setProperty("failed_utc",now.toString());data.setProperty("stage","failed");}
+    public boolean matches(String vin)throws Exception{return data.getProperty("vehicle_hash","").equals(hash(vin.getBytes(StandardCharsets.US_ASCII)));}
+    public boolean imported(){return "imported".equals(data.getProperty("stage"));}
+    public boolean cardMatches(File card){
+        try(RandomAccessFile f=new RandomAccessFile(card,"r")){
+            byte[] bytes=new byte[SsaData.SIZE];f.seek(SsaData.OFFSET);f.readFully(bytes);
+            return imported()&&data.getProperty("ssa_hash","").equals(hash(bytes));
+        }catch(Exception missing){return false;}
+    }
+    public boolean sameSession(File session){return session!=null&&session.getName().equals(data.getProperty("source_session"));}
+    private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
+    public String summary(boolean sameSession,boolean connected,boolean cardMatches){
+        String title=sameSession?"Security processing":"Previous security processing";
+        String stage=data.getProperty("stage","");
+        String result=imported()?"Loaded · "+time("imported_utc"):"failed".equals(stage)?"Stopped · "+time("failed_utc"):"Not completed · "+time("started_utc");
+        String verification=!connected?"Vehicle access: unverified · session stopped":imported()&&!cardMatches?"Vehicle access: unverified · card has changed":"Vehicle access: not yet verified";
+        return title+": "+result+"\n"+verification;
+    }
+    public String details(boolean connected,boolean cardMatches){
+        String id=data.getProperty("request_id","");
+        return "Started: "+time("started_utc")+"\nServer reply validated: "+time("processed_utc")+
+            "\nLoaded into emulator: "+time("imported_utc")+
+            (data.containsKey("failed_utc")?"\nStopped: "+time("failed_utc"):"")+
+            "\nProvider: "+data.getProperty("provider","not recorded")+(id.isEmpty()?"":"\nRequest: "+id)+
+            "\n\nVehicle access: NOT VERIFIED. No access-granted timestamp is recorded. Processing and loading security data do not prove that a vehicle module accepted it."+
+            (!connected?"\nThe vehicle session is stopped. Previous processing is history, not current authorization.":"")+
+            (imported()&&!cardMatches?"\nThe current firmware card no longer matches this import.":"")+
+            "\n\nReturn to the firmware and repeat your task. Follow its result. This build does not yet automatically validate the vehicle's final security response. Times use this device's clock; UTC timestamps are stored locally.";
+    }
+    public void save(File file)throws Exception{
+        File tmp=new File(file.getParentFile(),file.getName()+".tmp");
+        try(FileOutputStream out=new FileOutputStream(tmp)){data.store(out,"OpenSAAB local security processing receipt; no keys or VIN");out.getFD().sync();}
+        Files.move(tmp.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+    }
+    public static SecurityAccessStatus read(File file){
+        try{
+            if(!file.isFile()||file.length()>8192)return null;
+            SecurityAccessStatus status=new SecurityAccessStatus();
+            try(InputStream in=new FileInputStream(file)){status.data.load(in);}
+            if(!"1".equals(status.data.getProperty("schema")))return null;
+            Instant.parse(status.data.getProperty("started_utc"));
+            for(String key:new String[]{"processed_utc","imported_utc","failed_utc"})if(status.data.containsKey(key))Instant.parse(status.data.getProperty(key));
+            if(!status.data.getProperty("vehicle_hash","").matches("[a-f0-9]{64}"))return null;
+            if(!Arrays.asList("processing","processed","imported","failed").contains(status.data.getProperty("stage")))return null;
+            if(status.imported()&&(!status.data.containsKey("processed_utc")||!status.data.containsKey("imported_utc")||!status.data.getProperty("ssa_hash","").matches("[a-f0-9]{64}")))return null;
+            return status;
+        }catch(Exception invalid){return null;}
+    }
+    private static String hash(byte[] bytes)throws Exception{
+        StringBuilder s=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();
+    }
+}
