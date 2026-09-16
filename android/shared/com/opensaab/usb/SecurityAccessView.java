@@ -68,7 +68,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
                 setVisibility(collection||prompt||receipt!=null?VISIBLE:GONE);
                 imported=receipt!=null&&receipt.sameSession(run)&&receipt.imported()&&cardMatches;
-                if(imported){show(receipt==null?"Security data loaded. Vehicle access: not yet verified.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Return to firmware");message.setOnClickListener(v->showReceipt());return;}
+                if(imported){show(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Return to firmware");message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
                 if(!collection&&!prompt&&receipt!=null){
                     show(receipt.summary(receipt.sameSession(run),running.getAsBoolean(),cardMatches),"Security status · details");
@@ -97,7 +97,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         }else{
             if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity,this::activate);return;}
             new AlertDialog.Builder(activity).setTitle("Share VIN and process security data")
-                .setMessage("Your VIN will be shared with OpenSAAB along with the collected 714-byte security file. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\nAuthentication denials and invalid replies stop processing. The vehicle still verifies access.")
+                .setMessage("Your VIN will be shared with OpenSAAB along with the collected 714-byte security file. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\n")
                 .setNegativeButton("Cancel",null)
                 .setNeutralButton("OpenSAAB only",(d,w)->begin(true,false))
                 .setPositiveButton("Allow fallback",(d,w)->begin(true,true)).show();

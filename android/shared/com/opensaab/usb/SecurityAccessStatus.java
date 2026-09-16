@@ -40,22 +40,22 @@ public final class SecurityAccessStatus {
     public boolean sameSession(File session){return session!=null&&session.getName().equals(data.getProperty("source_session"));}
     private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
     public String summary(boolean sameSession,boolean connected,boolean cardMatches){
-        String title=sameSession?"Security processing":"Previous security processing";
         String stage=data.getProperty("stage","");
-        String result=imported()?"Loaded · "+time("imported_utc"):"failed".equals(stage)?"Stopped · "+time("failed_utc"):"Not completed · "+time("started_utc");
-        String verification=!connected?"Vehicle access: unverified · session stopped":imported()&&!cardMatches?"Vehicle access: unverified · card has changed":"Vehicle access: not yet verified";
-        return title+": "+result+"\n"+verification;
+        if(imported()&&cardMatches)return "Security data loaded · "+time("imported_utc");
+        if(imported())return "Previous security data · "+time("imported_utc")+"\nCard has changed since this import.";
+        String prefix=sameSession?"Security processing":"Previous security processing";
+        if("failed".equals(stage))return prefix+" stopped · "+time("failed_utc");
+        if("processed".equals(stage))return prefix+": response received · "+time("processed_utc")+"\nNot yet loaded into the card.";
+        return prefix+" started · "+time("started_utc");
     }
     public String details(boolean connected,boolean cardMatches){
         String id=data.getProperty("request_id","");
-        return "Started: "+time("started_utc")+"\nServer reply validated: "+time("processed_utc")+
+        return "Started: "+time("started_utc")+"\nAPI response received: "+time("processed_utc")+
             "\nLoaded into emulator: "+time("imported_utc")+
             (data.containsKey("failed_utc")?"\nStopped: "+time("failed_utc"):"")+
             "\nProvider: "+data.getProperty("provider","not recorded")+(id.isEmpty()?"":"\nRequest: "+id)+
-            "\n\nVehicle access: NOT VERIFIED. No access-granted timestamp is recorded. Processing and loading security data do not prove that a vehicle module accepted it."+
-            (!connected?"\nThe vehicle session is stopped. Previous processing is history, not current authorization.":"")+
-            (imported()&&!cardMatches?"\nThe current firmware card no longer matches this import.":"")+
-            "\n\nReturn to the firmware and repeat your task. Follow its result. This build does not yet automatically validate the vehicle's final security response. Times use this device's clock; UTC timestamps are stored locally.";
+            (imported()&&!cardMatches?"\n\nCard has changed since this import.":"")+
+            (imported()&&cardMatches?"\n\nReturn to firmware to continue your task.":"");
     }
     public void save(File file)throws Exception{
         File tmp=new File(file.getParentFile(),file.getName()+".tmp");

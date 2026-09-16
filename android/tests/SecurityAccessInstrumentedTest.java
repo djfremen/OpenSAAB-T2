@@ -47,7 +47,7 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             main(()->{
                 TextView text=(TextView)a.securityAccess.getChildAt(0);
                 check(a.securityAccess.isShown()&&text.getText().toString().contains("Previous security processing"),"Processing history vanished on return to firmware");
-                check(text.getText().toString().contains("unverified"),"API response claimed vehicle grant");
+                check(text.getText().toString().contains("Not yet loaded")&&!text.getText().toString().contains("unverified"),"Processing status should describe only the completed step");
                 check(((Button)a.securityAccess.getChildAt(1)).getText().toString().contains("details"),"Receipt details unavailable");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Persistent status hid EXIT");
             });
