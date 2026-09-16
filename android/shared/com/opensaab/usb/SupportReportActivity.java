@@ -23,7 +23,27 @@ public final class SupportReportActivity extends Activity {
         description=new EditText(this);description.setHint("What were you doing when the problem happened?");description.setMinLines(3);description.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2000)});root.addView(description);
         prepare=new Button(this);prepare.setText("Prepare report");prepare.setOnClickListener(v->prepare());root.addView(prepare);Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->finish());root.addView(back);setContentView(scroll);
     }
-    private void prepare(){prepare.setEnabled(false);String text=description.getText().toString();new Thread(()->{try{JSONObject report=SupportReports.collect(this,text);File file=SupportReports.save(this,report);String formatted=report.toString(2);runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);TextView preview=new TextView(this);preview.setText(formatted);preview.setPadding(24,12,24,12);preview.setTextIsSelectable(true);ScrollView sc=new ScrollView(this);sc.addView(preview);new AlertDialog.Builder(this).setTitle("Review support report").setView(sc).setNegativeButton("Keep private",null).setNeutralButton("Other options",(d,w)->exportOptions(file,formatted)).setPositiveButton("Send to OpenSAAB",(d,w)->sendReport(file,formatted)).show();});}catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);new AlertDialog.Builder(this).setMessage("Could not prepare the report. Please check free space and try again.").setPositiveButton("OK",null).show();});}},"support-report").start();}
+    private void prepare(){((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(description.getWindowToken(),0);description.clearFocus();prepare.setEnabled(false);String text=description.getText().toString();new Thread(()->{try{JSONObject report=SupportReports.collect(this,text);File file=SupportReports.save(this,report);String formatted=report.toString(2);runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);reviewReport(file,formatted);});}catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);new AlertDialog.Builder(this).setMessage("Could not prepare the report. Please check free space and try again.").setPositiveButton("OK",null).show();});}},"support-report").start();}
+    private void reviewReport(File file,String formatted){
+        // Give the report the remaining space, not an unbounded desired height.
+        // Framework AlertDialog button stacking can otherwise clip actions on phones.
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+        int pad=(int)(16*getResources().getDisplayMetrics().density);content.setPadding(pad,pad,pad,pad);
+        TextView title=new TextView(this);title.setText("Review support report");title.setTextSize(22);content.addView(title);
+        TextView preview=new TextView(this);preview.setText(formatted);preview.setTextIsSelectable(true);
+        ScrollView scroll=new ScrollView(this);scroll.addView(preview);
+        content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        AlertDialog dialog=new AlertDialog.Builder(this).setView(content).create();
+        Button send=new Button(this);send.setText("Send to OpenSAAB");content.addView(send);
+        Button options=new Button(this);options.setText("Other options");content.addView(options);
+        Button keep=new Button(this);keep.setText("Keep private");content.addView(keep);
+        send.setOnClickListener(v->{dialog.dismiss();sendReport(file,formatted);});
+        options.setOnClickListener(v->{dialog.dismiss();exportOptions(file,formatted);});
+        keep.setOnClickListener(v->dialog.dismiss());
+        dialog.show();
+        android.graphics.Rect area=new android.graphics.Rect();getWindow().getDecorView().getWindowVisibleDisplayFrame(area);
+        dialog.getWindow().setLayout((int)(area.width()*0.92),(int)(area.height()*0.90));
+    }
     private void sendReport(File file,String formatted){
         sending=new AlertDialog.Builder(this).setTitle("Sending private report")
             .setMessage("Sending to OpenSAAB… Your local copy will be kept.")

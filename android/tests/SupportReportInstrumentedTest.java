@@ -21,6 +21,19 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
         for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text))if(node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return true;
         return false;
     }
+    boolean reviewActionsVisible(){
+        AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();if(root==null)return false;
+        android.graphics.Rect window=new android.graphics.Rect();root.getBoundsInScreen(window);
+        for(String text:new String[]{"Send to OpenSAAB","Other options","Keep private"}){
+            boolean found=false;
+            for(AccessibilityNodeInfo n:root.findAccessibilityNodeInfosByText(text)){
+                android.graphics.Rect r=new android.graphics.Rect();n.getBoundsInScreen(r);
+                if(n.isClickable()&&n.isVisibleToUser()&&r.height()>=40&&window.contains(r))found=true;
+            }
+            if(!found)return false;
+        }
+        return true;
+    }
     static final class UploadConnection extends java.net.HttpURLConnection {
         final ByteArrayOutputStream body=new ByteArrayOutputStream();
         int status=201;String reply="{\"stored\":true,\"report_id\":\"OS-0123456789abcdef01234567\"}";boolean closed;
@@ -94,8 +107,8 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             }
             activity=startActivitySync(new Intent().setClassName(c,"com.opensaab.usb.SupportReportActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
             long ready=SystemClock.elapsedRealtime()+5000;boolean prepared=false;while(SystemClock.elapsedRealtime()<ready){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare action missing");long until=SystemClock.elapsedRealtime()+5000;boolean review=false;
-            while(SystemClock.elapsedRealtime()<until){if(click("Keep private")){review=true;break;}SystemClock.sleep(100);}
-            check(review,"Review/keep private action missing");
+            while(SystemClock.elapsedRealtime()<until){if(reviewActionsVisible()&&click("Keep private")){review=true;break;}SystemClock.sleep(100);}
+            check(review,"Review actions must all be fully visible and reachable");
             until=SystemClock.elapsedRealtime()+5000;prepared=false;while(SystemClock.elapsedRealtime()<until){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare report for export");until=SystemClock.elapsedRealtime()+5000;boolean options=false;
             while(SystemClock.elapsedRealtime()<until){if(click("Other options")){options=true;break;}SystemClock.sleep(100);}check(options,"Copy/save menu missing");
             until=SystemClock.elapsedRealtime()+5000;boolean saveVisible=false;
