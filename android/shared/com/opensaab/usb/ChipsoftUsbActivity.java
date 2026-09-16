@@ -70,6 +70,11 @@ public final class ChipsoftUsbActivity extends Activity {
         if(fullNative||seeds){
             securityAccess=new SecurityAccessView(this,seeds,()->nativeDirectory,()->running.get(),()->nativeKey("stop"),
                 ()->openSecuritySession(true),()->openSecuritySession(false));
+            securityAccess.setMenuKey(code->{
+                File run=nativeDirectory;
+                if(!foreground||!running.get()||cancelled||run==null||keyPending.get()||new File(run,"native-key.txt").exists())return false;
+                nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));return true;
+            });
             root.addView(securityAccess);
             Button clearSecurity=new Button(this);clearSecurity.setText("Clear offset · fresh security data");
             clearSecurity.setOnClickListener(v->SecurityReset.show(this,()->running.get()));root.addView(clearSecurity);
@@ -80,7 +85,7 @@ public final class ChipsoftUsbActivity extends Activity {
             lcdPump=new NativeLcdPump(nativeLcd);
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
         }
-        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code))),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));HeadunitLayout.apply(root);setContentView(root);
+        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));HeadunitLayout.apply(root);setContentView(root);
         IntentFilter f=new IntentFilter(permission);f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);
         if(state==null && getIntent().getBooleanExtra("auto_start",false))new Handler(Looper.getMainLooper()).post(this::requestVehicleStart);

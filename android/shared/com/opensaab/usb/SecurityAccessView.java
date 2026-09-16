@@ -25,6 +25,11 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private final Supplier<File> session;
     private final BooleanSupplier running;
     private final Runnable stop,collect,resume;
+    private IntPredicate menuKey;
+    private SecurityMenuNavigator navigator;
+    private boolean manualNavigation;
+    public void setMenuKey(IntPredicate key){menuKey=key;}
+    public void manualNavigation(){manualNavigation=true;if(navigator!=null)navigator.cancel();}
     private final TextView message;
     private final Button action;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -58,11 +63,14 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             VehicleIdentity identity=run==null?null:VehicleSession.read(new File(run,VehicleSession.FILE));
             try{if(identity==null||saved==null||!saved.matches(identity.vin))saved=null;}catch(Exception invalid){saved=null;}
             final SecurityAccessStatus current=saved;
+            final VehicleIdentity currentIdentity=identity;
             final boolean cardMatches=current!=null&&current.cardMatches(new File(activity.getFilesDir(),"firmware/card.bin"));
             final String screen=text;
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
-                if(observed!=run){observed=run;transferSeen=false;imported=false;failure=null;}
+                if(observed!=run){observed=run;transferSeen=false;imported=false;failure=null;
+                    navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
+                    if(manualNavigation&&navigator!=null)navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
                 boolean prompt=SsaData.needsAccess(screen);
                 if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
@@ -77,6 +85,11 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!collection){show("This task needs security access. Collect fresh data using the original firmware.\n\n"+INTERNET_REQUIRED,"Get security access");return;}
                 if(transferSeen){show("Firmware reached the TIS transfer prompt. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,"Process security data");return;}
                 String hint="Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
+                if(navigator!=null){
+                    long now=SystemClock.elapsedRealtime();
+                    if(running.getAsBoolean()&&menuKey!=null){Integer key=navigator.next(screen,now);if(key!=null&&menuKey.test(key))navigator.sent(now);}
+                    hint=navigator.hint();
+                }
                 if(screen.contains("LOCK position"))hint="Follow the firmware prompt to turn the key to LOCK.";
                 if(screen.contains("Remove Ignition"))hint="Follow the firmware prompt to remove the key.";
                 show(hint+"\n\n"+INTERNET_REQUIRED,"Waiting for collection");action.setEnabled(false);
@@ -92,7 +105,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         if(imported){resume.run();return;}
         if(!collection||!transferSeen){
             new AlertDialog.Builder(activity).setTitle("Collect security data")
-                .setMessage(INTERNET_REQUIRED+"\n\nEnd this session and start original-firmware security collection. Select your vehicle, then Diagnostics → All → Get Security Access. The app will offer API processing at the transfer prompt.")
+                .setMessage(INTERNET_REQUIRED+"\n\nEnd this session and start original-firmware security collection. OpenSAAB will select the identified vehicle’s year and platform, then All → Get Security Access when those menus are recognized. Follow the firmware’s ignition-key prompts. The app will offer API processing at the transfer prompt.")
                 .setNegativeButton("Later",null).setPositiveButton("Start collection",(d,w)->begin(false,false)).show();
         }else{
             if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity,this::activate);return;}

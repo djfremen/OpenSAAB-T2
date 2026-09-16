@@ -58,7 +58,7 @@ public final class MainActivity extends Activity {
             adapterSettings.edit().putBoolean("chipsoft_restricted",checked).apply());
         root.addView(restricted);
         LinearLayout diagnostics = row(root);
-        button(diagnostics,"Seed",()->selectAdapter("native_seed",false));
+        button(diagnostics,"Get security access",()->selectAdapter("native_seed",false));
         button(diagnostics,"Read DTC",()->selectAdapter("native_dtc",false));
         button(diagnostics,"Clear DTC",()->selectAdapter("native_clear_dtc",false));
         button(diagnostics,"Engine Data",()->selectAdapter("native_engine_data",false));
