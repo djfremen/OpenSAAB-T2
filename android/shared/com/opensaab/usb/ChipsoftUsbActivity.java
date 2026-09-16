@@ -71,6 +71,8 @@ public final class ChipsoftUsbActivity extends Activity {
             securityAccess=new SecurityAccessView(this,seeds,()->nativeDirectory,()->running.get(),()->nativeKey("stop"),
                 ()->openSecuritySession(true),()->openSecuritySession(false));
             root.addView(securityAccess);
+            Button clearSecurity=new Button(this);clearSecurity.setText("Clear offset · fresh security data");
+            clearSecurity.setOnClickListener(v->SecurityReset.show(this,()->running.get()));root.addView(clearSecurity);
         }
         if(nativeFirmware){
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
@@ -100,7 +102,7 @@ public final class ChipsoftUsbActivity extends Activity {
         if(running.get()||pending||(vehicleStartPrompt!=null&&vehicleStartPrompt.isShowing()))return;
         if(!vinCheck&&!nativeFirmware){discover();return;}
         vehicleStartPrompt=new AlertDialog.Builder(this).setTitle("Turn the key to ON")
-            .setMessage("Before continuing, connect the adapter and turn the ignition key to ON (dashboard lights on; engine does not need to run). ACC/accessory is not enough.\n\nOpenSAAB will read a fresh VIN, then look up the vehicle's engine and color before you start the firmware. Vehicle details need internet; firmware diagnostics can work offline after setup.")
+            .setMessage("Before continuing, connect the adapter and turn the ignition key to ON (dashboard lights on; engine does not need to run). ACC/accessory is not enough.\n\nOpenSAAB will read a fresh VIN, then look up the vehicle's engine and color before you start the firmware. Your VIN is sent to OpenSAAB and its vehicle-data provider to retrieve these details. Vehicle details need internet; firmware diagnostics can work offline after setup.")
             .setNegativeButton("Cancel",null).setPositiveButton("Key is ON · Read VIN",(d,w)->discover()).show();
     }
     void discover(){

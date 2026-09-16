@@ -22,6 +22,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/tests/DtcReportTest.java'),
         str(repo/'android/shared/com/opensaab/usb/SsaData.java'),
         str(repo/'android/shared/com/opensaab/usb/SsaCardImport.java'),
+        str(repo/'android/shared/com/opensaab/usb/SsaCardReset.java'),
         str(repo/'android/tests/SsaDataTest.java'),
         str(repo/'android/shared/com/opensaab/usb/SecurityApiClient.java'),
         str(repo/'android/tests/SecurityApiClientTest.java'),

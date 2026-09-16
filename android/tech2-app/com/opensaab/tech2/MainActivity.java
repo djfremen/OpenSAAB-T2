@@ -81,6 +81,7 @@ public final class MainActivity extends Activity {
         button(systemActions,"System check",()->com.opensaab.usb.DeviceCompatibility.show(this));
         LinearLayout authActions=row(root);
         button(authActions,"Security access password",()->com.opensaab.usb.SecurityAuthorization.show(this));
+        button(authActions,"Clear offset · fresh access",()->com.opensaab.usb.SecurityReset.show(this,()->running));
         console=label("Console: waiting for firmware",11);
         console.setTypeface(Typeface.MONOSPACE);
         consoleScroll = new ScrollView(this); consoleScroll.addView(console);

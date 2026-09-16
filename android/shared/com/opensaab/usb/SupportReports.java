@@ -59,6 +59,20 @@ public final class SupportReports {
         }
         report.put("recent_sessions",runs);
         report.put("connection_attempts",ConnectionAttempt.collect(c));
+        SecurityAccessStatus security=SecurityAccessStatus.read(new File(c.getNoBackupFilesDir(),"security-processing-status.properties"));
+        if(security!=null)try{
+            JSONObject safe=new JSONObject().put("stage",security.data.getProperty("stage")).put("vehicle_access_verified",false);
+            for(String key:new String[]{"started_utc","processed_utc","imported_utc","failed_utc"})if(security.data.containsKey(key))safe.put(key,java.time.Instant.parse(security.data.getProperty(key)).toString());
+            String provider=security.data.getProperty("provider","");if(provider.equals("OpenSAAB")||provider.equals("Bojer"))safe.put("provider",provider);
+            String request=security.data.getProperty("request_id","");if(request.matches("OSSEC-[a-f0-9]{32}"))safe.put("request_id",request);
+            report.put("security_processing",safe);
+        }catch(Exception ignored){}
+        File reset=new File(c.getNoBackupFilesDir(),"security-reset.json");
+        if(reset.isFile()&&reset.length()<8192)try{
+            String utc=java.time.Instant.parse(FirmwareStore.json(reset).getString("cleared_utc")).toString();
+            report.put("security_reset",new JSONObject().put("cleared_utc",utc));
+        }catch(Exception ignored){}
+
         if(android.os.Build.VERSION.SDK_INT>=30){
             JSONArray exits=new JSONArray();
             try{

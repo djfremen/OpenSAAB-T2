@@ -96,8 +96,8 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 .setNegativeButton("Later",null).setPositiveButton("Start collection",(d,w)->begin(false,false)).show();
         }else{
             if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity,this::activate);return;}
-            new AlertDialog.Builder(activity).setTitle("Process security data")
-                .setMessage("Send the collected 714-byte security file, including its VIN and security data, to OpenSAAB. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\nAuthentication denials and invalid replies stop processing. The vehicle still verifies access.")
+            new AlertDialog.Builder(activity).setTitle("Share VIN and process security data")
+                .setMessage("Your VIN will be shared with OpenSAAB along with the collected 714-byte security file. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\nAuthentication denials and invalid replies stop processing. The vehicle still verifies access.")
                 .setNegativeButton("Cancel",null)
                 .setNeutralButton("OpenSAAB only",(d,w)->begin(true,false))
                 .setPositiveButton("Allow fallback",(d,w)->begin(true,true)).show();

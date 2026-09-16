@@ -32,7 +32,15 @@ public final class SsaDataTest {
             if(!SsaCardImport.hash(new File(evidence,"card-before-security.bin")).equals(before)||!SsaCardImport.hash(card).equals(after))throw new AssertionError("Backup/import mismatch");
             try(RandomAccessFile f=new RandomAccessFile(card,"r")){byte[] b=new byte[714];f.seek(SsaData.OFFSET);f.readFully(b);if(!Arrays.equals(reply,b))throw new AssertionError("SSA import mismatch");}
             try{SsaCardImport.verifyBaseline(card,input);throw new AssertionError("Stale baseline accepted");}catch(IOException expected){}
+            File reset=Files.createDirectory(dir.resolve("reset")).toFile();
+            try{SsaCardReset.clear(card,reset,()->false);throw new AssertionError("Active/cancelled reset applied");}catch(IOException expected){}
+            if(!SsaCardImport.hash(card).equals(after))throw new AssertionError("Cancelled reset modified card");
+            SsaCardReset.clear(card,reset,()->true);
+            try(InputStream current=new BufferedInputStream(new FileInputStream(card));InputStream original=new BufferedInputStream(new FileInputStream(new File(reset,"card-before-security.bin")))){
+                for(int i=0;i<33554432;i++){int value=current.read(),old=original.read();if(value!=(i>=SsaData.OFFSET&&i<SsaData.OFFSET+SsaData.SIZE?255:old))throw new AssertionError("Clear changed wrong byte: "+i);}
+            }
+            if(!SsaCardImport.hash(new File(reset,"card-before-security.bin")).equals(after))throw new AssertionError("Reset backup mismatch");
         }finally{try(java.util.stream.Stream<Path> paths=Files.walk(dir)){paths.sorted(Comparator.reverseOrder()).forEach(p->{try{Files.delete(p);}catch(IOException e){throw new RuntimeException(e);}});}}
-        System.out.println("PASS: SSA contract, changed-VIN/seed/metadata/partial-key rejection, prompt detection, cancelled import, full-card backup and SSA-only transaction; no network or vehicle");
+        System.out.println("PASS: SSA contract, changed-VIN/seed/metadata/partial-key rejection, prompt detection, cancelled import, full-card backup and SSA-only transaction; NoMoreGlobal reset clears exactly 714 bytes with unchanged surrounding bytes and backup; no network or vehicle");
     }
 }
