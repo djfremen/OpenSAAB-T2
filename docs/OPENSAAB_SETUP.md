@@ -17,3 +17,7 @@ Initial catalog: ARM64 `v0.1.0-preview.2` / 100002; ARM32 `headunit-v0.1.0-headu
 Maintenance: `android/compatibility-checker/com/opensaab/checker/` (UI, catalog/download verification and narrow installer provider), `scripts/android/build-compatibility-checker.py` (signed build), `android/tests/SetupInstrumentedTest.java` (disposable emulator tests), `service/catalog/releases.json` (published releases). Website: `/Users/mini4/Documents/Projects/opensaab-research-update/static/t2/`.
 
 Release process: publish/test an emulator APK first; verify its signature/hash/source receipt; update only its catalog entry. Keep archived APKs/source available on GitHub for reproducibility and testing, while the website offers Setup as the single download. No automatic architecture migration or silent updates.
+
+## Adaptive Setup layout (0.3.1)
+
+Setup measures usable window width/height after system insets and converts pixels to density-independent units. Landscape windows at least 720 dp wide use two independently scrollable columns: introduction and installation controls. Narrow/portrait windows use one scrollable column capped at 600 dp. The landscape threshold grows with larger font settings. This is not tied to a device model, CPU architecture, fixed resolution or assumed phone aspect ratio. Rotation/window resizing reuses controls and preserves selected release, download progress and verified APK state. Side/top/bottom system insets are respected.

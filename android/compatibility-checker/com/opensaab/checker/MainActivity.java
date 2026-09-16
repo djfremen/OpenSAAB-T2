@@ -8,6 +8,9 @@ import android.content.pm.*;
 import android.net.Uri;
 import android.provider.Settings;
 import android.widget.*;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.Gravity;
 import com.opensaab.usb.*;
 import java.io.File;
 import java.util.*;
@@ -16,27 +19,36 @@ import java.util.*;
 public final class MainActivity extends Activity {
     private TextView state,choice;private Button action,open,refresh;private Spinner channels;
     private final List<SetupRelease> releases=new ArrayList<>();private SetupRelease selected;
+    private FrameLayout viewport;
+    private LinearLayout introduction, installer;
+    private int layoutWidth = -1, layoutHeight = -1;
+    private boolean wideLayout;
     private String preferred;private File ready;private boolean busy;
     private static final java.util.concurrent.atomic.AtomicBoolean DOWNLOADING=new java.util.concurrent.atomic.AtomicBoolean();
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private TextView text(LinearLayout root,String value,int size){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(0xffeaf4f7);t.setPadding(0,dp(6),0,dp(6));root.addView(t);return t;}
-    private Button button(LinearLayout root,String value,Runnable run){Button b=new Button(this);b.setText(value);b.setAllCaps(false);b.setOnClickListener(v->run.run());root.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;}
+    private Button button(LinearLayout root,String value,Runnable run){Button b=new Button(this);b.setText(value);b.setAllCaps(false);b.setMinHeight(dp(48));b.setOnClickListener(v->run.run());root.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;}
     private PackageInfo installed(String pkg){try{return getPackageManager().getPackageInfo(pkg,0);}catch(PackageManager.NameNotFoundException e){return null;}}
     private String preferredPackage(){return "armeabi-v7a".equals(preferred)?"com.opensaab.tech2.headunit32":"com.opensaab.tech2";}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);
         preferred=SetupRelease.preferred(Build.VERSION.SDK_INT,Build.SUPPORTED_ABIS,installed("com.opensaab.tech2.headunit32")!=null,installed("com.opensaab.tech2")!=null);
-        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0d1620);
-        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);int pad=dp(16);root.setPadding(pad,pad,pad,pad);
-        root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(pad,pad+i.getSystemWindowInsetTop(),pad,pad+i.getSystemWindowInsetBottom());return i;});scroll.addView(root);
+        viewport = new FrameLayout(this);
+        viewport.setBackgroundColor(0xff0d1620);
+        introduction = new LinearLayout(this);
+        introduction.setOrientation(LinearLayout.VERTICAL);
+        installer = new LinearLayout(this);
+        installer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout root = introduction;
         root.addView(new BrandHeader(this,"OpenSAAB Setup"));
         text(root,"One setup. The right app for your Android.",22);
         ActivityManager.MemoryInfo mem=new ActivityManager.MemoryInfo();((ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(mem);
-        choice=text(root,preferred.isEmpty()?"This device cannot run the current emulator.":("armeabi-v7a".equals(preferred)?"32-bit ARM Android":"64-bit ARM Android")+" · "+String.format(Locale.ROOT,"%.1f GB RAM",mem.totalMem/1073741824.0),18);
+        choice=text(installer,preferred.isEmpty()?"This device cannot run the current emulator.":("armeabi-v7a".equals(preferred)?"32-bit ARM Android":"64-bit ARM Android")+" · "+String.format(Locale.ROOT,"%.1f GB RAM",mem.totalMem/1073741824.0),18);
         if(mem.totalMem<2L*1024*1024*1024)text(root,"This device has limited RAM. Installation may work, but emulator speed and stability still need testing.",15);
         text(root,"1. Check this device and choose its app.\n2. Download the verified installer and approve Android’s installation prompt.\n3. Open OpenSAAB to choose your Saab software and language. It will download, check and extract the software for you.",16);
         text(root,"Use an internet connection for setup. Allow about 160 MB free. Existing installations keep their firmware and settings—do not uninstall them. After setup, local USB diagnostics can work offline; security access needs internet.",15);
         text(root,"Device checks stay here. Checking releases contacts OpenSAAB; downloads come from the official GitHub releases. No vehicle or account information is sent by Setup.",13);
+        root = installer;
         channels=new Spinner(this);root.addView(channels);channels.setVisibility(android.view.View.GONE);
         channels.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int pos,long id){if(pos<releases.size()){selected=releases.get(pos);ready=null;update();}}});
         state=text(root,"",15);state.setTextIsSelectable(true);
@@ -47,7 +59,57 @@ public final class MainActivity extends Activity {
         });
         refresh=button(root,"Check available version",()->load());
         button(root,"Device requirements / copy report",()->DeviceCompatibility.show(this));
-        setContentView(scroll);update();if(!preferred.isEmpty())load();else{state.setText("OpenSAAB requires Android 8 / API 26 or newer, and ARMv7 or ARM64 Android application support. The advertised processor or Android version alone is not sufficient.");refresh.setEnabled(false);}
+        viewport.setOnApplyWindowInsetsListener((v, insets) -> {
+            viewport.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
+                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
+            viewport.post(this::arrangeForWindow);
+            return insets;
+        });
+        viewport.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob) -> viewport.post(this::arrangeForWindow));
+        setContentView(viewport);update();if(!preferred.isEmpty())load();else{state.setText("OpenSAAB requires Android 8 / API 26 or newer, and ARMv7 or ARM64 Android application support. The advertised processor or Android version alone is not sufficient.");refresh.setEnabled(false);}
+    }
+    /** Use usable window dp, not device names or a fixed pixel resolution. Keep the
+     * existing controls and download state alive when rotation or window size changes. */
+    private void arrangeForWindow() {
+        int width = viewport.getWidth() - viewport.getPaddingLeft() - viewport.getPaddingRight();
+        int height = viewport.getHeight() - viewport.getPaddingTop() - viewport.getPaddingBottom();
+        if (width <= 0 || height <= 0 || (width == layoutWidth && height == layoutHeight)) return;
+        layoutWidth = width;
+        layoutHeight = height;
+        float density = getResources().getDisplayMetrics().density;
+        // At larger font scales leave room for each column's readable text.
+        float minimumWidthDp = 720 * Math.max(1f, getResources().getConfiguration().fontScale);
+        wideLayout = width > height && width / density >= minimumWidthDp;
+        detach(introduction);
+        detach(installer);
+        viewport.removeAllViews();
+        int pad = dp(16);
+        introduction.setPadding(pad, pad, pad, pad);
+        installer.setPadding(pad, pad, pad, pad);
+        if (wideLayout) {
+            LinearLayout columns = new LinearLayout(this);
+            columns.setOrientation(LinearLayout.HORIZONTAL);
+            columns.addView(scroller(introduction), new LinearLayout.LayoutParams(0, -1, 1f));
+            columns.addView(scroller(installer), new LinearLayout.LayoutParams(0, -1, 1f));
+            viewport.addView(columns, new FrameLayout.LayoutParams(-1, -1));
+        } else {
+            LinearLayout stack = new LinearLayout(this);
+            stack.setOrientation(LinearLayout.VERTICAL);
+            stack.addView(introduction);
+            stack.addView(installer);
+            FrameLayout.LayoutParams bounds = new FrameLayout.LayoutParams(Math.min(width, dp(600)), -1, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+            viewport.addView(scroller(stack), bounds);
+        }
+    }
+    private ScrollView scroller(View child) {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
+        scroll.addView(child, new ScrollView.LayoutParams(-1, -2));
+        return scroll;
+    }
+    private static void detach(View view) {
+        if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
     }
     @Override protected void onResume(){super.onResume();if(action!=null)update();}
     private void update(){
