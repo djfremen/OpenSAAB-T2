@@ -19,8 +19,7 @@ import org.json.JSONObject;
 public final class SecurityAccessView extends LinearLayout implements AutoCloseable {
     private static final AtomicBoolean WORKFLOW_BUSY=new AtomicBoolean();
     public static boolean workflowBusy(){return WORKFLOW_BUSY.get();}
-    private static final String ENDPOINT="https://relevant-diann-djfremen2-c013cdc3.koyeb.app/api/process";
-    private static final String INTERNET_REQUIRED="Security access requires an internet connection to the OpenSAAB security-access API. It cannot be processed offline.";
+    private static final String INTERNET_REQUIRED="Security access requires internet. OpenSAAB is contacted first; you can allow Bojer as a fallback if OpenSAAB is unavailable. It cannot be processed offline.";
     private final Activity activity;
     private final boolean collection;
     private final Supplier<File> session;
@@ -77,10 +76,17 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         if(!collection||!transferSeen){
             new AlertDialog.Builder(activity).setTitle("Collect security data")
                 .setMessage(INTERNET_REQUIRED+"\n\nEnd this session and start original-firmware security collection. Select your vehicle, then Diagnostics → All → Get Security Access. The app will offer API processing at the transfer prompt.")
-                .setNegativeButton("Later",null).setPositiveButton("Start collection",(d,w)->begin(false)).show();
-        }else begin(true);
+                .setNegativeButton("Later",null).setPositiveButton("Start collection",(d,w)->begin(false,false)).show();
+        }else{
+            if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity);return;}
+            new AlertDialog.Builder(activity).setTitle("Process security data")
+                .setMessage("Owner testing: send the collected 714-byte security file, including its VIN and security data, to OpenSAAB. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact the operator who issued your authorization for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this pilot. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\nAuthentication denials and invalid replies stop processing. The vehicle still verifies access.")
+                .setNegativeButton("Cancel",null)
+                .setNeutralButton("OpenSAAB only",(d,w)->begin(true,false))
+                .setPositiveButton("Allow fallback",(d,w)->begin(true,true)).show();
+        }
     }
-    private void begin(boolean process){
+    private void begin(boolean process,boolean allowFallback){
         if(!WORKFLOW_BUSY.compareAndSet(false,true))return;
         final File run=session.get();busy=true;failure=null;action.setEnabled(false);
         message.setText("Closing the firmware session…");stop.run();
@@ -94,7 +100,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(session.get()!=run)throw new IOException("Session changed; collect again.");
                 if(!process){WORKFLOW_BUSY.set(false);released=true;activity.runOnUiThread(()->{busy=false;if(!closed)collect.run();});return;}
                 if(run==null)throw new IOException("No collected session");
-                try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run);}
+                try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run,allowFallback);}
                 activity.runOnUiThread(()->{busy=false;imported=true;if(!closed)refresh();});
             }catch(Exception e){
                 SupportReports.recordError(activity,e,false);
@@ -104,7 +110,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             }finally{if(!released)WORKFLOW_BUSY.set(false);}
         });
     }
-    private void process(File run)throws Exception{
+    private void process(File run,boolean allowFallback)throws Exception{
         JSONObject snapshot=new JSONObject(new String(readBounded(new File(run,"native-security-snapshot.json"),8192),StandardCharsets.UTF_8));
         if(!"original-guest-memory".equals(snapshot.getString("origin")) || snapshot.getInt("card_offset")!=SsaData.OFFSET || snapshot.getInt("bytes")!=SsaData.SIZE
                 || !snapshot.getBoolean("ssa_memory_flash_enabled") || snapshot.getLong("ssa_erases")<1 || snapshot.getLong("ssa_programmed_bytes")<SsaData.SIZE)
@@ -121,19 +127,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         JSONObject request=new JSONObject().put("REQUEST_VERSION",1).put("SSA_DATA",Base64.getEncoder().encodeToString(input));
         byte[] payload=request.toString().getBytes(StandardCharsets.UTF_8);
         Files.write(new File(evidence,"request.json").toPath(),payload);
-        activity.runOnUiThread(()->{if(!closed)message.setText("Contacting the OpenSAAB security-access API… Keep your internet connection active.");});
-        if(closed)throw new IOException("Security processing cancelled");
-        HttpURLConnection http=(HttpURLConnection)new URL(ENDPOINT).openConnection();connection=http;
-        byte[] raw;
-        try{
-            http.setConnectTimeout(15000);http.setReadTimeout(30000);http.setInstanceFollowRedirects(false);
-            http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
-            try(OutputStream out=http.getOutputStream()){out.write(payload);}
-            int status=http.getResponseCode();if(status!=200)throw new IOException("OpenSAAB returned HTTP "+status+"; data not imported.");
-            try(InputStream in=http.getInputStream()){raw=bounded(in,1024*1024);}
-        }catch(IOException e){
-            throw new IOException("Couldn’t complete the request to the OpenSAAB security-access API. Check your internet connection and try again. If it persists, the service may be unavailable. No security data was imported. "+e.getMessage(),e);
-        }finally{http.disconnect();connection=null;}
+        SecurityApiClient.Result result=SecurityApiClient.process(payload,allowFallback,
+            ()->closed||session.get()!=run,this::postSecurityData);
+        byte[] raw=result.body;
         Files.write(new File(evidence,"response.json").toPath(),raw);
         JSONObject reply=new JSONObject(new String(raw,StandardCharsets.UTF_8));
         byte[] after=Base64.getDecoder().decode(reply.getString("SSA_DATA"));SsaData.validateReply(input,after);
@@ -141,10 +137,29 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         // Only the original guest SSA data region changes, with a verified backup.
         String updatedHash=SsaCardImport.apply(card,before,after,originalHash,evidence,
             ()->!closed&&!running.getAsBoolean()&&session.get()==run);
-        JSONObject report=new JSONObject().put("status","security_data_imported").put("endpoint",ENDPOINT).put("bytes",SsaData.SIZE)
+        JSONObject report=new JSONObject().put("status","security_data_imported").put("endpoint",result.endpoint)
+            .put("fallback_allowed",allowFallback).put("fallback_reason",result.fallbackReason).put("bytes",SsaData.SIZE)
             .put("source_session",run.getName()).put("original_card_sha256",originalHash).put("working_card_sha256",updatedHash)
             .put("ssa_input_sha256",sha(input)).put("ssa_output_sha256",sha(after)).put("vehicle_access_verified",false);
         Files.write(new File(evidence,"result.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
+    }
+    private SecurityApiClient.Response postSecurityData(String endpoint,byte[] payload)throws IOException{
+        boolean fallback=SecurityApiClient.FALLBACK.equals(endpoint);
+        activity.runOnUiThread(()->{if(!closed)message.setText(fallback
+            ?"OpenSAAB is unavailable. Contacting Bojer using the fallback you allowed…"
+            :"Contacting the OpenSAAB security-access API… Keep your internet connection active.");});
+        if(closed)throw new IOException("Security processing cancelled");
+        HttpURLConnection http=(HttpURLConnection)new URL(endpoint).openConnection();connection=http;
+        try{
+            if(closed)throw new IOException("Security processing cancelled");
+            http.setConnectTimeout(15000);http.setReadTimeout(30000);http.setInstanceFollowRedirects(false);
+            if(!fallback){http.setRequestProperty("Authorization","Bearer "+SecurityAuthorization.bearer(activity));http.setRequestProperty("X-OpenSAAB-Consent","owner-security-24h-v1");}
+            http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
+            try(OutputStream out=http.getOutputStream()){out.write(payload);}
+            int status=http.getResponseCode();
+            if(status!=200)return new SecurityApiClient.Response(status,new byte[0]);
+            try(InputStream in=http.getInputStream()){return new SecurityApiClient.Response(status,bounded(in,1024*1024));}
+        }finally{http.disconnect();connection=null;}
     }
     private static byte[] readBounded(File file,int maximum)throws IOException{
         try(InputStream in=new FileInputStream(file)){return bounded(in,maximum);}
