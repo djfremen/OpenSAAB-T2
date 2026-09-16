@@ -4,8 +4,9 @@ opens no adapter and removes the package after collecting the result.
 Run only with the production emulator stopped: instrumentation restarts its app.
 """
 import argparse, os, pathlib, subprocess, tempfile, zipfile
-p=argparse.ArgumentParser();p.add_argument('--serial',required=True);p.add_argument('--suite',choices=['lcd','keypad','security','dtc','firmware','firmware-download','support','vehicle','connection','updates','parity'],default='lcd');p.add_argument('--classes',type=pathlib.Path,help='Compiled application classes (defaults to the custom build)');p.add_argument('--package', choices=['com.opensaab.tech2','com.opensaab.tech2.headunit32'],default='com.opensaab.tech2');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--serial',required=True);p.add_argument('--live-upload',action='store_true',help='Explicitly send one synthetic parity report to the project support endpoint');p.add_argument('--suite',choices=['lcd','keypad','security','dtc','firmware','firmware-download','support','vehicle','connection','updates','parity'],default='lcd');p.add_argument('--classes',type=pathlib.Path,help='Compiled application classes (defaults to the custom build)');p.add_argument('--package', choices=['com.opensaab.tech2','com.opensaab.tech2.headunit32'],default='com.opensaab.tech2');a=p.parse_args()
 test_class={'lcd':'NativeLcdPumpInstrumentedTest','keypad':'Tech2ControlsInstrumentedTest','security':'SecurityAccessInstrumentedTest','dtc':'DtcReportInstrumentedTest','firmware':'FirmwareInstrumentedTest','firmware-download':'FirmwareDownloadInstrumentedTest','support':'SupportReportInstrumentedTest','vehicle':'VehicleSessionInstrumentedTest','connection':'ConnectionReportInstrumentedTest','updates':'AppUpdatesInstrumentedTest','parity':'ReleaseParityInstrumentedTest'}[a.suite]
+if a.live_upload and a.suite!='parity':raise SystemExit('--live-upload is only supported for parity')
 if a.suite in ('firmware-download','support','connection','parity') and not a.serial.startswith('emulator-'):raise SystemExit('This suite requires an Android emulator')
 repo=pathlib.Path(__file__).resolve().parents[2]
 sdk=pathlib.Path(os.environ.get('ANDROID_HOME',str(pathlib.Path.home()/'Library/Android/sdk')))
@@ -33,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-lcd-test-') as temp:
   run(bt/'apksigner','sign','--ks',pathlib.Path.home()/'.android/debug.keystore','--ks-pass','pass:android','--key-pass','pass:android','--out',d/'test.apk',d/'aligned.apk',env=env)
  run(*adb,'install','-r',d/'test.apk')
  try:
-  r=run(*adb,'shell','am','instrument','-w','-r',f'com.opensaab.tech2.lcdtest/com.opensaab.usb.{test_class}',capture_output=True,text=True)
+  r=run(*adb,'shell','am','instrument','-w','-r',*(['-e','live_upload','true'] if a.live_upload else []),f'com.opensaab.tech2.lcdtest/com.opensaab.usb.{test_class}',capture_output=True,text=True)
   print(r.stdout)
   if 'PASS:' not in r.stdout or 'INSTRUMENTATION_CODE: -1' not in r.stdout:raise SystemExit(f'{a.suite} instrumentation failed')
  finally:run(*adb,'uninstall','com.opensaab.tech2.lcdtest')
