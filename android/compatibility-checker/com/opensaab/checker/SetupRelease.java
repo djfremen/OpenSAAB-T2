@@ -28,6 +28,22 @@ public final class SetupRelease {
         if(!pkg.equals(packageName)||!url.equals(ROOT+tag+"/"+file)||!sha.matches("[a-f0-9]{64}")||bytes<100000||bytes>32*1024*1024||code<1
                 ||!version.matches(arm32?"[0-9]+\\.[0-9]+\\.[0-9]+-headunit\\.[0-9]+":"[0-9]+\\.[0-9]+\\.[0-9]+(?:-preview\\.[0-9]+)?"))throw new IOException("Invalid release information");
     }
+    static boolean releaseSigned(PackageInfo installed) {
+        if (installed == null || installed.signatures == null || installed.signatures.length != 1) return false;
+        try { return SIGNER.equals(hex(MessageDigest.getInstance("SHA-256").digest(installed.signatures[0].toByteArray()))); }
+        catch (java.security.NoSuchAlgorithmException e) { return false; }
+    }
+    static String installedVersion(PackageInfo installed) {
+        String name = installed.versionName;
+        return name == null || name.trim().isEmpty() ? "Version not reported (build " + installed.versionCode + ")" : name;
+    }
+    private void checkInstalled(Context context) throws IOException {
+        try {
+            PackageInfo installed = context.getPackageManager().getPackageInfo(packageName, PackageManager.GET_SIGNATURES);
+            if (!releaseSigned(installed)) throw new IOException("Installed app uses a different signing key. Keep it installed to preserve its data; contact OpenSAAB support.");
+            if (installed.versionCode > code) throw new IOException("A newer version is already installed; it will not be downgraded");
+        } catch (PackageManager.NameNotFoundException absent) { }
+    }
     public String title(){return (abi.equals("armeabi-v7a")?"32-bit ARM · experimental":"64-bit ARM · preview")+" · "+version;}
     public static String preferred(int api,String[] abis,boolean installed32,boolean installed64){
         if(api<26)return "";
@@ -53,7 +69,7 @@ public final class SetupRelease {
         for(int i=0;i<5;i++){
             String host=u.getHost();boolean allowed=asset?(host.equals("github.com")||host.equals("release-assets.githubusercontent.com")||host.equals("objects.githubusercontent.com")):host.equals("www.opensaab.com");
             if(!"https".equals(u.getProtocol())||!allowed||u.getUserInfo()!=null||(u.getPort()!=-1&&u.getPort()!=443))throw new IOException("Untrusted download destination");
-            HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);c.setRequestProperty("User-Agent","OpenSAAB-Setup/0.3.0");
+            HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);c.setRequestProperty("User-Agent","OpenSAAB-Setup/0.3.2");
             int code;try{code=c.getResponseCode();}catch(Exception e){c.disconnect();throw e;}
             if(code==200)return c;
             String location=c.getHeaderField("Location");c.disconnect();
@@ -63,6 +79,7 @@ public final class SetupRelease {
     }
     public interface Progress {void update(int percent);}
     public File download(Context context,Progress progress)throws Exception{
+        checkInstalled(context); // Fail before any network request or installer file changes.
         File dir=new File(context.getFilesDir(),"installers");if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Cannot prepare storage");
         File target=new File(dir,sha+".apk"),part=new File(dir,sha+".part");
         if(target.isFile()){try{verify(context,target);return target;}catch(Exception e){target.delete();}}
@@ -91,10 +108,7 @@ public final class SetupRelease {
             if(zip.getEntry("lib/"+abi+"/libtech2_emu.so")==null)throw new IOException("Installer architecture mismatch");
             Enumeration<? extends ZipEntry> all=zip.entries();while(all.hasMoreElements()){String n=all.nextElement().getName();if(n.startsWith("lib/")&&!n.startsWith("lib/"+abi+"/"))throw new IOException("Unexpected native architecture");}
         }
-        try{PackageInfo installed=c.getPackageManager().getPackageInfo(packageName,PackageManager.GET_SIGNATURES);
-            if(installed.versionCode>code)throw new IOException("A newer version is already installed; it will not be downgraded");
-            if(installed.signatures==null||installed.signatures.length!=1||!SIGNER.equals(hex(MessageDigest.getInstance("SHA-256").digest(installed.signatures[0].toByteArray()))))throw new IOException("Installed app uses a different signing key. Keep it installed to preserve its data; contact OpenSAAB support.");
-        }catch(PackageManager.NameNotFoundException absent){}
+        checkInstalled(c); // Recheck at install time in case the installed app changed.
     }
     static String hex(byte[] data){StringBuilder out=new StringBuilder();for(byte b:data)out.append(String.format(java.util.Locale.ROOT,"%02x",b&255));return out.toString();}
 }

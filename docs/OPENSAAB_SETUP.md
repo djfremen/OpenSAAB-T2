@@ -21,3 +21,7 @@ Release process: publish/test an emulator APK first; verify its signature/hash/s
 ## Adaptive Setup layout (0.3.1)
 
 Setup measures usable window width/height after system insets and converts pixels to density-independent units. Landscape windows at least 720 dp wide use two independently scrollable columns: introduction and installation controls. Narrow/portrait windows use one scrollable column capped at 600 dp. The landscape threshold grows with larger font settings. This is not tied to a device model, CPU architecture, fixed resolution or assumed phone aspect ratio. Rotation/window resizing reuses controls and preserves selected release, download progress and verified APK state. Side/top/bottom system insets are respected.
+
+## Existing development installation (0.3.2)
+
+An APK signed by a different key cannot update the installed package. Setup detects this before downloading, disables the public update action, keeps Open existing OpenSAAB available, and explains backup/migration. It never recommends retrying a signing conflict or calls it the same update channel. Missing versionName is shown as Version not reported with its build number. No automatic uninstall, private-data copying, or signature bypass. Archive signature checks remain in place; installed-package checks also run again before installation.

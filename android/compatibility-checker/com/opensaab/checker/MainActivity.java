@@ -17,7 +17,7 @@ import java.util.*;
 
 /** Universal Java-only setup; installs separately versioned, signed emulator APKs. */
 public final class MainActivity extends Activity {
-    private TextView state,choice;private Button action,open,refresh;private Spinner channels;
+    private TextView state,choice,installationProblem;private Button action,open,refresh,migrationHelp;private Spinner channels;
     private final List<SetupRelease> releases=new ArrayList<>();private SetupRelease selected;
     private FrameLayout viewport;
     private LinearLayout introduction, installer;
@@ -28,7 +28,7 @@ public final class MainActivity extends Activity {
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private TextView text(LinearLayout root,String value,int size){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(0xffeaf4f7);t.setPadding(0,dp(6),0,dp(6));root.addView(t);return t;}
     private Button button(LinearLayout root,String value,Runnable run){Button b=new Button(this);b.setText(value);b.setAllCaps(false);b.setMinHeight(dp(48));b.setOnClickListener(v->run.run());root.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;}
-    private PackageInfo installed(String pkg){try{return getPackageManager().getPackageInfo(pkg,0);}catch(PackageManager.NameNotFoundException e){return null;}}
+    private PackageInfo installed(String pkg){try{return getPackageManager().getPackageInfo(pkg,PackageManager.GET_SIGNATURES);}catch(PackageManager.NameNotFoundException e){return null;}}
     private String preferredPackage(){return "armeabi-v7a".equals(preferred)?"com.opensaab.tech2.headunit32":"com.opensaab.tech2";}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);
@@ -51,12 +51,20 @@ public final class MainActivity extends Activity {
         root = installer;
         channels=new Spinner(this);root.addView(channels);channels.setVisibility(android.view.View.GONE);
         channels.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int pos,long id){if(pos<releases.size()){selected=releases.get(pos);ready=null;update();}}});
+        installationProblem=text(root,"",16);
+        installationProblem.setTextIsSelectable(true);
+        installationProblem.setVisibility(View.GONE);
         state=text(root,"",15);state.setTextIsSelectable(true);
         action=button(root,"Download matching app",()->{if(ready!=null)install();else download();});action.setEnabled(false);
         open=button(root,"Open OpenSAAB · continue setup",()->{
             String pkg=selected==null?preferredPackage():selected.packageName;Intent launch=getPackageManager().getLaunchIntentForPackage(pkg);
             if(launch!=null)startActivity(launch);else state.setText("Finish installing OpenSAAB, then return here to open it.");
         });
+        migrationHelp=button(root,"Why can’t this app be updated?",()->new AlertDialog.Builder(this)
+                .setTitle("Your existing app is protected")
+                .setMessage("Android cannot update an app using a different signing key. This can happen with an earlier Android Studio or development build. Downloading again will not fix it.\n\nKeep using Open existing OpenSAAB. Before moving to the public release, preserve the reports, firmware and settings you need. Setup cannot copy another app’s private data. A development build may allow a computer-assisted backup; contact OpenSAAB support before removing it. Uninstalling erases its private data.")
+                .setPositiveButton("Got it",null).show());
+        migrationHelp.setVisibility(View.GONE);
         refresh=button(root,"Check available version",()->load());
         button(root,"Device requirements / copy report",()->DeviceCompatibility.show(this));
         viewport.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -115,13 +123,19 @@ public final class MainActivity extends Activity {
     private void update(){
         if(action==null)return;
         String pkg=selected==null?preferredPackage():selected.packageName;PackageInfo p=installed(pkg);
-        open.setVisibility(!preferred.isEmpty()&&p!=null?android.view.View.VISIBLE:android.view.View.GONE);
+        boolean conflict=p!=null&&!SetupRelease.releaseSigned(p);
+        open.setVisibility(!preferred.isEmpty()&&p!=null?View.VISIBLE:View.GONE);
+        open.setText(conflict?"Open existing OpenSAAB":"Open OpenSAAB · continue setup");
+        installationProblem.setVisibility(conflict?View.VISIBLE:View.GONE);
+        migrationHelp.setVisibility(conflict?View.VISIBLE:View.GONE);
+        state.setVisibility(conflict?View.GONE:View.VISIBLE);
+        if(conflict) installationProblem.setText("Your existing OpenSAAB uses a different signing key. Android cannot update it with the public release. Keep using the existing app; your firmware and reports have not been changed. See the guidance below before migrating.");
         if(selected!=null){
-            choice.setText(selected.title()+(p==null?"":"\nInstalled: "+p.versionName+" · same update channel"));
+            choice.setText(selected.title()+(p==null?"":"\nInstalled: "+SetupRelease.installedVersion(p)+(conflict?"":" · same update channel")));
             boolean current=p!=null&&p.versionCode>=selected.code;
-            action.setText(current?"This version or newer is installed":ready!=null?"Install verified app":"Download "+selected.title());
-            action.setEnabled(!busy&&!current);
-        }
+            action.setText(conflict?"Public update unavailable for this installation":current?"This version or newer is installed":ready!=null?"Install verified app":"Download "+selected.title());
+            action.setEnabled(!busy&&!current&&!conflict);
+        } else action.setEnabled(false);
         refresh.setEnabled(!busy&&!preferred.isEmpty());channels.setEnabled(!busy);
     }
     private void load(){
@@ -138,6 +152,8 @@ public final class MainActivity extends Activity {
     }
     private void download(){
         if(selected==null||busy)return;
+        PackageInfo existing=installed(selected.packageName);
+        if(existing!=null&&!SetupRelease.releaseSigned(existing)){update();return;}
         if(!DOWNLOADING.compareAndSet(false,true)){state.setText("A download is already finishing. Please check again shortly.");return;}
         busy=true;SetupRelease release=selected;state.setText("Downloading verified OpenSAAB installer…");update();
         new Thread(()->{try{
