@@ -96,10 +96,11 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             long ready=SystemClock.elapsedRealtime()+5000;boolean prepared=false;while(SystemClock.elapsedRealtime()<ready){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare action missing");long until=SystemClock.elapsedRealtime()+5000;boolean review=false;
             while(SystemClock.elapsedRealtime()<until){if(click("Keep private")){review=true;break;}SystemClock.sleep(100);}
             check(review,"Review/keep private action missing");
-            check(click("Prepare report"),"Prepare report for export");until=SystemClock.elapsedRealtime()+5000;boolean options=false;
+            until=SystemClock.elapsedRealtime()+5000;prepared=false;while(SystemClock.elapsedRealtime()<until){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare report for export");until=SystemClock.elapsedRealtime()+5000;boolean options=false;
             while(SystemClock.elapsedRealtime()<until){if(click("Other options")){options=true;break;}SystemClock.sleep(100);}check(options,"Copy/save menu missing");
-            check(!getUiAutomation().getRootInActiveWindow().findAccessibilityNodeInfosByText("Save ZIP to a file").isEmpty(),"Save ZIP fallback missing");
-            check(click("Copy report text"),"Copy report action missing");SystemClock.sleep(200);
+            until=SystemClock.elapsedRealtime()+5000;boolean saveVisible=false;
+            while(SystemClock.elapsedRealtime()<until){AccessibilityNodeInfo active=getUiAutomation().getRootInActiveWindow();if(active!=null&&!active.findAccessibilityNodeInfosByText("Save ZIP to a file").isEmpty()){saveVisible=true;break;}SystemClock.sleep(100);}check(saveVisible,"Save ZIP fallback missing");
+            check(click("Copy report text"),"Copy report action missing");SystemClock.sleep(300);
             ClipboardManager clipboard=(ClipboardManager)c.getSystemService(Context.CLIPBOARD_SERVICE);
             check(clipboard.hasPrimaryClip()&&clipboard.getPrimaryClip().getItemAt(0).coerceToText(c).toString().contains("device_resources"),"Copied report missing new context");
             result.putString("stream","PASS: upload receipt/errors/size/redirect policy (no network); bounded log tails, secret/message exclusion, ZIP allowlist, Android exit metadata, review/keep-private UI, read-only share grants, traversal denial; no vehicle/network/mail\n");

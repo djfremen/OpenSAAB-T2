@@ -6,4 +6,4 @@ The emulator architecture indicator reads the installed `libtech2_emu.so` ELF he
 
 The shared branded header shows this indicator on main/Chipsoft/firmware-setup screens (the separate Setup app does not load an emulator); the Nano screen has the same indicator. The architecture does not change automatically inside a running app. The installed APK supplies the executable.
 
-Validation: Java ELF-header tests (ARMv7, ARM64, inconsistent headers, non-ARM and missing files), inspected both locally built native targets, and successful ARM32 APK build. The label is included in the next ARM64 preview.3 release. Published ARM32 headunit.3 predates it; its independent artifact remains unchanged.
+Validation: Java ELF-header tests (ARMv7, ARM64, inconsistent headers, non-ARM and missing files), inspected both locally built native targets, and successful ARM32 APK build. The label is included in ARM64 preview.3. Published ARM32 headunit.3 predates it; its independent artifact remains unchanged.
