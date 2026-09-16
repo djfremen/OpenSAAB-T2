@@ -16,10 +16,7 @@ import java.util.*;
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 
-/** Owner pilot credentials are entered by the operator, never shipped in an APK.
- * Stored with Android Keystore encryption under noBackupFilesDir. Server expiry,
- * revocation, vehicle entitlement and quotas are authoritative.
- */
+/** Operator-entered service password, encrypted locally and checked by the server. */
 public final class SecurityAuthorization {
     private static final String ALIAS="opensaab-owner-security-v1";
     private static File file(Context c){return new File(c.getNoBackupFilesDir(),"security-authorization.enc");}
@@ -31,11 +28,8 @@ public final class SecurityAuthorization {
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());
         return gen.generateKey();
     }
-    static long validate(String text){
-        if(text==null||!text.matches("[0-9]{10}\\.[A-Za-z0-9_-]{43}"))throw new IllegalArgumentException("Use the complete owner authorization provided by OpenSAAB.");
-        long expires=Long.parseLong(text.substring(0,10));
-        if(expires<=System.currentTimeMillis()/1000)throw new IllegalArgumentException("Authorization expired. Request a new owner test authorization.");
-        return expires;
+    static void validate(String text){
+        if(text==null||!text.matches("[A-Za-z0-9_-]{1,64}"))throw new IllegalArgumentException("Enter the case-sensitive service password. Do not add spaces.");
     }
     public static void save(Context c,String text)throws Exception{
         validate(text);Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());
@@ -44,28 +38,29 @@ public final class SecurityAuthorization {
         Files.write(file(c).toPath(),out);
     }
     private static String load(Context c)throws Exception{
-        File f=file(c);if(!f.isFile()||f.length()>256)throw new IOException("Owner authorization required");
-        byte[] data=Files.readAllBytes(f.toPath());if(data.length<29)throw new IOException("Owner authorization invalid");
+        File f=file(c);if(!f.isFile()||f.length()>256)throw new IOException("Security access password required");
+        byte[] data=Files.readAllBytes(f.toPath());if(data.length<29)throw new IOException("Saved password invalid");
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Arrays.copyOf(data,12)));
         String text=new String(cipher.doFinal(Arrays.copyOfRange(data,12,data.length)),StandardCharsets.US_ASCII);validate(text);return text;
     }
     public static String bearer(Context c)throws IOException{
-        try{return load(c).substring(11);}catch(Exception e){throw new IOException("Add or renew your owner-test authorization before processing security access.");}
+        try{return load(c);}catch(Exception e){throw new IOException("Enter your security access password before processing.");}
     }
+    public static void forget(Context c){file(c).delete();}
     public static boolean available(Context c){try{load(c);return true;}catch(Exception e){return false;}}
-    public static void show(Activity a){
+    public static void show(Activity a){show(a,()->{});}
+    public static void show(Activity a,Runnable saved){
         LinearLayout layout=new LinearLayout(a);layout.setOrientation(LinearLayout.VERTICAL);int pad=(int)(20*a.getResources().getDisplayMetrics().density);layout.setPadding(pad,pad,pad,pad);
         TextView info=new TextView(a);
-        String status="No current owner authorization.";
-        try{status="Authorization saved until "+java.text.DateFormat.getDateTimeInstance().format(new Date(Long.parseLong(load(a).substring(0,10))*1000))+". Server approval still applies.";}catch(Exception ignored){}
-        info.setText(status+"\n\nThis limited pilot is for approved vehicles only. Paste the private authorization provided by OpenSAAB. It is not your vehicle security code. Do not share it or include it in reports.");layout.addView(info);
-        EditText input=new EditText(a);input.setHint("Private owner authorization");input.setSingleLine(true);input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        String status=available(a)?"A password is saved on this device.":"Enter the OpenSAAB service password.";
+        info.setText(status+"\n\nThe password is case-sensitive and will be checked by the server when you process security data. This is not your vehicle's security code. It is saved securely on this device.");layout.addView(info);
+        EditText input=new EditText(a);input.setHint("Case-sensitive password");input.setSingleLine(true);input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         if(Build.VERSION.SDK_INT>=26)input.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         layout.addView(input);
-        AlertDialog d=new AlertDialog.Builder(a).setTitle("Security access authorization").setView(layout).setNegativeButton("Close",null).setNeutralButton("Remove authorization",(x,w)->{file(a).delete();Toast.makeText(a,"Owner authorization removed",Toast.LENGTH_SHORT).show();}).setPositiveButton("Save",null).create();
+        AlertDialog d=new AlertDialog.Builder(a).setTitle("Security access password").setView(layout).setNegativeButton("Close",null).setNeutralButton("Forget password",(x,w)->{file(a).delete();Toast.makeText(a,"Password removed",Toast.LENGTH_SHORT).show();}).setPositiveButton("Save",null).create();
         d.setOnShowListener(x->{d.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-            try{save(a,input.getText().toString().trim());input.setText("");d.dismiss();Toast.makeText(a,"Owner authorization saved",Toast.LENGTH_SHORT).show();}
-            catch(IllegalArgumentException e){input.setError(e.getMessage());}catch(Exception e){input.setError("Could not save authorization securely. Please retry.");}
+            try{save(a,input.getText().toString());input.setText("");d.dismiss();Toast.makeText(a,"Password saved",Toast.LENGTH_SHORT).show();saved.run();}
+            catch(IllegalArgumentException e){input.setError(e.getMessage());}catch(Exception e){input.setError("Could not save password securely. Please retry.");}
         });});d.show();
     }
     private SecurityAuthorization(){}

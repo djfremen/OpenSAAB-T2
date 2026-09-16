@@ -95,9 +95,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 .setMessage(INTERNET_REQUIRED+"\n\nEnd this session and start original-firmware security collection. Select your vehicle, then Diagnostics → All → Get Security Access. The app will offer API processing at the transfer prompt.")
                 .setNegativeButton("Later",null).setPositiveButton("Start collection",(d,w)->begin(false,false)).show();
         }else{
-            if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity);return;}
+            if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity,this::activate);return;}
             new AlertDialog.Builder(activity).setTitle("Process security data")
-                .setMessage("Owner testing: send the collected 714-byte security file, including its VIN and security data, to OpenSAAB. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact the operator who issued your authorization for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this pilot. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\nAuthentication denials and invalid replies stop processing. The vehicle still verifies access.")
+                .setMessage("Send the collected 714-byte security file, including its VIN and security data, to OpenSAAB. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\nAuthentication denials and invalid replies stop processing. The vehicle still verifies access.")
                 .setNegativeButton("Cancel",null)
                 .setNeutralButton("OpenSAAB only",(d,w)->begin(true,false))
                 .setPositiveButton("Allow fallback",(d,w)->begin(true,true)).show();
@@ -191,10 +191,11 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         try{
             if(closed)throw new IOException("Security processing cancelled");
             http.setConnectTimeout(15000);http.setReadTimeout(30000);http.setInstanceFollowRedirects(false);
-            if(!fallback){http.setRequestProperty("Authorization","Bearer "+SecurityAuthorization.bearer(activity));http.setRequestProperty("X-OpenSAAB-Consent","owner-security-24h-v1");}
+            if(!fallback){http.setRequestProperty("Authorization","Bearer "+SecurityAuthorization.bearer(activity));http.setRequestProperty("X-OpenSAAB-Consent","security-storage-24h-v1");}
             http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
             try(OutputStream out=http.getOutputStream()){out.write(payload);}
             int status=http.getResponseCode();
+            if(!fallback&&status==401){SecurityAuthorization.forget(activity);throw new IOException("Incorrect security access password. Tap Retry processing to enter it again; case matters.");}
             if(status!=200)return new SecurityApiClient.Response(status,new byte[0]);
             try(InputStream in=http.getInputStream()){return new SecurityApiClient.Response(status,bounded(in,1024*1024));}
         }finally{http.disconnect();connection=null;}
