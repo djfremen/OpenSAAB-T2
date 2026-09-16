@@ -66,3 +66,12 @@ Before release: verify native startup and original firmware menus on real ARM32 
 ## First signed experimental distribution
 
 User authorized an alternate website download on September 15, 2026, without connecting the physical head unit. Publish as prerelease `headunit-v0.1.0-headunit.1`, never as the latest default release. Version code 100001 belongs to the separate headunit32 package. The checker 0.2.0 selects ARM64 first when supported, otherwise ARMv7; below API 26 or on unsupported ABIs it offers no installer. Links open release notes in the browser, never silently install. ARM32 physical-device and adapter validation remain pending. Existing portrait adapter layouts are unchanged.
+
+
+## Landscape preview update — September 15, 2026
+
+User photos confirm that preview 1 installs and launches on the Universal_U01 / 8227L head unit, with original firmware visible in offline mode. The app reports 1024×600 at 160 dpi, 0.9 GiB RAM, ARMv7 application support and Android API 26 or newer. The exact API number remains unverified. This is user-reported startup evidence, not proof of USB or diagnostic operation on this device. The K2401 is a separate device.
+
+Preview 2 (`0.1.0-headunit.2`, code 100002) fixes the tiny firmware display caused by stacked phone controls consuming the landscape height. `HeadunitLayout.java` puts the firmware display and persistent EXIT/soft keys on the left and scrollable session tools on the right. It applies only to the headunit32 package on landscape windows at least 720 dp wide. Main, Chipsoft and Nano firmware screens share the shell. Portrait phone layout and the existing ARM64 release are unchanged. The ARM32 manifest no longer forces portrait. Images retain their original aspect ratio; no diagnostic protocol or firmware changes.
+
+UI instrumentation uses a disposable Java-only test package on the Mac's ARM64 Android emulator, because that emulator cannot execute ARMv7 native binaries. Tests cover activity layouts, minimum display dimensions, visible EXIT, full keypad, console, scrolling and gesture callbacks; this is not ARM32 engine validation. Actual revised layout, low-memory performance and USB behavior still need physical testing. No vehicle commands were sent for this work.

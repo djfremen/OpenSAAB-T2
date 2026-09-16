@@ -85,6 +85,8 @@ if experimental:
     ET.SubElement(app, 'meta-data', {'{'+ns+'}name': 'com.opensaab.build_profile',
                                     '{'+ns+'}value': args.profile})
     for activity in app.findall('activity'):
+        # Follow the installed display on fixed-landscape head units. ARM64 stays unchanged.
+        activity.attrib.pop('{'+ns+'}screenOrientation', None)
         if activity.get('{'+ns+'}name') == '.MainActivity':
             activity.set('{'+ns+'}name', 'com.opensaab.tech2.MainActivity')
     for provider in app.findall('provider'):

@@ -89,6 +89,7 @@ public final class MainActivity extends Activity {
             }
             com.opensaab.usb.ProjectSupport.show(this);
         }),new LinearLayout.LayoutParams(-1,-2));
+        com.opensaab.usb.HeadunitLayout.apply(root);
         setContentView(root);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;

@@ -4,7 +4,7 @@ opens no adapter and removes the package after collecting the result.
 Run only with the production emulator stopped: instrumentation restarts its app.
 """
 import argparse, os, pathlib, subprocess, tempfile, zipfile
-p=argparse.ArgumentParser();p.add_argument('--serial',required=True);p.add_argument('--suite',choices=['lcd','keypad','security','dtc','firmware','firmware-download','support','vehicle','connection','updates'],default='lcd');p.add_argument('--classes',type=pathlib.Path,help='Compiled application classes (defaults to the custom build)');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--serial',required=True);p.add_argument('--suite',choices=['lcd','keypad','security','dtc','firmware','firmware-download','support','vehicle','connection','updates'],default='lcd');p.add_argument('--classes',type=pathlib.Path,help='Compiled application classes (defaults to the custom build)');p.add_argument('--package', choices=['com.opensaab.tech2','com.opensaab.tech2.headunit32'],default='com.opensaab.tech2');a=p.parse_args()
 test_class={'lcd':'NativeLcdPumpInstrumentedTest','keypad':'Tech2ControlsInstrumentedTest','security':'SecurityAccessInstrumentedTest','dtc':'DtcReportInstrumentedTest','firmware':'FirmwareInstrumentedTest','firmware-download':'FirmwareDownloadInstrumentedTest','support':'SupportReportInstrumentedTest','vehicle':'VehicleSessionInstrumentedTest','connection':'ConnectionReportInstrumentedTest','updates':'AppUpdatesInstrumentedTest'}[a.suite]
 if a.suite in ('firmware-download','support','connection') and not a.serial.startswith('emulator-'):raise SystemExit('This suite requires an Android emulator')
 repo=pathlib.Path(__file__).resolve().parents[2]
@@ -16,7 +16,7 @@ active=subprocess.run(adb+['shell','pidof','libtech2_emu.so'],capture_output=Tru
 if active.stdout.strip():raise SystemExit('Stop the existing emulator before the LCD test')
 with tempfile.TemporaryDirectory(prefix='opensaab-lcd-test-') as temp:
  d=pathlib.Path(temp);classes=d/'classes';classes.mkdir()
- (d/'AndroidManifest.xml').write_text(f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.tech2.lcdtest"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36"/><application android:label="OpenSAAB LCD test" android:debuggable="true"></application><instrumentation android:name="com.opensaab.usb.{test_class}" android:targetPackage="com.opensaab.tech2"/></manifest>''')
+ (d/'AndroidManifest.xml').write_text(f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.tech2.lcdtest"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36"/><application android:label="OpenSAAB LCD test" android:debuggable="true"></application><instrumentation android:name="com.opensaab.usb.{test_class}" android:targetPackage="{a.package}"/></manifest>''')
  run(jdk/'bin/javac','-source','8','-target','8','-classpath',str(jar)+os.pathsep+str(a.classes or repo/'target/android-tech2-app/classes'),'-d',classes,repo/f'android/tests/{test_class}.java')
  env=dict(os.environ,JAVA_HOME=str(jdk),PATH=str(jdk/'bin')+os.pathsep+os.environ['PATH'])
  run(bt/'d8','--min-api','26','--lib',jar,'--output',d,*classes.rglob('*.class'),env=env)

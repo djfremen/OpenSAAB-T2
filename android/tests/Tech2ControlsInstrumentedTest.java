@@ -126,6 +126,22 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                 checkedMain(()->{
                     View exit=shown.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect visible=new Rect();
                     check(exit!=null && exit.getGlobalVisibleRect(visible) && visible.height()==exit.getHeight(),"EXIT not fully visible in "+name);
+                    if (AppBuildProfile.isHeadunit32(shown)
+                            && shown.getResources().getConfiguration().screenWidthDp >= 720
+                            && shown.getResources().getConfiguration().screenWidthDp > shown.getResources().getConfiguration().screenHeightDp) {
+                        float d = shown.getResources().getDisplayMetrics().density;
+                        View display = shown.getWindow().getDecorView().findViewWithTag("tech2-gestures");
+                        ScrollView rail = shown.getWindow().getDecorView().findViewWithTag("headunit-actions");
+                        check(rail != null, "Missing landscape action rail in " + name);
+                        check(display.getHeight() >= 280*d && display.getWidth() >= 480*d,
+                            "Firmware display too small in " + name + ": " + display.getWidth()+"x"+display.getHeight());
+                        Rect screen = new Rect();
+                        check(display.getGlobalVisibleRect(screen) && screen.height()==display.getHeight(),
+                            "Firmware display clipped in " + name);
+                        rail.fullScroll(View.FOCUS_DOWN);
+                        check(exit.getGlobalVisibleRect(visible) && visible.height()==exit.getHeight(),
+                            "Side-panel scrolling hid EXIT in " + name);
+                    }
                     if(shown instanceof ChipsoftUsbActivity)check(!((ChipsoftUsbActivity)shown).running.get(),"Unexpected Chipsoft session");
                     if(shown instanceof NanoProbeActivity)check(!((NanoProbeActivity)shown).running.get(),"Unexpected Nano session");
                 });
