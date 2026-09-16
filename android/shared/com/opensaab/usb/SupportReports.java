@@ -43,7 +43,7 @@ public final class SupportReports {
         JSONArray runs=new JSONArray();File files=c.getFilesDir();
         for(File dir:sessions(files)){
             JSONObject session=new JSONObject().put("adapter",dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":"offline").put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
-            for(String name:new String[]{"usb.log","native-process.log","rust.log","tech2.log"}){File f=new File(dir,name);if(f.isFile()&&f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))try{logs.put(logSummary(f));}catch(IOException e){logs.put(new JSONObject().put("source",name).put("unavailable",true));}}
+            for(String name:new String[]{"usb.log","native-process.log","rust.log","tech2.log","console.log"}){File f=new File(dir,name);if(f.isFile()&&f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))try{logs.put(logSummary(f));}catch(IOException e){logs.put(new JSONObject().put("source",name).put("unavailable",true));}}
             File outcome=new File(dir,"report.json");
             if(outcome.isFile()&&outcome.length()<1048576)try{
                 JSONObject raw=FirmwareStore.json(outcome),safe=new JSONObject();

@@ -21,11 +21,40 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
         for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text))if(node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return true;
         return false;
     }
+    static final class UploadConnection extends java.net.HttpURLConnection {
+        final ByteArrayOutputStream body=new ByteArrayOutputStream();
+        int status=201;String reply="{\"stored\":true,\"report_id\":\"OS-0123456789abcdef01234567\"}";boolean closed;
+        UploadConnection()throws Exception{super(new java.net.URL(SupportUpload.ENDPOINT));}
+        public void connect(){} public boolean usingProxy(){return false;}
+        public void disconnect(){closed=true;}
+        public OutputStream getOutputStream(){return body;}
+        public int getResponseCode(){return status;}
+        public InputStream getInputStream(){return new ByteArrayInputStream(reply.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+    }
+    void uploadContract()throws Exception{
+        UploadConnection ok=new UploadConnection();
+        check(SupportUpload.send("{}",ok).equals("OS-0123456789abcdef01234567"),"Missing receipt");
+        check(ok.closed && !ok.getInstanceFollowRedirects() && "POST".equals(ok.getRequestMethod()),"Upload redirected or leaked connection");
+        check("support-report-v1".equals(ok.getRequestProperty("X-OpenSAAB-Consent")) && ok.body.toString("UTF-8").equals("{}"),"Wrong upload body/consent");
+        for(int status:new int[]{301,400,413,429,500,503}){
+            UploadConnection failure=new UploadConnection();failure.status=status;
+            try{SupportUpload.send("{}",failure);throw new AssertionError("HTTP error accepted "+status);}catch(IOException expected){}
+            check(failure.closed,"Failed upload connection left open");
+        }
+        for(String reply:new String[]{"{}","{\"stored\":false,\"report_id\":\"OS-0123456789abcdef01234567\"}","not json",new String(new char[4097])}){
+            UploadConnection failure=new UploadConnection();failure.reply=reply;
+            try{SupportUpload.send("{}",failure);throw new AssertionError("Invalid receipt accepted");}catch(IOException expected){}
+        }
+        UploadConnection oversized=new UploadConnection();
+        try{SupportUpload.send(new String(new char[65537]),oversized);throw new AssertionError("Oversized upload sent");}catch(IOException expected){}
+        check(oversized.body.size()==0,"Oversized body transmitted");
+    }
     public void onStart(){
         Bundle result=new Bundle();int code=-1;Activity activity=null;File dir=null;
         Context c=getTargetContext();File errors=new File(c.getFilesDir(),"last-app-error.json");byte[] old=null;
         File reports=new File(c.getFilesDir(),"support-reports");Set<String> existing=new HashSet<>();if(reports.list()!=null)Collections.addAll(existing,reports.list());
         try{
+            uploadContract();
             if(errors.exists())old=Files.readAllBytes(errors.toPath());
             dir=new File(c.getFilesDir(),"chipsoft-"+UUID.randomUUID());check(dir.mkdir(),"Fixture directory missing");
             String secret="TEST_VIN_AND_SSA_SECRET_9123456789"; // gitleaks:allow -- synthetic redaction test marker
@@ -61,7 +90,7 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             long ready=SystemClock.elapsedRealtime()+5000;boolean prepared=false;while(SystemClock.elapsedRealtime()<ready){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare action missing");long until=SystemClock.elapsedRealtime()+5000;boolean review=false;
             while(SystemClock.elapsedRealtime()<until){if(click("Keep private")){review=true;break;}SystemClock.sleep(100);}
             check(review,"Review/keep private action missing");
-            result.putString("stream","PASS: bounded log tails, secret/message exclusion, ZIP allowlist, Android exit metadata, review/keep-private UI, read-only share grants, traversal denial; no vehicle/network/mail\n");
+            result.putString("stream","PASS: upload receipt/errors/size/redirect policy (no network); bounded log tails, secret/message exclusion, ZIP allowlist, Android exit metadata, review/keep-private UI, read-only share grants, traversal denial; no vehicle/network/mail\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{
             if(activity!=null){Activity a=activity;runOnMainSync(a::finish);}
