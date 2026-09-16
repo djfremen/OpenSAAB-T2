@@ -2135,6 +2135,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cleared_ssa_initialization_requires_flash_readback_without_raw_writes() {
+        for enabled in [false, true] {
+            let mut card = vec![0x55; 0x1000000];
+            card[crate::ssa_flash::OFFSET..crate::ssa_flash::OFFSET + crate::ssa_flash::SIZE].fill(0xff);
+            let mut bus = Tech2Bus::new(vec![], card, ExecutionMode::ResearchHarness);
+            if enabled { bus.ssa_flash = Some(crate::ssa_flash::SsaFlash::default()); }
+            bus.bank_raw = false;
+            bus.bank = 0x3f;
+            let ssa = CARD_BASE + 0xe0000;
+            // A cleared card still needs the guest's program/status/read-array sequence.
+            bus.write_word(ssa, 0x4040);
+            bus.write_word(ssa, 0xb1ff);
+            bus.write_word(CARD_BASE, 0x7070);
+            if enabled { assert_eq!(bus.read_word(CARD_BASE), 0x8080); }
+            bus.write_word(CARD_BASE, 0xffff);
+            assert_eq!(bus.read_word(ssa), if enabled { 0xb1ff } else { 0xffff });
+            assert_eq!(bus.card[0xfdffff], 0x55);
+            assert_eq!(bus.card[0xfe02ca], 0x55);
+            assert!(bus.card[0xfe0002..0xfe02ca].iter().all(|b| *b == 0xff));
+            assert!(!bus.card_writes);
+        }
+    }
+
+    #[test]
     fn ssa_flash_readback_exposes_filled_and_next_free_seed_slots() {
         let mut bus = Tech2Bus::new(
             vec![],

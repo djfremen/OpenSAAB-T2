@@ -11,6 +11,10 @@ public final class SsaDataTest {
         System.arraycopy("YS3FF49Y541000000".getBytes("US-ASCII"),0,input,0x14,17);
         input[0x132]=0;input[0x133]=1;input[0x134]=3;input[0x135]=0x61;input[0x136]=0x12;input[0x137]=0x34;
         if(SsaData.validateInput(input)!=1)throw new AssertionError();
+        byte[] cleared=new byte[714];Arrays.fill(cleared,(byte)255);
+        reject(()->SsaData.validateInput(cleared));
+        byte[] noSeeds=input.clone();Arrays.fill(noSeeds,0x132,714,(byte)255);
+        reject(()->SsaData.validateInput(noSeeds));
         byte[] reply=input.clone();reply[1]=0;Arrays.fill(reply,0x26,0x2e,(byte)'A');reply[0x138]=0x56;reply[0x139]=0x78;
         SsaData.validateReply(input,reply);
         reject(()->SsaData.validateInput(Arrays.copyOf(input,713)));

@@ -1324,7 +1324,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         );
     }
     let initial_security_ssa =
-        if opts.target == options::HarnessTarget::SecurityLink1367 || opts.candi_chipsoft_seeds {
+        if opts.uses_ssa_flash() {
             Some(
                 card.get(0xfe0000..0xfe0000 + 714)
                     .ok_or_else(|| {

@@ -87,6 +87,14 @@ fn count(name: &str, value: &str, allow_zero: bool) -> Result<u64, String> {
 }
 
 impl Options {
+    /// Local guest flash semantics are independent of vehicle-command permissions.
+    /// Native manual diagnostics must also initialize/read back a cleared SSA card.
+    pub fn uses_ssa_flash(&self) -> bool {
+        self.target == HarnessTarget::SecurityLink1367
+            || self.candi_chipsoft_seeds
+            || (self.target == HarnessTarget::NativeManual && self.candi_native_link)
+    }
+
     pub fn parse(
         args: impl IntoIterator<Item = String>,
         env: impl Fn(&str) -> Option<String>,
@@ -490,6 +498,18 @@ mod tests {
             a.push(extra);
             assert!(parse(&a).is_err());
         }
+    }
+
+    #[test]
+    fn native_manual_card_initialization_does_not_enable_seed_permissions() {
+        let options = parse(&["--test-harness", "--harness-target", "native-manual",
+            "--candi-native-link", "--candi-chipsoft-usb-token", "0123456789abcdef0123456789abcdef"]).unwrap();
+        assert!(options.uses_ssa_flash());
+        assert!(!options.candi_chipsoft_seeds);
+        assert!(!options.candi_chipsoft_audible);
+        assert!(!options.candi_chipsoft_symbol_only);
+        assert!(!parse(&[]).unwrap().uses_ssa_flash());
+        assert!(!parse(&["--test-harness", "--harness-target", "native-manual"]).unwrap().uses_ssa_flash());
     }
 
     #[test]
