@@ -25,3 +25,7 @@ Setup measures usable window width/height after system insets and converts pixel
 ## Existing development installation (0.3.2)
 
 An APK signed by a different key cannot update the installed package. Setup detects this before downloading, disables the public update action, keeps Open existing OpenSAAB available, and explains backup/migration. It never recommends retrying a signing conflict or calls it the same update channel. Missing versionName is shown as Version not reported with its build number. No automatic uninstall, private-data copying, or signature bypass. Archive signature checks remain in place; installed-package checks also run again before installation.
+
+## Optional Setup cleanup (0.3.3)
+
+After confirming a release-signed, launchable emulator at the selected version or newer, Setup offers Remove Setup / Keep Setup once per emulator package. No prompt is shown for absent apps, signing conflicts, incomplete updates or active downloads. Keeping/cancelling does not repeatedly nag; a Remove Setup button remains available, including offline for an already verified installed app. Android confirms self-uninstallation, targeting only `com.opensaab.checker`. The emulator and its private firmware/reports/settings are separate and untouched. The main app has its own Check for updates. Opening it closes Setup’s task in Recents. The browser’s original downloaded Setup APK may still remain in Downloads; Setup does not delete another app’s files.

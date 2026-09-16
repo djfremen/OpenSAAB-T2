@@ -17,12 +17,14 @@ import java.util.*;
 
 /** Universal Java-only setup; installs separately versioned, signed emulator APKs. */
 public final class MainActivity extends Activity {
-    private TextView state,choice,installationProblem;private Button action,open,refresh,migrationHelp;private Spinner channels;
+    private TextView state,choice,installationProblem;private Button action,open,refresh,migrationHelp,removeSetup;private Spinner channels;
     private final List<SetupRelease> releases=new ArrayList<>();private SetupRelease selected;
     private FrameLayout viewport;
     private LinearLayout introduction, installer;
     private int layoutWidth = -1, layoutHeight = -1;
     private boolean wideLayout;
+    private boolean resumed;
+    private AlertDialog cleanupDialog;
     private String preferred;private File ready;private boolean busy;
     private static final java.util.concurrent.atomic.AtomicBoolean DOWNLOADING=new java.util.concurrent.atomic.AtomicBoolean();
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
@@ -45,7 +47,7 @@ public final class MainActivity extends Activity {
         ActivityManager.MemoryInfo mem=new ActivityManager.MemoryInfo();((ActivityManager)getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(mem);
         choice=text(installer,preferred.isEmpty()?"This device cannot run the current emulator.":("armeabi-v7a".equals(preferred)?"32-bit ARM Android":"64-bit ARM Android")+" · "+String.format(Locale.ROOT,"%.1f GB RAM",mem.totalMem/1073741824.0),18);
         if(mem.totalMem<2L*1024*1024*1024)text(root,"This device has limited RAM. Installation may work, but emulator speed and stability still need testing.",15);
-        text(root,"1. Check this device and choose its app.\n2. Download the verified installer and approve Android’s installation prompt.\n3. Open OpenSAAB to choose your Saab software and language. It will download, check and extract the software for you.",16);
+        text(root,"1. Check this device and choose its app.\n2. Download the verified installer and approve Android’s installation prompt.\n3. Open OpenSAAB to choose your Saab software and language. It will download, check and extract the software for you.\n4. Once OpenSAAB is installed, you can remove Setup and keep just the main app.",16);
         text(root,"Use an internet connection for setup. Allow about 160 MB free. Existing installations keep their firmware and settings—do not uninstall them. After setup, local USB diagnostics can work offline; security access needs internet.",15);
         text(root,"Device checks stay here. Checking releases contacts OpenSAAB; downloads come from the official GitHub releases. No vehicle or account information is sent by Setup.",13);
         root = installer;
@@ -58,8 +60,10 @@ public final class MainActivity extends Activity {
         action=button(root,"Download matching app",()->{if(ready!=null)install();else download();});action.setEnabled(false);
         open=button(root,"Open OpenSAAB · continue setup",()->{
             String pkg=selected==null?preferredPackage():selected.packageName;Intent launch=getPackageManager().getLaunchIntentForPackage(pkg);
-            if(launch!=null)startActivity(launch);else state.setText("Finish installing OpenSAAB, then return here to open it.");
+            if(launch!=null){startActivity(launch);finishAndRemoveTask();}else state.setText("Finish installing OpenSAAB, then return here to open it.");
         });
+        removeSetup=button(root,"Remove Setup · keep OpenSAAB",()->offerCleanup(true));
+        removeSetup.setVisibility(View.GONE);
         migrationHelp=button(root,"Why can’t this app be updated?",()->new AlertDialog.Builder(this)
                 .setTitle("Your existing app is protected")
                 .setMessage("Android cannot update an app using a different signing key. This can happen with an earlier Android Studio or development build. Downloading again will not fix it.\n\nKeep using Open existing OpenSAAB. Before moving to the public release, preserve the reports, firmware and settings you need. Setup cannot copy another app’s private data. A development build may allow a computer-assisted backup; contact OpenSAAB support before removing it. Uninstalling erases its private data.")
@@ -119,7 +123,43 @@ public final class MainActivity extends Activity {
     private static void detach(View view) {
         if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
     }
-    @Override protected void onResume(){super.onResume();if(action!=null)update();}
+    @Override protected void onResume(){super.onResume();resumed=true;if(action!=null)update();}
+    @Override protected void onPause(){resumed=false;super.onPause();}
+    @Override protected void onDestroy(){if(cleanupDialog!=null){cleanupDialog.dismiss();cleanupDialog=null;}super.onDestroy();}
+    /** Only a recognized, signed and launchable emulator can make Setup optional. */
+    private String removableAfter(){
+        String pkg=selected==null?preferredPackage():selected.packageName;
+        if(preferred.isEmpty()||!removalEligible(installed(pkg),getPackageManager().getLaunchIntentForPackage(pkg)))return null;
+        return pkg;
+    }
+    static boolean removalEligible(PackageInfo app,Intent launch){return SetupRelease.releaseSigned(app)&&launch!=null;}
+    static Intent selfRemovalIntent(Context context){
+        return new Intent(Intent.ACTION_UNINSTALL_PACKAGE,Uri.parse("package:"+context.getPackageName()))
+                .putExtra(Intent.EXTRA_RETURN_RESULT,true);
+    }
+    private void offerCleanup(boolean requested){
+        String pkg=removableAfter();
+        if(pkg==null||busy||!resumed||cleanupDialog!=null||isFinishing()||isDestroyed())return;
+        android.content.SharedPreferences prefs=getSharedPreferences("setup-completion",MODE_PRIVATE);
+        if(!requested){
+            PackageInfo p=installed(pkg);
+            if(selected==null||p==null||p.versionCode<selected.code||prefs.getBoolean("offered-"+pkg,false))return;
+        }
+        prefs.edit().putBoolean("offered-"+pkg,true).apply();
+        cleanupDialog=new AlertDialog.Builder(this).setTitle("OpenSAAB is installed")
+                .setMessage("Setup has finished its job. Remove OpenSAAB Setup to keep just the main app. Your OpenSAAB firmware, reports and settings will stay in place. Use Check for updates inside OpenSAAB for future updates.\n\nAndroid will ask you to confirm removing Setup. You can keep it if you prefer.")
+                .setPositiveButton("Remove Setup",(d,w)->removeOnlySetup())
+                .setNegativeButton("Keep Setup",null).create();
+        cleanupDialog.setOnDismissListener(d->cleanupDialog=null);cleanupDialog.show();
+    }
+    private void removeOnlySetup(){
+        if(removableAfter()==null||busy){state.setText("OpenSAAB is not ready. Keep Setup to finish installation.");return;}
+        try{startActivityForResult(selfRemovalIntent(this),43);}
+        catch(ActivityNotFoundException|SecurityException e){
+            state.setText("Open Android Settings → Apps → OpenSAAB Setup → Uninstall. Keep the main OpenSAAB app installed.");
+            try{startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));}catch(ActivityNotFoundException ignored){}
+        }
+    }
     private void update(){
         if(action==null)return;
         String pkg=selected==null?preferredPackage():selected.packageName;PackageInfo p=installed(pkg);
@@ -137,6 +177,8 @@ public final class MainActivity extends Activity {
             action.setEnabled(!busy&&!current&&!conflict);
         } else action.setEnabled(false);
         refresh.setEnabled(!busy&&!preferred.isEmpty());channels.setEnabled(!busy);
+        removeSetup.setVisibility(removableAfter()!=null?View.VISIBLE:View.GONE);removeSetup.setEnabled(!busy);
+        if(resumed&&!busy)viewport.post(()->offerCleanup(false));
     }
     private void load(){
         if(busy)return;busy=true;state.setText("Checking available versions…");update();
@@ -181,5 +223,5 @@ public final class MainActivity extends Activity {
             });
         }catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;busy=false;ready=null;state.setText("Installer could not be verified. "+friendly(e));update();});}},"setup-verify").start();
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==42){PackageInfo p=selected==null?null:installed(selected.packageName);state.setText(p!=null&&p.versionCode>=selected.code?"OpenSAAB is installed. Open it to continue software setup or use your existing firmware.":"Installation was cancelled or did not finish. Tap Install verified app to retry. Do not uninstall an existing app to troubleshoot an update.");update();}}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(request==43){state.setText("Setup was kept. You can open OpenSAAB or remove Setup later using the button below.");update();}if(request==42){PackageInfo p=selected==null?null:installed(selected.packageName);state.setText(p!=null&&p.versionCode>=selected.code?"OpenSAAB is installed. Open it to continue software setup or use your existing firmware.":"Installation was cancelled or did not finish. Tap Install verified app to retry. Do not uninstall an existing app to troubleshoot an update.");update();}}
 }
