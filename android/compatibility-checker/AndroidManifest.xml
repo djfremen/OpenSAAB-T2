@@ -1,7 +1,11 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.checker" android:versionCode="2" android:versionName="0.2.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.checker" android:versionCode="3" android:versionName="0.3.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="36" />
-    <application android:label="OpenSAAB System Check" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:theme="@android:style/Theme.Material.NoActionBar">
-        <activity android:name=".MainActivity" android:exported="true">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <queries><package android:name="com.opensaab.tech2"/><package android:name="com.opensaab.tech2.headunit32"/></queries>
+    <application android:usesCleartextTraffic="false" android:label="OpenSAAB Setup" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:debuggable="false" android:theme="@android:style/Theme.Material.NoActionBar">
+        <provider android:name=".InstallerProvider" android:authorities="com.opensaab.checker.installers" android:exported="false" android:grantUriPermissions="true"/>
+        <activity android:configChanges="orientation|screenSize|keyboardHidden" android:launchMode="singleTop" android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
     </application>

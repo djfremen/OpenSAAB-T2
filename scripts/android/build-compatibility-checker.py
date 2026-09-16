@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MPL-2.0
-"""Build the Java-only, firmware-free system checker. Release signing is mandatory."""
+"""Build the Java-only, firmware-free Setup app. Release signing is mandatory."""
 import hashlib
 import json
 import os
@@ -31,17 +31,17 @@ env = dict(os.environ, JAVA_HOME=str(jdk), PATH=str(jdk / 'bin') + os.pathsep + 
 def run(*args):
     subprocess.run([str(arg) for arg in args], check=True, env=env)
 run(jdk/'bin/javac', '-source', '8', '-target', '8', '-classpath', android, '-d', classes,
-    source/'com/opensaab/checker/MainActivity.java',
-    *[shared/name for name in ('CompatibilityCheck.java', 'DeviceCompatibility.java', 'BrandHeader.java', 'AppBuildProfile.java', 'InstallerChoice.java')])
+    *sorted((source/'com/opensaab/checker').glob('*.java')),
+    *[shared/name for name in ('CompatibilityCheck.java', 'DeviceCompatibility.java', 'BrandHeader.java', 'AppBuildProfile.java', 'InstallerChoice.java', 'EmulatorArchitecture.java')])
 run(bt/'d8', '--min-api', '21', '--lib', android, '--output', build, *sorted(classes.rglob('*.class')))
 unsigned = build/'unsigned.apk'
 run(bt/'aapt', 'package', '-f', '-M', source/'AndroidManifest.xml', '-S', repo/'android/tech2-app/res', '-I', android, '-F', unsigned)
 with zipfile.ZipFile(unsigned, 'a') as archive:
     archive.write(build/'classes.dex', 'classes.dex')
     archive.write(repo/'LICENSE', 'assets/legal/LICENSE')
-    archive.writestr('assets/build.json', json.dumps({'source_commit':commit, 'source_repository':'https://github.com/djfremen/OpenSAAB-T2', 'product':'OpenSAAB System Check', 'version':'0.2.0'}))
+    archive.writestr('assets/build.json', json.dumps({'source_commit':commit, 'source_repository':'https://github.com/djfremen/OpenSAAB-T2', 'product':'OpenSAAB Setup', 'version':'0.3.0'}))
 aligned = build/'aligned.apk'
-apk = build/'OpenSAAB-System-Check.apk'
+apk = build/'OpenSAAB-Setup.apk'
 run(bt/'zipalign', '-f', '4', unsigned, aligned)
 run(bt/'apksigner', 'sign', '--ks', key, '--ks-key-alias', 'opensaab-release', '--ks-pass', 'file:'+password, '--out', apk, aligned)
 run(bt/'apksigner', 'verify', apk)
