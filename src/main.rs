@@ -21,6 +21,7 @@ mod lcd;
 mod load_binary;
 pub mod logger;
 mod options;
+mod performance;
 mod recovery;
 mod replay;
 mod ssa_flash;
@@ -1083,6 +1084,7 @@ pub fn run_headless(
 }
 
 fn main() -> std::process::ExitCode {
+    let _performance = performance::start();
     let mut attempt = 0;
     loop {
         match run(attempt) {

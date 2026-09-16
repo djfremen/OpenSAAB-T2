@@ -241,7 +241,9 @@ public final class MainActivity extends Activity {
                 "--opsys",new File(firmware,"opsys.dwn").toString(),
                 "--max-insns","50000000000","--output-dir",session.toString(),
                 new File(firmware,"card.bin").toString()));
-            java.lang.Process child=new ProcessBuilder(args).directory(session).redirectErrorStream(true).start();
+            ProcessBuilder builder=new ProcessBuilder(args).directory(session).redirectErrorStream(true);
+            builder.environment().put("OPENSAAB_PERFORMANCE_DIR",session.getAbsolutePath());
+            java.lang.Process child=builder.start();
             process=child;
             // The UI cannot be trapped by a blocked native process or lost ADB connection.
             if(stopping.get()) child.destroy();

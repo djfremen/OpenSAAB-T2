@@ -20,6 +20,11 @@ instructions pc host_cancelled_operations status connection_attempts stage outco
 elapsed_ms stages usb_vendor_id usb_product_id attempt_id android_process_exits timestamp_ms
 pss_kib rss_kib last-app-crash.json last-app-error.json utc kind exception_class stack unavailable'''.split())
 FIELDS.add('NEGATIVE RESPONSE')
+FIELDS.update('''device_resources native_performance performance_schema sample_interval_ms sample_count
+first_frame_observed_ms complete samples cpu_ms peak_rss_kib minor_faults major_faults
+ram_total_kib ram_available_kib swap_free_kib frame_age_ms ram_total_bytes ram_available_bytes
+low_memory_threshold_bytes system_low_memory app_heap_used_bytes app_heap_limit_bytes
+app_native_heap_bytes storage_free_bytes display_width_px display_height_px density_dpi runtime_cpu_count'''.split())
 
 def validate(value, depth=0):
     if depth > 8:

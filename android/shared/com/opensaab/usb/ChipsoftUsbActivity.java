@@ -169,7 +169,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 }
                 if(fullNative)builder.environment().put("TECH2_CHIPSOFT_FULL_NATIVE","1");
                 if(keyStatus)builder.environment().put("TECH2_CHIPSOFT_KEY_STATUS","1");
-                if(nativeFirmware)progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);
+                if(nativeFirmware){progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);builder.environment().put("OPENSAAB_PERFORMANCE_DIR",run.getAbsolutePath());}
                 child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();
                 client=server.accept();client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
                 if(!NanoProbeActivity.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");

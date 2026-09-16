@@ -55,6 +55,11 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
         File reports=new File(c.getFilesDir(),"support-reports");Set<String> existing=new HashSet<>();if(reports.list()!=null)Collections.addAll(existing,reports.list());
         try{
             uploadContract();
+            JSONObject rawPerf=new JSONObject().put("performance_schema",1).put("complete",false).put("private_text","SECRET");
+            JSONArray samples=new JSONArray();for(int i=0;i<20;i++)samples.put(new JSONObject().put("elapsed_ms",i*5000).put("cpu_ms",i*4000).put("rss_kib",-1).put("ram_available_kib","SECRET").put("vin","SECRET"));
+            rawPerf.put("samples",samples);JSONObject perf=PerformanceReport.sanitize(rawPerf);
+            check(perf.getJSONArray("samples").length()==12&&!perf.toString().contains("SECRET")&&!perf.toString().contains("rss_kib"),"Performance data not bounded/numeric-only");
+            check(PerformanceReport.sanitize(new JSONObject()).optBoolean("unavailable"),"Missing performance treated as measurements");
             if(errors.exists())old=Files.readAllBytes(errors.toPath());
             dir=new File(c.getFilesDir(),"chipsoft-"+UUID.randomUUID());check(dir.mkdir(),"Fixture directory missing");
             String secret="TEST_VIN_AND_SSA_SECRET_9123456789"; // gitleaks:allow -- synthetic redaction test marker
@@ -70,6 +75,7 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             SupportReports.recordError(c,new IOException(secret),false);
             JSONObject report=SupportReports.collect(c,"Tested an adapter timeout");String json=report.toString();
             check(!json.contains(secret)&&!json.contains("xxxxxxxx")&&json.contains("java.io.IOException"),"Sensitive log/message exported or error absent");
+            check(report.getJSONObject("device_resources").getLong("ram_total_bytes")>0,"Missing RAM context");
             check(report.getJSONArray("recent_sessions").length()>0&&json.contains("emulator_outcome"),"Missing session/outcome");
             File saved=SupportReports.save(c,report);
             try(ZipFile zip=new ZipFile(saved)){

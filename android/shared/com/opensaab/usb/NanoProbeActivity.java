@@ -326,6 +326,7 @@ public class NanoProbeActivity extends Activity {
                 log("NATIVE_SESSION "+nativeDirectory.getName()+" commands=original-firmware");
             }
             if(nativeFirmware())progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);
+            if(nativeFirmware())builder.environment().put("OPENSAAB_PERFORMANCE_DIR",nativeDirectory.getAbsolutePath());
             child=builder.redirectErrorStream(true).start();
             final java.lang.Process probeChild=child;
             final File processLog=new File(nativeFirmware()?nativeDirectory:getFilesDir(),nativeFirmware()?"native-process.log":resultFile.getName()+".process.log");

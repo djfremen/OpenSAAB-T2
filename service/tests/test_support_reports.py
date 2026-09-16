@@ -41,6 +41,18 @@ class Reports(unittest.TestCase):
         self.assertEqual(401,self.client.get(route).status_code)
         self.assertEqual(self.report,self.client.get(route,headers={'Authorization':'Bearer test-only-admin'}).json())
         self.assertEqual(404,self.client.get('/api/support/reports/'+first.json()['report_id']).status_code)
+    def test_performance_context_and_legacy_reports(self):
+        report=dict(self.report,app='com.opensaab.tech2',device_resources={
+            'ram_total_bytes':1073741824,'ram_available_bytes':180000000,'system_low_memory':True,
+            'display_width_px':1024,'display_height_px':600},recent_sessions=[{
+            'adapter':'offline','native_performance':{'performance_schema':1,'complete':False,
+            'sample_interval_ms':5000,'sample_count':1,'samples':[{'elapsed_ms':5000,
+            'cpu_ms':4000,'rss_kib':150000,'ram_available_kib':170000}]}}])
+        self.assertEqual(201,self.send(report).status_code)
+        self.assertEqual(201,self.send().status_code)
+        report['device_resources']['vin']='not-allowed'
+        self.assertEqual(400,self.send(report).status_code)
+
     def test_consent_and_media_type(self):
         self.assertEqual(400,self.client.post('/api/support/reports',json=self.report).status_code)
         self.assertEqual(415,self.client.post('/api/support/reports',content=b'raw',headers=self.headers).status_code)

@@ -31,3 +31,11 @@ Limits are 10 requests per observed client address per hour and 100 globally per
 ## Validation and limits
 
 Server tests cover storage roundtrip, admin-only access, consent, size/schema limits, rate limiting, stable retry IDs and storage failure. Android tests cover request/receipt handling, redirects/errors, safe summaries and export UI. Physical ARM32 performance and vehicle communication remain separate work. This release does not claim to fix slow emulator startup. The published ARM64 APK is unchanged.
+
+## ARM64 preview.3 performance context
+
+The next ARM64 release includes the same reviewed upload and copy/save UI. Reports now include report-time total/available RAM, the Android low-memory flag/threshold, free storage, app heap metrics and display dimensions/density. Java heap/native-heap numbers describe the Android UI process, not the separate emulator.
+
+New emulator sessions opt into native resource sampling every five seconds: cumulative native-process CPU time (all its threads), RSS/peak RSS when available, page-fault counters, system available memory/swap, and framebuffer-file age. Only the last twelve samples and a lifetime sample count are kept. The first observed framebuffer time has sampling granularity and does not prove the firmware menu is ready or that a vehicle responded. Cumulative CPU differences divided by elapsed-time differences can distinguish CPU activity from waiting; CPU use can exceed one core when several native threads run. Missing values remain absent, not zero. Old sessions report measurements unavailable. A forced exit may leave a sample up to five seconds old and complete=false. Memory pressure is evidence to investigate, not proof of its cause.
+
+Sampling is passive, local, bounded, and enabled only for launched emulator sessions; no VIN, payload, firmware, serial number or process arguments are copied. Atomic small JSON snapshots survive abnormal termination. Reports sanitize those files through a numerical allowlist. The server accepts both older reports and the new optional fields. These measurements do not constitute a verified head-unit performance fix. Published ARM32 headunit.3 does not gain them until separately updated.

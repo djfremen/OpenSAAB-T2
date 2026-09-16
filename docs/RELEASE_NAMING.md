@@ -19,4 +19,4 @@ python3 scripts/android/name-release-apk.py target/compatibility-checker/OpenSAA
 
 The helper reads the actual package and version from the APK with Android `aapt`, checks packaged native ABIs, copies without changing bytes/signature, refuses conflicting existing output, and writes a checksum. It does not sign, change the app version, upload, or change catalog URLs. Upload alias and sidecar to the same GitHub release and use the basename (without `.apk`) as its release title. Continue uploading the legacy asset for old installed clients.
 
-Current releases: `OpenSAAB_Setup_15SEPT26_v0.3.1.apk`, `OpenSAAB_32_15SEPT26_v0.1.0-headunit.3.apk`, `OpenSAAB_64_14SEPT26_v0.1.0-preview.2.apk`. ARM64 was published September 14 Pacific (September 15 UTC); its original date is preserved.
+Setup release: `OpenSAAB_Setup_15SEPT26_v0.3.2.apk`. Previous emulator aliases: `OpenSAAB_32_15SEPT26_v0.1.0-headunit.3.apk`, `OpenSAAB_64_14SEPT26_v0.1.0-preview.2.apk`. ARM64 was published September 14 Pacific (September 15 UTC); its original date is preserved.
