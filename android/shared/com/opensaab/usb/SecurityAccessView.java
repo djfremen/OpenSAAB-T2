@@ -90,7 +90,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             final SsaState currentState=SsaState.read(new File(activity.getFilesDir(),"firmware/card.bin"));
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
-                if(observed!=run){observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
+                if(observed!=run){if(manualCollection)collection=false;observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
                     navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
                     if(manualNavigation&&navigator!=null)navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
@@ -100,7 +100,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 stateLabel.setTextColor(cardState==SsaState.POST_AUTH&&"Stale".equals(age)?0xffffd77c:cardState.color);
                 boolean prompt=SsaData.needsAccess(screen);
                 if(!collection&&run!=null&&currentIdentity!=null&&running.getAsBoolean()&&SsaData.collectingAccess(screen)){
-                    collectInCurrentSession();
+                    collectInCurrentSession();android.util.Log.i("OpenSaabSecurity","Manual security collection detected in current firmware session");
                 }
                 if(collection&&!transferSeen&&SsaData.collectingAccess(screen)){
                     stateLabel.setText("Security status · Collecting pre-auth");stateLabel.setTextColor(SsaState.PRE_AUTH.color);
