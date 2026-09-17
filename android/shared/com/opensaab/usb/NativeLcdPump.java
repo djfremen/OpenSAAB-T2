@@ -17,8 +17,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /** Event-driven display observer; one decode worker and one pending UI frame. */
-final class NativeLcdPump implements AutoCloseable {
-    private final ImageView view;
+public final class NativeLcdPump implements AutoCloseable {
+    private final java.util.function.Consumer<Bitmap> display;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor(
         r -> new Thread(r, "tech2-lcd"));
@@ -40,13 +40,15 @@ final class NativeLcdPump implements AutoCloseable {
         }
     }
 
-    NativeLcdPump(ImageView view) {
-        this.view = view;
+    NativeLcdPump(ImageView view) { this(view::setImageBitmap); }
+
+    public NativeLcdPump(java.util.function.Consumer<Bitmap> display) {
+        this.display = display;
         // Recovery for a missed filesystem event, not the normal refresh path.
         worker.scheduleWithFixedDelay(this::request, 0, 1, TimeUnit.SECONDS);
     }
 
-    synchronized void setDirectory(File directory) {
+    public synchronized void setDirectory(File directory) {
         if (closed) return;
         if (observer != null) observer.stopWatching();
         this.directory = directory;
@@ -108,7 +110,7 @@ final class NativeLcdPump implements AutoCloseable {
             Frame frame = ready.getAndSet(null);
             if (frame != null) {
                 if (!closed && directory == frame.directory) {
-                    view.setImageBitmap(frame.bitmap);
+                    display.accept(frame.bitmap);
                     android.util.Log.i("OpenSaabPerf", "FRAME file=" + frame.name
                         + " published_ms=" + frame.published + " applied_ms=" + System.currentTimeMillis());
                 } else frame.bitmap.recycle();

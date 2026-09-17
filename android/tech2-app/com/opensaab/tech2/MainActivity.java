@@ -17,7 +17,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Displays original guest VRAM. No synthetic menu or vehicle transport. */
 public final class MainActivity extends Activity {
     private final Handler ui = new Handler();
-    private final ArrayBlockingQueue<String> keys = new ArrayBlockingQueue<>(16);
+    private volatile com.opensaab.usb.InteractiveKeyPump keyPump;
+    private com.opensaab.usb.NativeLcdPump lcdPump;
+    private boolean consoleDirty;
+    private final Runnable consoleRefresh=new Runnable(){public void run(){
+        if(consoleDirty && console.isShown()){consoleDirty=false;console.setText(logs.toString());consoleScroll.post(()->consoleScroll.fullScroll(View.FOCUS_DOWN));}
+        if(foreground)ui.postDelayed(this,150);
+    }};
     private final AtomicBoolean stopping = new AtomicBoolean();
     private volatile java.lang.Process process;
     private volatile boolean running;
@@ -54,6 +60,7 @@ public final class MainActivity extends Activity {
         consoleScroll=new ScrollView(this);consoleScroll.addView(console);
         controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
         controls.setActions(this::showActions);
+        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         start=new Button(this);start.setText("Start · select adapter");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
@@ -186,14 +193,14 @@ public final class MainActivity extends Activity {
     }
     private void enqueue(String command) {
         if (!running || stopping.get()) { status.setText("Tap Start to select an adapter or emulation mode"); return; }
-        if(!keys.offer(command)) status.setText("Key queue full — wait for the menu");
+        com.opensaab.usb.InteractiveKeyPump pump=keyPump;
+        if(pump==null || !pump.offer(command)) status.setText("Key queue full or firmware starting — wait for the menu");
     }
     private void append(String line) {
         // Called on the UI thread; bound both the retained and visible console.
         logs.append(line.replaceAll("\\x1b\\[[0-9;]*m", "")).append('\n');
         if(logs.length()>12000) logs.delete(0,logs.length()-8000);
-        console.setText(logs.toString());
-        consoleScroll.post(()->consoleScroll.fullScroll(View.FOCUS_DOWN));
+        consoleDirty=true;
         if(line.startsWith("SESSION:")) status.setText(line.substring(8).trim());
     }
     private void startSession() {
@@ -203,7 +210,7 @@ public final class MainActivity extends Activity {
             if(!new File(firmware,name).isFile()) { status.setText("Missing "+name+" — install your firmware files first"); return; }
         }
         if(getFilesDir().getUsableSpace()<64L*1024*1024) { status.setText("Need 64 MB free for session logs"); return; }
-        running=true; stopping.set(false); keys.clear(); logs.setLength(0);
+        running=true; stopping.set(false); logs.setLength(0);consoleDirty=true;
         start.setEnabled(false); lcd.frame=null; lcd.invalidate();
         status.setText("Emulation mode • Offline • No vehicle connection");
         new Thread(()->runSession(firmware),"tech2-session").start();
@@ -237,29 +244,23 @@ public final class MainActivity extends Activity {
             Thread reader=new Thread(()->readLogs(child),"tech2-console"); reader.start();
             long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(30);
             File mailbox=new File(session,"interactive-key.txt");
+            keyPump=new com.opensaab.usb.InteractiveKeyPump(mailbox,e->ui.post(()->append("Input stopped: "+e)));
+            lcdPump.setDirectory(session);
             while(child.isAlive() && !stopping.get() && System.nanoTime()<deadline) {
-                if(!mailbox.exists()) {
-                    String command=keys.poll();
-                    if(command!=null) publish(mailbox,command+"\n");
-                }
-                File live=new File(session,"live.ppm");
-                if(live.isFile()) {
-                    Bitmap frame=readFrame(live);
-                    ui.post(()->{ lcd.frame=frame; lcd.invalidate(); });
-                }
-                Thread.sleep(120);
+                Thread.sleep(50); // Lifecycle only; input and changed-frame delivery are independent.
             }
+            keyPump.close();keyPump=null;
             if(child.isAlive()) {
                 publish(mailbox,"stop\n");
                 if(!child.waitFor(2,TimeUnit.SECONDS)) { child.destroyForcibly(); child.waitFor(2,TimeUnit.SECONDS); }
             }
             reader.join(2000);
-            File finalFrame=new File(session,"lcd.ppm");
-            if(finalFrame.isFile()) { Bitmap frame=readFrame(finalFrame); ui.post(()->{lcd.frame=frame;lcd.invalidate();}); }
+            // NativeLcdPump observes final frame publication as well.
             end=stopping.get()?"Offline menus stopped":"Offline session ended (exit "+child.exitValue()+")";
         } catch(Exception e) {
             end="Cannot run firmware: "+e.getMessage();
         } finally {
+            com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.close();keyPump=null;
             java.lang.Process child=process;
             if(child!=null && child.isAlive()) child.destroyForcibly();
             process=null;
@@ -288,22 +289,13 @@ public final class MainActivity extends Activity {
         Files.write(tmp.toPath(),text.getBytes(StandardCharsets.US_ASCII));
         Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
     }
-    private static Bitmap readFrame(File file) throws IOException {
-        byte[] data=Files.readAllBytes(file.toPath());
-        byte[] header="P6\n320 240\n255\n".getBytes(StandardCharsets.US_ASCII);
-        if(data.length!=header.length+320*240*3) throw new IOException("Incomplete guest framebuffer");
-        for(int i=0;i<header.length;i++) if(data[i]!=header[i])throw new IOException("Invalid guest framebuffer");
-        int[] pixels=new int[320*240]; int j=header.length;
-        for(int i=0;i<pixels.length;i++) { pixels[i]=0xff000000|((data[j]&255)<<16)|((data[j+1]&255)<<8)|(data[j+2]&255); j+=3; }
-        return Bitmap.createBitmap(pixels,320,240,Bitmap.Config.ARGB_8888);
-    }
     private static void remove(File file) { File[] children=file.listFiles(); if(children!=null)for(File child:children)remove(child);file.delete(); }
-    private void stopSession(String reason) { if(running) { stopping.set(true);keys.clear();status.setText(reason+"…"); } }
-    @Override protected void onStart() { super.onStart();foreground=true;
+    private void stopSession(String reason) { if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
+    @Override protected void onStart() { super.onStart();foreground=true;ui.removeCallbacks(consoleRefresh);ui.post(consoleRefresh);
         ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — select an adapter to start");}
     }
-    @Override protected void onStop() { foreground=false;ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
+    @Override protected void onStop() { foreground=false;ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     private void refreshVehicleHistory(){
         if(!foreground||isDestroyed()||!historyPending.compareAndSet(false,true))return;
         try{historyWorker.execute(()->{
@@ -322,7 +314,7 @@ public final class MainActivity extends Activity {
         });}catch(RejectedExecutionException stopped){historyPending.set(false);}
     }
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus&&connectionDate!=null)refreshVehicleHistory();}
-    @Override protected void onDestroy(){ui.removeCallbacks(historyRefresh);historyWorker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){ui.removeCallbacks(consoleRefresh);if(lcdPump!=null)lcdPump.close();ui.removeCallbacks(historyRefresh);historyWorker.shutdownNow();super.onDestroy();}
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed() { if(running)key(0x01);else super.onBackPressed(); }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

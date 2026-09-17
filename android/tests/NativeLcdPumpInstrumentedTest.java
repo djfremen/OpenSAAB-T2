@@ -42,6 +42,9 @@ public final class NativeLcdPumpInstrumentedTest extends Instrumentation {
             runOnMainSync(()->{view=new ImageView(getTargetContext());pump=new NativeLcdPump(view);pump.setDirectory(a);});
             ArrayList<Long> latency=new ArrayList<>();
             for(int i=1;i<=8;i++){long began=SystemClock.elapsedRealtime();publish(a,0xff000000|i);awaitColor(0xff000000|i);latency.add(SystemClock.elapsedRealtime()-began);}
+            // The one-second recovery poll must not decode/allocate unchanged frames.
+            android.graphics.Bitmap[] same={null};runOnMainSync(()->same[0]=((BitmapDrawable)view.getDrawable()).getBitmap());
+            Thread.sleep(1200);runOnMainSync(()->{if(same[0]!=((BitmapDrawable)view.getDrawable()).getBitmap())throw new AssertionError("Unchanged frame decoded again");});
             // A fast burst coalesces to the newest complete frame.
             for(int i=20;i<=60;i++)publish(a,0xff000000|i);
             awaitColor(0xff00003c);
