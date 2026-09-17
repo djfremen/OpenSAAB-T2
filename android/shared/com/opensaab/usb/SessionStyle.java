@@ -39,7 +39,8 @@ public final class SessionStyle {
         }
     }
     /** Portrait details scroll when space/font size is limited; firmware keys stay outside. */
-    public static void fitPortrait(LinearLayout root){
+    public static void fitPortrait(LinearLayout root){fitPortrait(root,48);}
+    public static void fitPortrait(LinearLayout root,int percent){
         if(root.getOrientation()!=LinearLayout.VERTICAL)return;
         Tech2Controls controls=null;ArrayList<View> details=new ArrayList<>();
         for(int i=0;i<root.getChildCount();i++){
@@ -52,7 +53,7 @@ public final class SessionStyle {
         ScrollView scroll=new ScrollView(root.getContext()){
             @Override protected void onMeasure(int w,int h){
                 int available=MeasureSpec.getSize(h);
-                super.onMeasure(w,MeasureSpec.makeMeasureSpec(available*48/100,MeasureSpec.AT_MOST));
+                super.onMeasure(w,MeasureSpec.makeMeasureSpec(available*percent/100,MeasureSpec.AT_MOST));
             }
         };
         scroll.setTag("session-details-scroll");scroll.setFillViewport(false);scroll.addView(content);

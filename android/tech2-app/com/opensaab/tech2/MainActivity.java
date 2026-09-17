@@ -24,7 +24,11 @@ public final class MainActivity extends Activity {
     private boolean foreground;
     private File session;
     private TextView status, console;
-    private TextView vehicleSummary;
+    private TextView vehicleSummary,connectionDate,authStatus,authDate;
+    private String vehicleDetails="No saved vehicle connection";
+    private final ExecutorService historyWorker=Executors.newSingleThreadExecutor();
+    private final AtomicBoolean historyPending=new AtomicBoolean();
+    private final Runnable historyRefresh=new Runnable(){public void run(){if(foreground){refreshVehicleHistory();ui.postDelayed(this,60000);}}};
     private ScrollView consoleScroll;
     private LcdView lcd;
     private Button start, stop;
@@ -45,7 +49,12 @@ public final class MainActivity extends Activity {
         vehicleSummary.setSingleLine(true);vehicleSummary.setEllipsize(android.text.TextUtils.TruncateAt.END);
         vehicleSummary.setContentDescription("Last vehicle details — tap to view");
         vehicleSummary.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Last vehicle")
-            .setMessage(vehicleSummary.getText()).setPositiveButton("Done",null).show());root.addView(vehicleSummary);
+            .setMessage(vehicleDetails).setPositiveButton("Done",null).show());root.addView(vehicleSummary);
+        LinearLayout history=new LinearLayout(this);history.setOrientation(LinearLayout.VERTICAL);
+        connectionDate=label("Last connection · Date unknown",12);history.addView(connectionDate);
+        authStatus=label("auth_status: [N/A]",13);history.addView(authStatus);
+        authDate=label("Timestamp unavailable",12);history.addView(authDate);
+        history.setPadding(0,0,0,dp(2));root.addView(history);
         status = label("Ready — select an adapter to start", 13); status.setSingleLine(true); status.setEllipsize(android.text.TextUtils.TruncateAt.END); root.addView(status);
         LinearLayout actions = row(root);
         start = button(actions,"Start", () -> selectAdapter("native_dtc",true));
@@ -77,7 +86,7 @@ public final class MainActivity extends Activity {
         root.addView(new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);}),new LinearLayout.LayoutParams(-1,0,1));
         com.opensaab.usb.SessionStyle.stack(root);
         com.opensaab.usb.HeadunitLayout.apply(root);
-        com.opensaab.usb.SessionStyle.fitPortrait(root);
+        com.opensaab.usb.SessionStyle.fitPortrait(root,58);
         setContentView(root);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
@@ -305,11 +314,27 @@ public final class MainActivity extends Activity {
     private static void remove(File file) { File[] children=file.listFiles(); if(children!=null)for(File child:children)remove(child);file.delete(); }
     private void stopSession(String reason) { if(running) { stopping.set(true);keys.clear();status.setText(reason+"…"); } }
     @Override protected void onStart() { super.onStart();foreground=true;
-        com.opensaab.usb.VehicleIdentity last=com.opensaab.usb.VehicleSession.read(new File(getFilesDir(),"last-vehicle.json"));
-        if(last!=null)vehicleSummary.setText("Last vehicle · "+last.description()+"\nVIN: "+last.vin);
+        ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — select an adapter to start");}
     }
-    @Override protected void onStop() { foreground=false;stopSession("Stopped in background");super.onStop(); }
+    @Override protected void onStop() { foreground=false;ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
+    private void refreshVehicleHistory(){
+        if(!foreground||isDestroyed()||!historyPending.compareAndSet(false,true))return;
+        try{historyWorker.execute(()->{
+            com.opensaab.usb.VehicleIdentity last=com.opensaab.usb.VehicleSession.read(new File(getFilesDir(),"last-vehicle.json"));
+            com.opensaab.usb.SecurityAccessStatus receipt=com.opensaab.usb.SecurityAccessStatus.read(new File(getNoBackupFilesDir(),"security-processing-status.properties"));
+            com.opensaab.usb.VehicleHistoryStatus history=new com.opensaab.usb.VehicleHistoryStatus(last,receipt,new File(getFilesDir(),"firmware/card.bin"),java.time.Instant.now());
+            ui.post(()->{
+                historyPending.set(false);if(!foreground||isDestroyed())return;
+                vehicleSummary.setText(last==null?"Connect an adapter to identify your vehicle":"Last vehicle · "+last.description());
+                connectionDate.setText(history.connection);authStatus.setText(history.auth);authStatus.setTextColor(history.color);authDate.setText(history.timestamp);
+                vehicleDetails=(last==null?"No saved vehicle connection":last.description()+"\nVIN: "+last.vin)+"\n\n"+history.connection+"\n"+history.auth+"\n"+history.timestamp+
+                    "\n\nSecurity status describes the saved emulator data. Fresh/Stale is an age reminder, not a vehicle-access expiry.";
+            });
+        });}catch(RejectedExecutionException stopped){historyPending.set(false);}
+    }
+    @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus&&connectionDate!=null)refreshVehicleHistory();}
+    @Override protected void onDestroy(){ui.removeCallbacks(historyRefresh);historyWorker.shutdownNow();super.onDestroy();}
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed() { if(running)key(0x01);else super.onBackPressed(); }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

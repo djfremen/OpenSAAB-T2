@@ -33,6 +33,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/SecurityApiClient.java'),
         str(repo/'android/tests/SecurityApiClientTest.java'),
         str(repo/'android/shared/com/opensaab/usb/SecurityAccessStatus.java'),
+        str(repo/'android/shared/com/opensaab/usb/VehicleHistoryStatus.java'),
+        str(repo/'android/tests/VehicleHistoryStatusTest.java'),
         str(repo/'android/tests/SecurityAccessStatusTest.java'),
         str(repo/'android/shared/com/opensaab/usb/LcdFrame.java'),
         str(repo/'android/tests/LcdFrameTest.java'),
@@ -63,6 +65,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.DtcReportTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityAccessStatusTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.VehicleHistoryStatusTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityMenuNavigatorTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareMenuNavigatorTest'],check=True)
