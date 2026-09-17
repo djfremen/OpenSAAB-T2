@@ -20,6 +20,7 @@ public final class SecurityAccessStatus {
         data.setProperty("stage","processing");
     }
     private SecurityAccessStatus(){}
+    public void collected(Instant now){data.setProperty("pre_auth_utc",now.toString());}
     public void processed(String provider,String requestId,Instant now){
         data.setProperty("provider",provider);data.setProperty("processed_utc",now.toString());data.setProperty("stage","processed");
         if(requestId!=null&&requestId.matches("OSSEC-[a-f0-9]{32}"))data.setProperty("request_id",requestId);
@@ -41,7 +42,7 @@ public final class SecurityAccessStatus {
     private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
     public String summary(boolean sameSession,boolean connected,boolean cardMatches){
         String stage=data.getProperty("stage","");
-        if(imported()&&cardMatches)return "Security access ready · "+time("imported_utc");
+        if(imported()&&cardMatches)return "Post-auth written · "+time("imported_utc");
         if(imported())return "Previous security data · "+time("imported_utc")+"\nCard has changed since this import.";
         String prefix=sameSession?"Security processing":"Previous security processing";
         if("failed".equals(stage))return prefix+" stopped · "+time("failed_utc");
@@ -50,8 +51,8 @@ public final class SecurityAccessStatus {
     }
     public String details(boolean connected,boolean cardMatches){
         String id=data.getProperty("request_id","");
-        return "Started: "+time("started_utc")+"\nAPI response received: "+time("processed_utc")+
-            "\nLoaded into emulator: "+time("imported_utc")+
+        return "Pre-auth collected: "+time(data.containsKey("pre_auth_utc")?"pre_auth_utc":"started_utc")+"\nPost-auth received: "+time("processed_utc")+
+            "\nPost-auth written: "+time("imported_utc")+
             (data.containsKey("failed_utc")?"\nStopped: "+time("failed_utc"):"")+
             "\nProvider: "+data.getProperty("provider","not recorded")+(id.isEmpty()?"":"\nRequest: "+id)+
             (imported()&&!cardMatches?"\n\nCard has changed since this import.":"")+
@@ -69,7 +70,7 @@ public final class SecurityAccessStatus {
             try(InputStream in=new FileInputStream(file)){status.data.load(in);}
             if(!"1".equals(status.data.getProperty("schema")))return null;
             Instant.parse(status.data.getProperty("started_utc"));
-            for(String key:new String[]{"processed_utc","imported_utc","failed_utc"})if(status.data.containsKey(key))Instant.parse(status.data.getProperty(key));
+            for(String key:new String[]{"pre_auth_utc","processed_utc","imported_utc","failed_utc"})if(status.data.containsKey(key))Instant.parse(status.data.getProperty(key));
             if(!status.data.getProperty("vehicle_hash","").matches("[a-f0-9]{64}"))return null;
             if(!Arrays.asList("processing","processed","imported","failed").contains(status.data.getProperty("stage")))return null;
             if(status.imported()&&(!status.data.containsKey("processed_utc")||!status.data.containsKey("imported_utc")||!status.data.getProperty("ssa_hash","").matches("[a-f0-9]{64}")))return null;

@@ -50,8 +50,8 @@ public final class ChipsoftUsbActivity extends Activity {
     };
     public void onCreate(Bundle state){
         super.onCreate(state);fullNative=getIntent().getBooleanExtra("full_native",false);keyStatus=getIntent().getBooleanExtra("key_status",false);audible=getIntent().getBooleanExtra("audible",false);seeds=getIntent().getBooleanExtra("native_seeds",false);if((fullNative?1:0)+(keyStatus?1:0)+(seeds?1:0)+(audible?1:0)+(getIntent().getBooleanExtra("symbol_only",false)?1:0)>1){finish();return;}getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);vinCheck=getIntent().getBooleanExtra("vin_check",false);symbolOnly=getIntent().getBooleanExtra("symbol_only",false);nativeFirmware=fullNative || keyStatus || audible || seeds || symbolOnly || getIntent().getBooleanExtra("native_firmware",false);receiveTest=vinCheck || nativeFirmware || getIntent().getBooleanExtra("receive_test",false);manager=(UsbManager)getSystemService(USB_SERVICE);permission=getPackageName()+".CHIPSOFT_USB_PERMISSION";
-        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(24,64,24,40);
-        root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(24,i.getSystemWindowInsetTop()+20,24,i.getSystemWindowInsetBottom()+20);return i;});
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(12,12,12,12);root.setBackgroundColor(0xff101922);
+        root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(SessionStyle.dp(this,12),i.getSystemWindowInsetTop()+SessionStyle.dp(this,8),SessionStyle.dp(this,12),i.getSystemWindowInsetBottom()+SessionStyle.dp(this,8));return i;});
         root.addView(new BrandHeader(this,"OpenSAAB T2 · Chipsoft"));
         if(nativeFirmware){
             modeLabel=new TextView(this);modeLabel.setTextSize(12);
@@ -61,10 +61,11 @@ public final class ChipsoftUsbActivity extends Activity {
         status=new TextView(this);status.setMaxLines(2);status.setEllipsize(android.text.TextUtils.TruncateAt.END);status.setText(fullNative?"Original Tech2 + CANdi · Full native control":keyStatus?"Original firmware · CIM key-status diagnostic test":vinCheck?"Read VIN / model year · startup discovery":audible?"Original firmware · BCM audible reminder":symbolOnly?"Original firmware · BCM Symbol Only operation":seeds?"Original firmware · collect security data":nativeFirmware?"Original Tech2 + CANdi · Chipsoft · read-only":receiveTest?"Raw P-bus / I-bus receive test · no diagnostic requests":"Identify adapter · no vehicle commands");root.addView(status);
         if(vinCheck || nativeFirmware){vinSummary=new TextView(this);vinSummary.setTextSize(14);vinSummary.setTextIsSelectable(true);vinSummary.setText("VIN: connect to identify vehicle");root.addView(vinSummary);}
         if(nativeFirmware){ignitionStatus=new IgnitionStatusView(this);root.addView(ignitionStatus);}
-        LinearLayout actions=new LinearLayout(this);root.addView(actions);
+        LinearLayout actions=new LinearLayout(this);root.addView(actions,new LinearLayout.LayoutParams(-1,SessionStyle.dp(this,56)));
         Button identify=new Button(this);identify.setText(vinCheck?"Read vehicle VIN":nativeFirmware?"Start firmware":receiveTest?"Receive P-bus / I-bus · 8 seconds":"Identify connected Chipsoft");identify.setOnClickListener(v->requestVehicleStart());actions.addView(identify,new LinearLayout.LayoutParams(0,-2,1));
         Button stop=new Button(this);stop.setText("Stop USB");stop.setOnClickListener(v->stop());actions.addView(stop,new LinearLayout.LayoutParams(0,-2,1));
         Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->{stop();finish();});actions.addView(back,new LinearLayout.LayoutParams(0,-2,1));
+        SessionStyle.row(actions);SessionStyle.button(identify,true);
         reportConnection=new Button(this);reportConnection.setText("Report connection problem");reportConnection.setVisibility(android.view.View.GONE);
         reportConnection.setOnClickListener(v->{if(running.get()){status.setText("Waiting for USB cleanup — try again shortly");return;}startActivity(new Intent(this,SupportReportActivity.class));});root.addView(reportConnection);
         if(fullNative||seeds){
@@ -76,8 +77,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));return true;
             });
             root.addView(securityAccess);
-            Button clearSecurity=new Button(this);clearSecurity.setText("Clear offset · fresh security data");
-            clearSecurity.setOnClickListener(v->SecurityReset.show(this,()->running.get()));root.addView(clearSecurity);
+            securityAccess.addResetAction(()->SecurityReset.show(this,()->running.get()));
         }
         if(nativeFirmware){
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
@@ -85,7 +85,7 @@ public final class ChipsoftUsbActivity extends Activity {
             lcdPump=new NativeLcdPump(nativeLcd);
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,securityAccess!=null&&securityAccess.navigating()?100:1000);}},1000);
         }
-        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));HeadunitLayout.apply(root);setContentView(root);
+        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);HeadunitLayout.apply(root);SessionStyle.fitPortrait(root);setContentView(root);
         IntentFilter f=new IntentFilter(permission);f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);
         if(state==null && getIntent().getBooleanExtra("auto_start",false))new Handler(Looper.getMainLooper()).post(this::requestVehicleStart);

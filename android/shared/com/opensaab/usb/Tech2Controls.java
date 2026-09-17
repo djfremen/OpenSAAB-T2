@@ -45,7 +45,8 @@ public final class Tech2Controls extends LinearLayout {
         addView(display, new LayoutParams(-1, 0, 1));
         for (int r = 0; r < LABELS.length; r++) {
             LinearLayout row = new LinearLayout(context);
-            (r == 0 ? this : content).addView(row, new LayoutParams(-1, dp(48)));
+            LayoutParams rowParams=new LayoutParams(-1,dp(48));rowParams.topMargin=dp(8);
+            (r == 0 ? this : content).addView(row,rowParams);
             for (int c = 0; c < LABELS[r].length; c++) {
                 final int code = CODES[r][c];
                 if (code < 0) row.addView(new View(context), new LayoutParams(0, -1, 1));
@@ -56,6 +57,7 @@ public final class Tech2Controls extends LinearLayout {
                     row.addView(key, new LayoutParams(0, -1, 1));
                 }
             }
+            SessionStyle.row(row);
         }
         addView(body, new LayoutParams(-1, 0));
         TextView hint = new TextView(context);
@@ -89,6 +91,7 @@ public final class Tech2Controls extends LinearLayout {
             toggle.setContentDescription(show ? "Hide console" : "Show console");
         });
         footer.addView(toggle, new LayoutParams(0, -1, 1));
+        SessionStyle.row(footer);
         addView(footer, new LayoutParams(-1, dp(48)));
         console.setVisibility(GONE);
         // Limit expansion on short/landscape windows so navigation retains room.
@@ -101,14 +104,14 @@ public final class Tech2Controls extends LinearLayout {
         if (consoleView.getVisibility() == VISIBLE) available -= consoleView.getLayoutParams().height;
         // The display takes all remaining room with keys hidden. Opening keys
         // gives their scrolling panel 55% of the flexible area. EXIT remains outside that scroll.
-        int flexible = Math.max(0, available - dp(120)); // soft keys + hint + footer
+        int flexible = Math.max(0, available - dp(128)); // soft keys + hint + footer
         keypad.getLayoutParams().height = keypadVisible ? flexible * 55 / 100 : 0;
         super.onMeasure(width, height);
     }
     private Button button(String text, Runnable action) {
         Button b = new Button(getContext()); b.setText(text); b.setTextSize(14);
         b.setAllCaps(false); b.setPadding(0, 0, 0, 0); b.setMinWidth(0); b.setMinimumWidth(0);
-        b.setMinHeight(dp(48)); b.setOnClickListener(v -> action.run());
+        SessionStyle.button(b,false); b.setOnClickListener(v -> action.run());
         return b;
     }
     private static String description(String label) {

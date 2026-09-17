@@ -31,7 +31,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private boolean manualNavigation;
     public void setMenuKey(IntPredicate key){menuKey=key;}
     public void manualNavigation(){manualNavigation=true;if(navigator!=null)navigator.cancel();}
-    private final TextView message;
+    private final TextView message, stateLabel;
+    private final LinearLayout buttons;
+    private SsaState cardState=SsaState.UNAVAILABLE;
     private final Button action;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final AtomicBoolean polling=new AtomicBoolean();
@@ -49,9 +51,19 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         super(activity);this.activity=activity;this.collection=collection;this.session=session;
         this.running=running;this.stop=stop;this.collect=collect;this.resume=resume;
         setOrientation(VERTICAL);
-        message=new TextView(activity);message.setTextSize(14);addView(message);
-        action=new Button(activity);action.setTextSize(13);action.setOnClickListener(v->activate());addView(action);
+        setPadding(SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10));
+        android.graphics.drawable.GradientDrawable panel=new android.graphics.drawable.GradientDrawable();
+        panel.setColor(0xff152432);panel.setCornerRadius(SessionStyle.dp(activity,8));setBackground(panel);
+        stateLabel=new TextView(activity);stateLabel.setTag("security-state");stateLabel.setTextSize(14);stateLabel.setTypeface(null,android.graphics.Typeface.BOLD);addView(stateLabel);
+        message=new TextView(activity);message.setTag("security-message");message.setTextSize(13);message.setTextColor(0xffbdcbd8);
+        LinearLayout.LayoutParams messageParams=new LinearLayout.LayoutParams(-1,-2);messageParams.topMargin=SessionStyle.dp(activity,4);addView(message,messageParams);
+        buttons=new LinearLayout(activity);LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(-1,SessionStyle.dp(activity,48));buttonParams.topMargin=SessionStyle.dp(activity,8);addView(buttons,buttonParams);
+        action=new Button(activity);action.setTag("security-action");action.setOnClickListener(v->activate());buttons.addView(action,new LinearLayout.LayoutParams(0,-1,1));SessionStyle.row(buttons);
         setVisibility(GONE);
+    }
+    public void addResetAction(Runnable reset){
+        Button clear=new Button(activity);clear.setText("Clear offset");clear.setOnClickListener(v->reset.run());
+        clear.setContentDescription("Clear offset — collect fresh security data");buttons.addView(clear);SessionStyle.row(buttons);
     }
     public boolean busy(){return busy;}
     public boolean navigating(){return collection&&!busy&&navigator!=null&&navigator.active();}
@@ -68,22 +80,25 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             final VehicleIdentity currentIdentity=identity;
             final boolean cardMatches=current!=null&&current.cardMatches(new File(activity.getFilesDir(),"firmware/card.bin"));
             final String screen=text;
+            final SsaState currentState=SsaState.read(new File(activity.getFilesDir(),"firmware/card.bin"));
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
                 if(observed!=run){observed=run;transferSeen=false;imported=false;failure=null;
                     navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
                     if(manualNavigation&&navigator!=null)navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
+                cardState=currentState;stateLabel.setText("Security status  "+cardState.label);stateLabel.setTextColor(cardState.color);
                 boolean prompt=SsaData.needsAccess(screen);
                 if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
-                setVisibility(collection||prompt||receipt!=null?VISIBLE:GONE);
+                setVisibility(VISIBLE);
                 imported=receipt!=null&&receipt.sameSession(run)&&receipt.imported()&&cardMatches;
                 if(imported){show(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Return to firmware");message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
                 if(!collection&&!prompt&&receipt!=null){
-                    show(receipt.summary(receipt.sameSession(run),running.getAsBoolean(),cardMatches),"Security status · details");
+                    show(receipt.summary(receipt.sameSession(run),running.getAsBoolean(),cardMatches),"Details");
                     detailsAction=true;return;
                 }
+                if(!collection&&!prompt){show(cardState.explanation,"Details");detailsAction=true;return;}
                 if(!collection){show("This task needs security access. Collect fresh data using the original firmware.\n\n"+INTERNET_REQUIRED,"Get security access");return;}
                 if(transferSeen){show("Firmware reached the TIS transfer prompt. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,"Process security data");return;}
                 String hint="Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
@@ -99,8 +114,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         });}catch(RejectedExecutionException e){polling.set(false);}
     }
     private void show(String text,String label){message.setText(text);message.setOnClickListener(null);action.setText(label);action.setEnabled(true);}
-    private void showReceipt(){if(receipt!=null)new AlertDialog.Builder(activity).setTitle("Security access status")
-        .setMessage(receipt.details(running.getAsBoolean(),receiptCardMatches)).setPositiveButton("Done",null).show();}
+    private void showReceipt(){new AlertDialog.Builder(activity).setTitle("Security status · "+cardState.label)
+        .setMessage(cardState.explanation+"\n\n"+(receipt==null?"No processing history for this vehicle.":receipt.details(running.getAsBoolean(),receiptCardMatches)))
+        .setPositiveButton("Done",null).show();}
     private void activate(){
         if(closed||busy)return;
         if(detailsAction){showReceipt();return;}
@@ -138,8 +154,8 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 activity.runOnUiThread(()->{
                     busy=false;imported=true;
                     if(!closed&&session.get()==run){
-                        show("Security access ready — restarting firmware…","Restarting firmware");action.setEnabled(false);
-                        android.widget.Toast.makeText(activity,"Security access ready — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
+                        show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
+                        android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
                         resume.run();
                     }
                 });
@@ -172,6 +188,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         byte[] input=readBounded(new File(run,"ssa-card-after.bin"),SsaData.SIZE);
         if(Arrays.equals(before,input))throw new IOException("SSA unchanged; fresh collection required.");
         SsaData.validateInput(input);
+        attempt.collected(java.time.Instant.now());attempt.save(receiptFile());
         if(!identity.vin.equals(SsaData.vin(input)))throw new IOException("Collected security data belongs to a different vehicle; collect again.");
         File card=new File(activity.getFilesDir(),"firmware/card.bin");
         SsaCardImport.verifyBaseline(card,before);

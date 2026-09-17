@@ -24,8 +24,8 @@ public final class SecurityAccessStatusTest {
             try(RandomAccessFile f=new RandomAccessFile(card,"rw")){f.seek(SsaData.OFFSET);f.write(data);}
             check(s.cardMatches(card),"Valid imported card not recognized");
             check(s.sameSession(new File(dir,"collection-1"))&&!s.sameSession(new File(dir,"collection-2")),"Session scope lost");
-            check(s.summary(true,true,true).startsWith("Security access ready"),"Import implies vehicle grant");
-            check(s.summary(false,false,true).startsWith("Security access ready"),"Stopped session hid completed import");
+            check(s.summary(true,true,true).startsWith("Post-auth written"),"Import implies vehicle grant");
+            check(s.summary(false,false,true).startsWith("Post-auth written"),"Stopped session hid completed import");
             try(RandomAccessFile f=new RandomAccessFile(card,"rw")){f.seek(SsaData.OFFSET);f.write(1);}
             check(!s.cardMatches(card)&&s.summary(false,true,false).contains("Card has changed"),"Replaced card considered imported");
             check(!s.summary(true,false,true).toLowerCase().contains("unverified")&&!s.details(false,true).contains("NOT VERIFIED"),"Removed verification copy returned");

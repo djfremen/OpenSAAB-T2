@@ -26,12 +26,12 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             File screen=new File(dir,"native-dtc-screen.txt");
             Files.write(screen.toPath(),"F6: Get Security Access".getBytes("UTF-8"));
             main(()->{a.nativeDirectory=run;a.securityAccess.refresh();});SystemClock.sleep(300);
-            main(()->check(a.securityAccess.getVisibility()==View.GONE,"Menu label falsely detected as request"));
+            main(()->check(((Button)a.securityAccess.findViewWithTag("security-action")).getText().toString().equals("Details"),"Menu label falsely detected as request"));
             Files.write(screen.toPath(),"Help\nYou need Security Access from TIS2000\n1. Disconnect Tech 2 from Vehicle.".getBytes("UTF-8"));
             main(()->a.securityAccess.refresh());SystemClock.sleep(400);
             main(()->{
                 check(a.securityAccess.isShown(),"TIS prompt action missing");
-                Button action=(Button)a.securityAccess.getChildAt(1);check(action.getText().toString().equals("Get security access"),"Wrong next action");
+                Button action=(Button)a.securityAccess.findViewWithTag("security-action");check(action.getText().toString().equals("Get security access"),"Wrong next action");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Security banner hid EXIT");
                 check(!a.running.get()&&!SecurityAccessView.workflowBusy(),"Detection initiated a session or request");
                 action.performClick(); // Opens an explanation only, never taps Start collection.
@@ -45,15 +45,15 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             Files.write(screen.toPath(),"Diagnostics".getBytes("UTF-8"));
             main(()->a.securityAccess.refresh());SystemClock.sleep(400);
             main(()->{
-                TextView text=(TextView)a.securityAccess.getChildAt(0);
+                TextView text=(TextView)a.securityAccess.findViewWithTag("security-message");
                 check(a.securityAccess.isShown()&&text.getText().toString().contains("Previous security processing"),"Processing history vanished on return to firmware");
                 check(text.getText().toString().contains("Not yet loaded")&&!text.getText().toString().contains("unverified"),"Processing status should describe only the completed step");
-                check(((Button)a.securityAccess.getChildAt(1)).getText().toString().contains("details"),"Receipt details unavailable");
+                check(((Button)a.securityAccess.findViewWithTag("security-action")).getText().toString().contains("Details"),"Receipt details unavailable");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Persistent status hid EXIT");
             });
             new File(run,VehicleSession.FILE).delete();
             main(()->a.securityAccess.refresh());SystemClock.sleep(400);
-            main(()->check(a.securityAccess.getVisibility()==View.GONE,"Status shown without verified vehicle identity"));
+            main(()->check(!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"),"History shown without matching vehicle identity"));
             result.putString("stream","PASS: persistent processing history, no false access grant, identity required;  TIS help detected, menu label ignored, explicit security action, EXIT remains visible, dismiss has no side effect; no USB/API/card operations\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(activity!=null){final Activity a=activity;main(a::finish);}if(dir!=null){for(File f:dir.listFiles())f.delete();dir.delete();}

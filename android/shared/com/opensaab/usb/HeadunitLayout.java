@@ -50,11 +50,11 @@ public final class HeadunitLayout {
                 for (int i = 0; i < old.getChildCount(); i++) buttons.add(old.getChildAt(i));
                 old.removeAllViews();
                 for (View button : buttons) {
-                    content.addView(button, new LinearLayout.LayoutParams(-1, -2));
+                    LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-1,Math.round(48*density));bp.topMargin=pad;content.addView(button,bp);
                     button.setMinimumHeight(Math.round(48 * density));
                     ((Button) button).setTextSize(14);
                 }
-            } else content.addView(child, new LinearLayout.LayoutParams(-1, -2));
+            } else {LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=pad;content.addView(child,cp);}
         }
         LinearLayout.LayoutParams railParams = new LinearLayout.LayoutParams(railWidth, -1);
         railParams.leftMargin = pad;
