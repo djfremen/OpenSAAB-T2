@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ChipsoftUsbActivity extends Activity {
     volatile ConnectionAttempt connectionAttempt;
     Button reportConnection;
-    TextView vinSummary;
+    TextView vinSummary,modeLabel;
     volatile VehicleIdentity vehicle;
     volatile long vehicleGeneration;
     Runnable pendingVehicleStart;
@@ -54,7 +54,7 @@ public final class ChipsoftUsbActivity extends Activity {
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(24,i.getSystemWindowInsetTop()+20,24,i.getSystemWindowInsetBottom()+20);return i;});
         root.addView(new BrandHeader(this,"OpenSAAB T2 · Chipsoft"));
         if(nativeFirmware){
-            TextView modeLabel=new TextView(this);modeLabel.setTextSize(12);
+            modeLabel=new TextView(this);modeLabel.setTextSize(12);
             modeLabel.setText(fullNative?"Mode: Full native control":seeds?"Mode: Security-data collection":keyStatus?"Mode: Key-status test":(symbolOnly || audible)?"Mode: BCM reminder operation":"Mode: Read-only diagnostics");
             root.addView(modeLabel);
         }
@@ -69,7 +69,7 @@ public final class ChipsoftUsbActivity extends Activity {
         reportConnection.setOnClickListener(v->{if(running.get()){status.setText("Waiting for USB cleanup — try again shortly");return;}startActivity(new Intent(this,SupportReportActivity.class));});root.addView(reportConnection);
         if(fullNative||seeds){
             securityAccess=new SecurityAccessView(this,seeds,()->nativeDirectory,()->running.get(),()->nativeKey("stop"),
-                ()->openSecuritySession(true),()->openSecuritySession(false));
+                ()->openSecuritySession(true),this::resumeSecurityFirmware);
             securityAccess.setMenuKey(code->{
                 File run=nativeDirectory;
                 if(!foreground||!running.get()||cancelled||run==null||keyPending.get()||new File(run,"native-key.txt").exists())return false;
@@ -83,7 +83,7 @@ public final class ChipsoftUsbActivity extends Activity {
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
             nativeLcd=new ImageView(this);
             lcdPump=new NativeLcdPump(nativeLcd);
-            lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
+            lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,securityAccess!=null&&securityAccess.navigating()?100:1000);}},1000);
         }
         ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));HeadunitLayout.apply(root);setContentView(root);
         IntentFilter f=new IntentFilter(permission);f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
@@ -95,6 +95,36 @@ public final class ChipsoftUsbActivity extends Activity {
         Intent next=new Intent(this,ChipsoftUsbActivity.class).putExtra(collect?"native_seeds":"full_native",true).putExtra("auto_start",true);
         if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
         startActivity(next);finish();
+    }
+    void resumeSecurityFirmware(){
+        if(running.get()||cancelled||isFinishing()||isDestroyed())return;
+        final UsbDevice device=selected;
+        final VehicleIdentity identity=vehicle;
+        final long generation=vehicleGeneration;
+        if(device==null||identity==null){status.setText("Security access ready · reconnect your adapter to continue");return;}
+        Runnable restart=()->{
+            if(cancelled||generation!=vehicleGeneration||running.get()||isFinishing()||isDestroyed())return;
+            if(FirmwareGate.sessionActive()||SecurityAccessView.workflowBusy()){
+                status.setText("Security access ready · firmware is busy. Tap Return to firmware to retry");return;
+            }
+            UsbDevice attached=manager.getDeviceList().get(device.getDeviceName());
+            if(attached==null||attached.getDeviceId()!=device.getDeviceId()||!manager.hasPermission(attached)){
+                status.setText("Security access ready · reconnect your adapter to continue");return;
+            }
+            // Continue this identified connection without another VIN/start dialog.
+            seeds=false;fullNative=true;
+            getIntent().removeExtra("native_seeds");getIntent().putExtra("full_native",true);
+            securityAccess.returnedToFirmware();
+            modeLabel.setText("Mode: Full native control");
+            connectionAttempt=new ConnectionAttempt(this,ConnectionAttempt.Adapter.CHIPSOFT);
+            connectionAttempt.device(attached.getVendorId(),attached.getProductId());
+            reportConnection.setVisibility(android.view.View.GONE);
+            nativeDirectory=null;lcdPump.setDirectory(null);nativeLcd.setImageDrawable(null);
+            status.setText("Security access ready · restarting firmware…");
+            startIdentified(attached,identity,generation);
+        };
+        if(foreground)restart.run();
+        else {pendingVehicleStart=restart;status.setText("Security access ready · firmware will restart when you return");}
     }
     void log(String s){android.util.Log.i("OpenSaabChipsoft",s);runOnUiThread(()->{if(console.length()>24000)console.setText("");console.append(s+"\n");if(s.startsWith("NATIVE_SESSION"))status.setText(audible?"Original firmware · BCM audible reminder":symbolOnly?"Original firmware · BCM Symbol Only operation":"Original firmware active · direct Chipsoft USB");else if(s.startsWith("USB_CLOSED"))status.setText(s.contains("cleanup_ok=true")?"Session ended · USB released":"Session ended · check cleanup log");else if(!s.startsWith("NATIVE_USB_TX"))status.setText(s);});}
     void connectionFailure(ConnectionAttempt.Reason reason){

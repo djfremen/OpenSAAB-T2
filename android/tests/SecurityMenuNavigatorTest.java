@@ -23,6 +23,11 @@ public final class SecurityMenuNavigatorTest {
     }
     public static void main(String[] args){
         runYear(2004);runYear(2008);
+        SecurityMenuNavigator fast=new SecurityMenuNavigator(car(2004,"9440"));
+        String main="Main Menu\nF0: Diagnostics";
+        if(fast.next(main,0)!=null||fast.next(main,49)!=null||fast.next(main,100)==null)throw new AssertionError("Fast stable-screen cadence");
+        fast.sent(100);
+        if(fast.next(main,1000)!=null)throw new AssertionError("Fast cadence repeated stale key");
         SecurityMenuNavigator n=new SecurityMenuNavigator(car(2004,"9440"));
         none(n,"Main Menu\nF0: Erase all");
         key(n,"Main Menu\nF2: Diagnostics",0x13);

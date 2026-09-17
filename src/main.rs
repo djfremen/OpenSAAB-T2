@@ -1922,6 +1922,57 @@ mod runtime_tests {
         panic!("did not verify year selection highlight");
     }
 
+    #[test]
+    #[ignore = "requires local proprietary firmware; run with --release and OPENSAAB_FIRMWARE_ROOT"]
+    fn firmware_year_codes_are_not_shortcuts_and_paced_keys_select_target() {
+        let root = std::path::PathBuf::from(std::env::var("OPENSAAB_FIRMWARE_ROOT").unwrap());
+        for (year, key) in [(2004, 0x03), (2008, 0x11)] {
+            let (_, boot) = load_boot(Some(&root.join("extracted/eprom.bin"))).unwrap();
+            let (_, card) = load_nao(Some(&root.join("Saab NAO.bin"))).unwrap();
+            let (_, opsys) = load_opsys(Some(&root.join("extracted/opsys.dwn"))).unwrap();
+            let mut bus = Tech2Bus::new(boot, card, ExecutionMode::ResearchHarness);
+            bus.load_opsys_ram(&opsys);
+            bus.flash[0x8018..0x40000].copy_from_slice(&opsys);
+            restore_rom_modules(&mut bus.flash, &opsys);
+            let mut cpu = CpuCore::new();
+            cpu.set_cpu_type(CpuType::M68EC020);
+            cpu.sr_mask = 0xa71f;
+            cpu.reset(&mut bus);
+            let mut harness = harness::Harness::new(options::HarnessTarget::Menus, 0);
+            let mut selected_at = None;
+            let mut checked = false;
+            let mut numeric_checked = false;
+            for insns in 0..80_000_000 {
+                assert!(matches!(step_guest(&mut cpu, &mut bus, insns), StepResult::Ok { .. }));
+                if insns % 50_000 != 0 { continue; }
+                if let Some(at) = selected_at {
+                    if insns < at + 400_000 { continue; }
+                    let text = bus.screen_text();
+                    assert!(text.contains("Model Year"), "Shortcut unexpectedly left year menu: {text}");
+                    if !numeric_checked {
+                        assert_eq!(bus.highlighted_text().as_deref(), Some("(C) 2012"));
+                        numeric_checked = true;
+                    }
+                    let target = format!("({}) {year}", year % 10);
+                    if bus.highlighted_text().as_deref() != Some(target.as_str()) {
+                        bus.press_key(bus::KEY_DOWN);
+                        selected_at = Some(insns);
+                        continue;
+                    }
+                    assert_eq!(bus.highlighted_text().as_deref(), Some(target.as_str()));
+                    checked = true;
+                    break;
+                } else if let Some(event) = harness.observe(&bus.screen_text(), insns).unwrap() {
+                    if event.capture == "stage3_model_year" {
+                        bus.press_key(key);
+                        selected_at = Some(insns);
+                    } else if let Some(key) = event.key { bus.press_key(key); }
+                }
+            }
+            assert!(checked, "Numeric year shortcut not observed");
+        }
+    }
+
     #[cfg(feature = "gui")]
     #[test]
     #[ignore = "requires local proprietary firmware; run with --release"]

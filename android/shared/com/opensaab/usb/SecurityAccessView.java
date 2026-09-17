@@ -21,7 +21,8 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     public static boolean workflowBusy(){return WORKFLOW_BUSY.get();}
     private static final String INTERNET_REQUIRED="Security access requires internet. OpenSAAB is contacted first; you can allow Bojer as a fallback if OpenSAAB is unavailable. It cannot be processed offline.";
     private final Activity activity;
-    private final boolean collection;
+    private boolean collection;
+    public void returnedToFirmware(){collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
     private final Supplier<File> session;
     private final BooleanSupplier running;
     private final Runnable stop,collect,resume;
@@ -53,6 +54,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         setVisibility(GONE);
     }
     public boolean busy(){return busy;}
+    public boolean navigating(){return collection&&!busy&&navigator!=null&&navigator.active();}
     public void refresh(){
         if(closed||busy||!polling.compareAndSet(false,true))return;
         final File run=session.get();
@@ -131,7 +133,16 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!process){WORKFLOW_BUSY.set(false);released=true;activity.runOnUiThread(()->{busy=false;if(!closed)collect.run();});return;}
                 if(run==null)throw new IOException("No collected session");
                 try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run,allowFallback);}
-                activity.runOnUiThread(()->{busy=false;imported=true;if(!closed)refresh();});
+                // Release the image lease and workflow gate before the new emulator opens the card.
+                WORKFLOW_BUSY.set(false);released=true;
+                activity.runOnUiThread(()->{
+                    busy=false;imported=true;
+                    if(!closed&&session.get()==run){
+                        show("Security access ready — restarting firmware…","Restarting firmware");action.setEnabled(false);
+                        android.widget.Toast.makeText(activity,"Security access ready — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
+                        resume.run();
+                    }
+                });
             }catch(Exception e){
                 SupportReports.recordError(activity,e,false);
                 String reason=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();

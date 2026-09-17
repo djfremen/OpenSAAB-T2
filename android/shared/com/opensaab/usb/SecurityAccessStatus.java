@@ -41,7 +41,7 @@ public final class SecurityAccessStatus {
     private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
     public String summary(boolean sameSession,boolean connected,boolean cardMatches){
         String stage=data.getProperty("stage","");
-        if(imported()&&cardMatches)return "Security data loaded · "+time("imported_utc");
+        if(imported()&&cardMatches)return "Security access ready · "+time("imported_utc");
         if(imported())return "Previous security data · "+time("imported_utc")+"\nCard has changed since this import.";
         String prefix=sameSession?"Security processing":"Previous security processing";
         if("failed".equals(stage))return prefix+" stopped · "+time("failed_utc");
@@ -55,7 +55,7 @@ public final class SecurityAccessStatus {
             (data.containsKey("failed_utc")?"\nStopped: "+time("failed_utc"):"")+
             "\nProvider: "+data.getProperty("provider","not recorded")+(id.isEmpty()?"":"\nRequest: "+id)+
             (imported()&&!cardMatches?"\n\nCard has changed since this import.":"")+
-            (imported()&&cardMatches?"\n\nReturn to firmware to continue your task.":"");
+            (imported()&&cardMatches?"\n\nSecurity data is loaded. Continue your task in the firmware.":"");
     }
     public void save(File file)throws Exception{
         File tmp=new File(file.getParentFile(),file.getName()+".tmp");

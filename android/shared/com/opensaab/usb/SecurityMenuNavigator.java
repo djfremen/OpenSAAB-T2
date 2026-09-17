@@ -21,6 +21,7 @@ public final class SecurityMenuNavigator {
         platform=p.contains("9440")||p.equals("9-3 sport sedan")||p.equals("saab 9-3 sport")?"9440":"";
         if(year<2003||year>2012||platform.isEmpty())cancel();
     }
+    public boolean active(){return stage!=Stage.DONE;}
     public void cancel(){manual=true;stage=Stage.DONE;}
     public String hint(){return manual?"Choose the vehicle and Get Security Access in the firmware menus.":stage==Stage.DONE?
         "Follow the firmware's ignition-key prompts.":"Selecting "+year+" · Saab 9-3 Sport (9440) → All → Get Security Access… Touch a firmware control to choose manually.";}
@@ -30,7 +31,7 @@ public final class SecurityMenuNavigator {
         if(now-stageAt>90000){cancel();return null;}
         String text=screen.trim();
         if(!candidate.equals(text)){candidate=text;stableAt=now;return null;}
-        if(text.isEmpty()||text.equals(sent)||now-stableAt<500)return null;
+        if(text.isEmpty()||text.equals(sent)||now-stableAt<50)return null;
         proposed=stage;
         switch(stage){
             case MAIN:
