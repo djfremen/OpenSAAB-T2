@@ -16,3 +16,9 @@ Validation: pure Java fixtures cover 2004/2008 menu routing, remapped function l
 - Android emulator session-layout, keypad, and security suites pass. Layout suite re-run after the compact vehicle-summary adjustment; all six advanced tools, consistent touch targets, main row spacing, persistent EXIT and synthetic 1024×600 head-unit display checked.
 - Visual review performed on the physical Pixel: launcher and Advanced Features. Firmware splash checked in offline emulation with no connected adapter.
 - Not published to the website. New diagnostic shortcuts still require connected-vehicle testing; ARM32 device runtime testing is pending.
+
+## Vehicle history follow-up
+
+ARM64 preview.16 / 100016 and ARM32 headunit.10 / 100010 (source 5b875dc) add the saved VIN-observation date as Last connection, plus vehicle-scoped `auth_status`, recorded pre/post-auth time, and advisory Fresh/Stale. No connection or authorization timestamp is fabricated from app startup or file modification times. Missing/mismatched receipts show timestamp unavailable. History refreshes on foreground/focus and once per minute; it never gates a session.
+
+Pure Java history/transport/security tests and Android session-layout instrumentation pass. Preview.16 installed in place and visually checked on Pixel 7: saved connection and post-auth timestamps, Stale indication, all launcher controls and EXIT visible. These remain review builds, not website releases.
