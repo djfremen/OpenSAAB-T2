@@ -701,7 +701,11 @@ impl Tech2Bus {
         if self.card.is_empty() {
             return None;
         }
-        let bsz = if crate::options::env_flag("BANK_SIZE_128") {
+        #[cfg(feature = "load-test")]
+        let small_bank = { static VALUE: LazyLock<bool> = LazyLock::new(|| crate::options::env_flag("BANK_SIZE_128")); *VALUE };
+        #[cfg(not(feature = "load-test"))]
+        let small_bank = crate::options::env_flag("BANK_SIZE_128");
+        let bsz = if small_bank {
             0x0002_0000
         } else {
             BANK_SIZE
@@ -817,6 +821,15 @@ impl Tech2Bus {
     pub fn picr_level(&self) -> u8 {
         let picr = u16::from_be_bytes([self.sim[OFF_PICR], self.sim[OFF_PICR + 1]]);
         ((picr >> 8) & 7) as u8
+    }
+
+    /// Offline load-test scheduling only: never skip a native CANdi poll.
+    #[cfg(feature = "load-test")]
+    pub fn load_test_deadline(&self) -> Option<u64> {
+        if self.candi_link.is_some() { return None; }
+        self.pit_next_tick.into_iter()
+            .chain(self.tpu_countdown.next_instruction_deadline())
+            .min()
     }
 
     /// Timer deadlines advance while the CPU is masked or stopped. PIT clears
@@ -980,6 +993,30 @@ impl Tech2Bus {
     pub fn post_complete(&self) -> bool {
         let r = self.post_results();
         r.len() == 10 && r.iter().all(|(_, ok)| *ok)
+    }
+
+    // ARMv7 load-test build: ordinary RAM/ROM words need one address decode.
+    // Every overlaid byte, device window and cross-region access keeps the
+    // existing byte bus, including CFI status and research compatibility reads.
+    #[cfg(feature = "load-test")]
+    #[inline]
+    fn load_test_plain_read<const N: usize>(&self, address: u32) -> Option<[u8; N]> {
+        let a = address & A24;
+        let end = a + N as u32;
+        if end <= FLASH_SIZE {
+            if self.eprom_cfi_status && (a < 2 || (a < 0x8002 && end > 0x8000)) { return None; }
+            if self.execution_mode.is_research_harness()
+                && ((a <= 0x5ffc && end > 0x5ffc)
+                    || (a < 0x16ef0 && end > 0x16ed2)) { return None; }
+            return self.flash.get(a as usize..end as usize)?.try_into().ok();
+        }
+        if a >= RAM_BASE && end <= RAM_BASE + RAM_SIZE {
+            if self.execution_mode.is_research_harness()
+                && ((a < 0x101282 && end > 0x10127f)
+                    || (a < 0x10eed8 && end > 0x10eeba)) { return None; }
+            return self.ram.get((a-RAM_BASE) as usize..(end-RAM_BASE) as usize)?.try_into().ok();
+        }
+        None
     }
 
     /// Observe backing memory only: never poll MMIO, consume keys, or clear status.
@@ -1918,7 +1955,11 @@ impl AddressBus for Tech2Bus {
             if is_cmd {
                 self.lcd.write_cmd(value);
             } else {
-                if crate::options::env_flag("POST_TRACE") && (0x21..0x7f).contains(&value) {
+                #[cfg(feature = "load-test")]
+                let post_trace = { static VALUE: LazyLock<bool> = LazyLock::new(|| crate::options::env_flag("POST_TRACE")); *VALUE };
+                #[cfg(not(feature = "load-test"))]
+                let post_trace = crate::options::env_flag("POST_TRACE");
+                if post_trace && (0x21..0x7f).contains(&value) {
                     static LCD_TRACE_COUNT: std::sync::atomic::AtomicUsize =
                         std::sync::atomic::AtomicUsize::new(0);
                     let n = LCD_TRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2108,23 +2149,43 @@ impl AddressBus for Tech2Bus {
     }
 
     fn read_word(&mut self, address: u32) -> u16 {
+        #[cfg(feature = "load-test")]
+        if let Some(bytes) = self.load_test_plain_read(address) { return u16::from_be_bytes(bytes); }
         let hi = self.read_byte(address) as u16;
         let lo = self.read_byte(address.wrapping_add(1)) as u16;
         (hi << 8) | lo
     }
 
     fn read_long(&mut self, address: u32) -> u32 {
+        #[cfg(feature = "load-test")]
+        if let Some(bytes) = self.load_test_plain_read(address) { return u32::from_be_bytes(bytes); }
         let w0 = self.read_word(address) as u32;
         let w1 = self.read_word(address.wrapping_add(2)) as u32;
         (w0 << 16) | w1
     }
 
     fn write_word(&mut self, address: u32, value: u16) {
+        #[cfg(feature = "load-test")]
+        {
+            let a = address & A24;
+            if (RAM_BASE..=RAM_BASE + RAM_SIZE - 2).contains(&a) {
+                self.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+2) as usize].copy_from_slice(&value.to_be_bytes());
+                return;
+            }
+        }
         self.write_byte(address, (value >> 8) as u8);
         self.write_byte(address.wrapping_add(1), value as u8);
     }
 
     fn write_long(&mut self, address: u32, value: u32) {
+        #[cfg(feature = "load-test")]
+        {
+            let a = address & A24;
+            if (RAM_BASE..=RAM_BASE + RAM_SIZE - 4).contains(&a) {
+                self.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+4) as usize].copy_from_slice(&value.to_be_bytes());
+                return;
+            }
+        }
         self.write_word(address, (value >> 16) as u16);
         self.write_word(address.wrapping_add(2), value as u16);
     }
@@ -2133,6 +2194,37 @@ impl AddressBus for Tech2Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "load-test")]
+    #[test]
+    fn load_test_wide_bus_matches_byte_bus_at_overlays_and_boundaries() {
+        for mode in [ExecutionMode::ResearchHarness, ExecutionMode::Fidelity] {
+            for cfi in [false, true] {
+                let mut bus = Tech2Bus::new(vec![0xa5; 0x40000], vec![0x5a; 0x100000], mode);
+                bus.eprom_cfi_status = cfi;
+                for (i, v) in bus.ram.iter_mut().enumerate() { *v = (i % 251) as u8; }
+                bus.ram[0x127e..0x1282].fill(0);
+                for base in [0, 0x5ffc, 0x8000, 0x16ed2, 0x16eef, 0x40000,
+                    RAM_BASE, 0x10127f, 0x101281, 0x10eeba, 0x10eed6,
+                    RAM_BASE + RAM_SIZE, 0x1000000] {
+                    for offset in -5i64..=5 {
+                        let a = (base as i64 + offset) as u32;
+                        let expected = u32::from_be_bytes(std::array::from_fn(|i| bus.read_byte(a.wrapping_add(i as u32))));
+                        assert_eq!(bus.read_long(a), expected, "read long {a:x}, cfi={cfi}");
+                        assert_eq!(bus.read_word(a), (expected >> 16) as u16, "read word {a:x}");
+                    }
+                }
+                for a in [RAM_BASE, RAM_BASE+1, RAM_BASE+0x127e, RAM_BASE+RAM_SIZE-4] {
+                    bus.write_long(a, 0x9876abcd);
+                    for (i,b) in [0x98,0x76,0xab,0xcd].iter().enumerate() {
+                        assert_eq!(bus.ram[(a-RAM_BASE) as usize+i], *b);
+                    }
+                    bus.write_word(a, 0x1234);
+                    assert_eq!(&bus.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+2) as usize], &[0x12,0x34]);
+                }
+            }
+        }
+    }
 
     #[test]
     fn cleared_ssa_initialization_requires_flash_readback_without_raw_writes() {

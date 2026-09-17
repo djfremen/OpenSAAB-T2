@@ -44,6 +44,10 @@ struct UartTimeout {
 }
 
 impl Countdown {
+    #[cfg(feature = "load-test")]
+    pub fn next_instruction_deadline(&self) -> Option<u64> {
+        self.next
+    }
     pub fn rebase(&mut self, captured: u64, now: u64) {
         self.next = self
             .next

@@ -27,6 +27,8 @@ mod replay;
 mod ssa_flash;
 mod tpu;
 mod trace;
+#[cfg(feature = "load-test")]
+mod load_test;
 
 use artifacts::Outcome;
 use bus::{ExecutionMode, Tech2Bus};
@@ -658,6 +660,11 @@ pub fn run_headless(
     let mut outcome = Outcome::Incomplete;
     let mut stop = String::from("instruction budget exhausted before requested milestone");
     let mut splash_ready = false;
+    #[cfg(feature = "load-test")]
+    let accelerate_load = options::env_flag("LOAD_TEST_ACCELERATE")
+        && !settings.interactive && !settings.android_live
+        && settings.harness_target.is_none() && settings.replay.is_empty()
+        && !bus.trace.enabled() && bus.candi_link.is_none();
     let mut ring: [u32; 64] = [0; 64];
     let mut ring_i: usize = 0;
     let mut fault_reported = false;
@@ -737,6 +744,12 @@ pub fn run_headless(
                     }
                 }
             }
+        }
+        #[cfg(feature = "load-test")]
+        if accelerate_load && load_test::candidate(cpu) {
+            let bound = limit_insns.min((insns / 50_000 + 1) * 50_000);
+            let skipped = load_test::advance(cpu, bus, insns, bound);
+            if skipped != 0 { insns += skipped; continue; }
         }
         let pc = cpu.pc;
         bus.current_pc = pc;
@@ -989,6 +1002,11 @@ pub fn run_headless(
             if bus.guest_splash_reached() {
                 splash_ready = true;
                 if !settings.interactive && harness.is_none() && settings.replay.is_empty() {
+                    #[cfg(feature = "load-test")]
+                    {
+                        println!("LOAD_TEST_WELCOME: {}", bus.screen_text().split_whitespace().collect::<Vec<_>>().join(" "));
+                        let _ = std::fs::write(settings.output_dir.join("screen.txt"), bus.screen_text());
+                    }
                     stop = String::from("guest splash verified");
                     outcome = Outcome::Success;
                     break;

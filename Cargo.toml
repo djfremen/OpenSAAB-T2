@@ -9,6 +9,7 @@ default-run = "tech2-emu"
 [features]
 default = ["gui"]
 gui = ["dep:minifb"]
+load-test = []
 
 [dependencies]
 m68k = { version = "0.12.1", features = ["serde"] }
