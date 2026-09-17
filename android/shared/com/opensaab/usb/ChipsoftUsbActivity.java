@@ -25,6 +25,7 @@ public final class ChipsoftUsbActivity extends Activity {
     NativeLcdPump lcdPump;
     SecurityAccessView securityAccess;
     FirmwareMenuController menuShortcut;
+    Button securityShortcut;
     DtcReportView dtcReport;
     final java.util.concurrent.ExecutorService keyWorker=java.util.concurrent.Executors.newSingleThreadExecutor(r->new Thread(r,"chipsoft-keys"));
     final AtomicBoolean keyPending=new AtomicBoolean();
@@ -77,22 +78,39 @@ public final class ChipsoftUsbActivity extends Activity {
 
         }
         if(nativeFirmware){
-            Button advanced=new Button(this);advanced.setText("Adv. Features");
-            advanced.setOnClickListener(v->AdvancedFeatures.show(this,()->running.get()));root.addView(advanced);
             FirmwareMenuNavigator.Target target=FirmwareMenuNavigator.Target.fromShortcut(getIntent().getStringExtra("menu_shortcut"));
-            if(target!=null){
-                menuShortcut=new FirmwareMenuController(this,target,()->nativeDirectory,()->foreground&&running.get()&&!cancelled,this::sendMenuKey);
-                root.addView(menuShortcut);
-            }
+            menuShortcut=new FirmwareMenuController(this,target,()->nativeDirectory,()->foreground&&running.get()&&!cancelled,this::sendMenuKey);
+            root.addView(menuShortcut);
+            LinearLayout shortcuts=new LinearLayout(this);shortcuts.setOrientation(LinearLayout.VERTICAL);shortcuts.setTag("session-shortcuts");
+            LinearLayout first=new LinearLayout(this);shortcuts.addView(first,new LinearLayout.LayoutParams(-1,SessionStyle.dp(this,48)));
+            shortcut(first,"Get security access",FirmwareMenuNavigator.Target.SECURITY);
+            Button advanced=new Button(this);advanced.setText("Adv. Features");advanced.setOnClickListener(v->AdvancedFeatures.show(this,()->running.get()));first.addView(advanced);SessionStyle.row(first);
+            LinearLayout second=new LinearLayout(this);LinearLayout.LayoutParams secondParams=new LinearLayout.LayoutParams(-1,SessionStyle.dp(this,48));secondParams.topMargin=SessionStyle.dp(this,8);shortcuts.addView(second,secondParams);
+            shortcut(second,"Read DTC",FirmwareMenuNavigator.Target.READ_DTC);shortcut(second,"Clear DTC",FirmwareMenuNavigator.Target.CLEAR_DTC);shortcut(second,"Engine Data",FirmwareMenuNavigator.Target.ENGINE_DATA);SessionStyle.row(second);
+            root.addView(shortcuts);
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
             nativeLcd=new ImageView(this);
             lcdPump=new NativeLcdPump(nativeLcd);
-            lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
+            lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(securityShortcut!=null&&securityAccess!=null){securityShortcut.setText(securityAccess.readyToProcess()?"Process security data":securityAccess.collecting()?"Collecting security data":"Get security access");securityShortcut.setEnabled(!securityAccess.busy());}if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
-        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(menuShortcut!=null)menuShortcut.cancel();if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);HeadunitLayout.apply(root);SessionStyle.fitPortrait(root);setContentView(root);
+        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(menuShortcut!=null)menuShortcut.cancel();if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);HeadunitLayout.apply(root);SessionStyle.fitPortrait(root,32);setContentView(root);
         IntentFilter f=new IntentFilter(permission);f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);
         if(state==null && getIntent().getBooleanExtra("auto_start",false))new Handler(Looper.getMainLooper()).post(this::requestVehicleStart);
+    }
+    void shortcut(LinearLayout row,String title,FirmwareMenuNavigator.Target target){
+        Button b=new Button(this);b.setText(title);if(target==FirmwareMenuNavigator.Target.SECURITY)securityShortcut=b;b.setOnClickListener(v->{
+            if(target==FirmwareMenuNavigator.Target.SECURITY&&securityAccess!=null&&securityAccess.readyToProcess()){securityAccess.processCollected();return;}
+            if(!running.get()||nativeDirectory==null||cancelled){status.setText("Start firmware before choosing a shortcut");return;}
+            if(securityAccess!=null&&(securityAccess.busy()||securityAccess.collecting())){
+                Toast.makeText(this,"Finish security collection first; the firmware controls remain available",Toast.LENGTH_LONG).show();return;
+            }
+            if(!fullNative&&(target==FirmwareMenuNavigator.Target.SECURITY||target==FirmwareMenuNavigator.Target.CLEAR_DTC)){
+                Toast.makeText(this,"This connection is read-only. Start a full-control session for this task.",Toast.LENGTH_LONG).show();return;
+            }
+            if(securityAccess!=null)securityAccess.manualNavigation();
+            menuShortcut.select(target);
+        });row.addView(b);
     }
     boolean sendMenuKey(int code){
         File run=nativeDirectory;

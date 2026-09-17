@@ -39,6 +39,15 @@ public final class FirmwareMenuNavigatorTest {
         n=nav(FirmwareMenuNavigator.Target.READ_DTC,2004);n.next("Unexpected menu",0);n.next("Unexpected menu",90001);none(n,"Main Menu\nF0: Diagnostics");
         none(new FirmwareMenuNavigator(null,FirmwareMenuNavigator.Target.CLEAR_DTC),"Main Menu\nF0: Diagnostics");
         if(FirmwareMenuNavigator.Target.fromShortcut("native_manual")!=null)throw new AssertionError("Ordinary Start must not select a shortcut");
+        n=new FirmwareMenuNavigator(SecurityMenuNavigatorTest.car(2004,"9440"),FirmwareMenuNavigator.Target.READ_DTC,true);
+        key(n,"All\nF0: Diagnostic Trouble Codes (DTC)\nF1: ECU Information\nF6: Get Security Access",0x18);
+        key(n,"Diagnostic Trouble Codes\nF0: Read DTC\nF1: Clear DTC",0x18);
+        n=new FirmwareMenuNavigator(SecurityMenuNavigatorTest.car(2004,"9440"),FirmwareMenuNavigator.Target.SECURITY,true);
+        key(n,"All\nF1: ECU Information\nF6: Get Security Access",0x16);
+        n=new FirmwareMenuNavigator(SecurityMenuNavigatorTest.car(2004,"9440"),FirmwareMenuNavigator.Target.CLEAR_DTC,true);
+        none(n,"Programming in progress\nDo not disconnect");if(n.active())throw new AssertionError("Unknown active task must be left alone");
+        if(SsaData.collectingAccess("All\nF6: Get Security Access")||SsaData.collectingAccess("You need Security Access from TIS2000\nDisconnect Tech 2 from Vehicle"))throw new AssertionError("Menu/help falsely adopted as fresh collection");
+        if(!SsaData.collectingAccess("Checking Security Access\nReading all vehicle VINs OK\nReading all vehicle Seed Working"))throw new AssertionError("Manual seed sweep missed");
         System.out.println("Diagnostic shortcuts: year/platform, Read/Clear DTC, Engine Data, confirmations, manual takeover, timeout PASS");
     }
 }

@@ -15,6 +15,7 @@ public final class FirmwareMenuNavigator {
         }
     }
     private final Target target;
+    private boolean joinCurrentMenu;
     private enum Stage { MAIN, YEAR, PLATFORM, DIAGNOSTICS, ALL, DTC, ENGINE, ENGINE_MENU, DONE }
     private static final int[] FUNCTION_KEYS={0x18,0x04,0x13,0x17,0x03,0x12,0x16,0x02,0x11,0x15};
     private final int year;
@@ -25,7 +26,10 @@ public final class FirmwareMenuNavigator {
     private int moves;
     private boolean manual;
     public FirmwareMenuNavigator(VehicleIdentity vehicle,Target target){
-        this.target=target;
+        this(vehicle,target,false);
+    }
+    public FirmwareMenuNavigator(VehicleIdentity vehicle,Target target,boolean joinCurrentMenu){
+        this.target=target;this.joinCurrentMenu=joinCurrentMenu;
         year=vehicle==null?0:vehicle.modelYear;
         String p=vehicle==null?"":vehicle.platform.toLowerCase(Locale.ROOT);
         platform=p.contains("9440")||p.equals("9-3 sport sedan")||p.equals("saab 9-3 sport")?"9440":"";
@@ -34,7 +38,7 @@ public final class FirmwareMenuNavigator {
     public boolean active(){return stage!=Stage.DONE;}
     public void cancel(){manual=true;stage=Stage.DONE;}
     public String hint(){String label=target==null?"your task":target.label;
-        return manual?"Choose "+label+" in the firmware menus.":stage==Stage.DONE?
+        return manual?"Return to a firmware menu and tap "+label+" again, or navigate manually.":stage==Stage.DONE?
             "Opened "+label+" · follow the firmware prompts.":"Selecting "+year+" · Saab 9-3 Sport (9440) → "+label+"… Touch a firmware control to choose manually.";}
     public Integer next(String screen,long now){
         if(stage==Stage.DONE)return null;
@@ -43,6 +47,17 @@ public final class FirmwareMenuNavigator {
         String text=screen.trim();
         if(!candidate.equals(text)){candidate=text;stableAt=now;return null;}
         if(text.isEmpty()||text.equals(sent)||now-stableAt<50)return null;
+        if(joinCurrentMenu){
+            joinCurrentMenu=false;
+            if(text.contains("Main Menu")&&function(text,"Diagnostics")!=null)stage=Stage.MAIN;
+            else if(text.contains("Model Year"))stage=Stage.YEAR;
+            else if(text.contains("Vehicle Type"))stage=Stage.PLATFORM;
+            else if(text.contains("Diagnostics")&&!text.contains("Checking")&&function(text,"All")!=null)stage=Stage.DIAGNOSTICS;
+            else if(target!=Target.ENGINE_DATA&&text.contains("ECU Information")&&function(text,"Get Security Access")!=null)stage=Stage.ALL;
+            else if((target==Target.READ_DTC||target==Target.CLEAR_DTC)&&function(text,"Read DTC")!=null&&function(text,"Clear DTC")!=null)stage=Stage.DTC;
+            else if(target==Target.ENGINE_DATA&&text.contains("Customer Functions")&&last(text).equals("Engine Control"))stage=Stage.ENGINE;
+            else {cancel();return null;}
+        }
         proposed=stage;
         switch(stage){
             case MAIN:

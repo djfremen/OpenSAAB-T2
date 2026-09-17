@@ -22,13 +22,13 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private static final String INTERNET_REQUIRED="Security access requires internet. OpenSAAB is contacted first; you can allow Bojer as a fallback if OpenSAAB is unavailable. It cannot be processed offline.";
     private final Activity activity;
     private boolean collection;
-    public void returnedToFirmware(){collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
+    public void returnedToFirmware(){manualCollection=false;collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
     private final Supplier<File> session;
     private final BooleanSupplier running;
     private final Runnable stop,collect,resume;
     private IntPredicate menuKey;
     private SecurityMenuNavigator navigator;
-    private boolean manualNavigation;
+    private boolean manualNavigation,manualCollection;
     public void setMenuKey(IntPredicate key){menuKey=key;}
     public void manualNavigation(){manualNavigation=true;if(navigator!=null)navigator.cancel();}
     private final TextView message, stateLabel;
@@ -66,6 +66,13 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         clear.setContentDescription("Clear offset — collect fresh security data");buttons.addView(clear);SessionStyle.row(buttons);
     }
     public boolean busy(){return busy;}
+    public boolean readyToProcess(){return collection&&transferSeen&&!imported&&!busy;}
+    public void processCollected(){if(readyToProcess())activate();}
+    public boolean collecting(){return collection&&!imported;}
+    /** Follow collection in this full-control session without rebooting or re-selecting menus. */
+    public void collectInCurrentSession(){
+        collection=true;manualCollection=true;manualNavigation=true;navigator=null;transferSeen=false;imported=false;failure=null;
+    }
     public boolean navigating(){return collection&&!busy&&navigator!=null&&navigator.active();}
     public void refresh(){
         if(closed||busy||!polling.compareAndSet(false,true))return;
@@ -83,7 +90,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             final SsaState currentState=SsaState.read(new File(activity.getFilesDir(),"firmware/card.bin"));
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
-                if(observed!=run){observed=run;transferSeen=false;imported=false;failure=null;
+                if(observed!=run){observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
                     navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
                     if(manualNavigation&&navigator!=null)navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
@@ -92,9 +99,16 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 stateLabel.setText("Security status  "+cardState.label+(cardState==SsaState.POST_AUTH?" · "+age:""));
                 stateLabel.setTextColor(cardState==SsaState.POST_AUTH&&"Stale".equals(age)?0xffffd77c:cardState.color);
                 boolean prompt=SsaData.needsAccess(screen);
+                if(!collection&&run!=null&&currentIdentity!=null&&running.getAsBoolean()&&SsaData.collectingAccess(screen)){
+                    collectInCurrentSession();
+                }
+                if(collection&&!transferSeen&&SsaData.collectingAccess(screen)){
+                    stateLabel.setText("Security status · Collecting pre-auth");stateLabel.setTextColor(SsaState.PRE_AUTH.color);
+                }
                 if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
+                if(collection&&transferSeen){stateLabel.setText("Security status · Ready to process");stateLabel.setTextColor(SsaState.PRE_AUTH.color);}
                 setVisibility(VISIBLE);
-                imported=receipt!=null&&receipt.sameSession(run)&&receipt.imported()&&cardMatches;
+                imported=!manualCollection&&receipt!=null&&receipt.sameSession(run)&&receipt.imported()&&cardMatches;
                 if(imported){show(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Return to firmware");message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
                 if(!collection&&!prompt&&receipt!=null){
@@ -104,7 +118,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!collection&&!prompt){show(cardState.explanation,"Details");detailsAction=true;return;}
                 if(!collection){show("This task needs security access. Collect fresh data using the original firmware.\n\n"+INTERNET_REQUIRED,"Get security access");return;}
                 if(transferSeen){show("Firmware reached the TIS transfer prompt. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,"Process security data");return;}
-                String hint="Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
+                String hint=manualNavigation?"Security collection detected in this session. Follow the firmware’s ignition-key prompts.":"Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
                 if(navigator!=null){
                     long now=SystemClock.elapsedRealtime();
                     if(running.getAsBoolean()&&menuKey!=null){Integer key=navigator.next(screen,now);if(key!=null&&menuKey.test(key))navigator.sent(now);}
@@ -155,7 +169,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 // Release the image lease and workflow gate before the new emulator opens the card.
                 WORKFLOW_BUSY.set(false);released=true;
                 activity.runOnUiThread(()->{
-                    busy=false;imported=true;
+                    busy=false;manualCollection=false;imported=true;
                     if(!closed&&session.get()==run){
                         show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
                         android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();

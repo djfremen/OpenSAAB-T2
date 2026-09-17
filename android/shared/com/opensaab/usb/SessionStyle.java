@@ -45,7 +45,7 @@ public final class SessionStyle {
         Tech2Controls controls=null;ArrayList<View> details=new ArrayList<>();
         for(int i=0;i<root.getChildCount();i++){
             View v=root.getChildAt(i);if(v instanceof Tech2Controls)controls=(Tech2Controls)v;
-            else if(!(v instanceof BrandHeader))details.add(v);
+            else if(!(v instanceof BrandHeader)&&!"session-shortcuts".equals(v.getTag()))details.add(v);
         }
         if(controls==null)return;
         LinearLayout content=new LinearLayout(root.getContext());content.setOrientation(LinearLayout.VERTICAL);

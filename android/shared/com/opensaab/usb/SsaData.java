@@ -49,6 +49,12 @@ public final class SsaData {
         }
         for(int i=0;i<SIZE;i++)if(before[i]!=after[i]&&!allowed[i])throw new IllegalArgumentException("API changed unrelated SSA data");
     }
+    /** Actual collection progress, not a menu item or a generic access-required help page. */
+    public static boolean collectingAccess(String text){
+        String s=text.replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
+        return s.contains("checking security access")&&s.contains("reading all vehicle vins")
+            &&s.contains("reading all vehicle seed");
+    }
     public static boolean needsAccess(String text){
         String s=text.replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
         return s.contains("you need security access from tis2000") && s.contains("disconnect tech 2 from vehicle");

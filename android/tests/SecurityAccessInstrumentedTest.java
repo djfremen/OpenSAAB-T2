@@ -59,10 +59,24 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
                 check(((Button)a.securityAccess.findViewWithTag("security-action")).getText().toString().contains("Details"),"Receipt details unavailable");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Persistent status hid EXIT");
             });
+            // Enter security access naturally in a full-control run; do not start another activity/session.
+            Files.write(screen.toPath(),"Checking Security Access\nReading all vehicle VINs OK\nReading all vehicle Seed Working".getBytes("UTF-8"));
+            final java.util.ArrayList<Integer> sent=new java.util.ArrayList<>();
+            main(()->{a.running.set(true);a.securityAccess.setMenuKey(k->{sent.add(k);return true;});});
+            awaitUi(a,()->((TextView)a.securityAccess.findViewWithTag("security-state")).getText().toString().contains("Collecting pre-auth"));
+            Files.write(screen.toPath(),"Help\nYou need Security Access from TIS2000\n1. Disconnect Tech 2 from Vehicle.".getBytes("UTF-8"));
+            awaitUi(a,()->"Process security data".equals(((Button)a.securityAccess.findViewWithTag("security-action")).getText().toString()));
+            main(()->{
+                check(a.nativeDirectory==run&&a.running.get()&&!SecurityAccessView.workflowBusy(),"Manual detection restarted/stopped/submitted the session");
+                check(sent.isEmpty(),"Manual detection sent firmware keys");
+                View shortcuts=a.getWindow().getDecorView().findViewWithTag("session-shortcuts");Rect r=new Rect();
+                check(shortcuts!=null&&shortcuts.getGlobalVisibleRect(r)&&r.height()==shortcuts.getHeight(),"Session shortcuts clipped/hidden");
+                a.running.set(false);
+            });
             new File(run,VehicleSession.FILE).delete();
             awaitUi(a,()->!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"));
             main(()->check(!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"),"History shown without matching vehicle identity"));
-            result.putString("stream","PASS: persistent processing history, no false access grant, identity required;  TIS help detected, menu label ignored, explicit security action, EXIT remains visible, dismiss has no side effect; no USB/API/card operations\n");
+            result.putString("stream","PASS: manual full-control seed collection reaches Process security data in same session with no repeated navigation/API; pinned shortcuts visible; persistent history, identity scope, prompt/menu discrimination, EXIT and dialog dismissal; no USB/API/card operations\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(activity!=null){final Activity a=activity;main(a::finish);}if(dir!=null){for(File f:dir.listFiles())f.delete();dir.delete();}
             if(receiptFile!=null){try{if(oldReceipt==null)receiptFile.delete();else Files.write(receiptFile.toPath(),oldReceipt);}catch(Exception ignored){}}
