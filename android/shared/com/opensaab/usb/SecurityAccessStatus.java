@@ -12,6 +12,8 @@ import java.util.*;
 
 /** Local processing receipt. API success and a card import never establish vehicle access. */
 public final class SecurityAccessStatus {
+    /** Advisory age of imported data, not a firmware/ECU authorization expiry. */
+    public static final long FRESH_SECONDS=3*60*60;
     public final Properties data=new Properties();
     private static final DateTimeFormatter DISPLAY=DateTimeFormatter.ofPattern("MMM d, HH:mm:ss z",Locale.getDefault()).withZone(ZoneId.systemDefault());
     public SecurityAccessStatus(String vin,String session,Instant now)throws Exception{
@@ -40,6 +42,25 @@ public final class SecurityAccessStatus {
     }
     public boolean sameSession(File session){return session!=null&&session.getName().equals(data.getProperty("source_session"));}
     private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
+    public String freshness(boolean cardMatches,Instant now){
+        Long age=ageSeconds(cardMatches,now);
+        return age==null?"Age unknown":age<FRESH_SECONDS?"Fresh":"Stale";
+    }
+    private Long ageSeconds(boolean cardMatches,Instant now){
+        if(!imported()||!cardMatches||now==null)return null;
+        try{
+            long seconds=java.time.Duration.between(Instant.parse(data.getProperty("imported_utc")),now).getSeconds();
+            return seconds<0?null:seconds;
+        }catch(RuntimeException invalid){return null;}
+    }
+    public String ageDetails(boolean cardMatches,Instant now){
+        Long seconds=ageSeconds(cardMatches,now);
+        if(seconds==null)return "Data age: unknown (no matching timestamp, card changed, or device clock changed).";
+        long minutes=seconds/60;
+        String elapsed=minutes<1?"less than a minute":minutes<60?minutes+" min":minutes/60+" h "+minutes%60+" min";
+        return "Data age: "+elapsed+" · "+freshness(cardMatches,now)+
+            "\nFresh means written less than 3 hours ago; Stale means 3 hours or older. This is an age reminder, not a confirmed vehicle-access expiry. Follow the firmware if it requests security access again.";
+    }
     public String summary(boolean sameSession,boolean connected,boolean cardMatches){
         String stage=data.getProperty("stage","");
         if(imported()&&cardMatches)return "Post-auth written · "+time("imported_utc");
@@ -56,7 +77,8 @@ public final class SecurityAccessStatus {
             (data.containsKey("failed_utc")?"\nStopped: "+time("failed_utc"):"")+
             "\nProvider: "+data.getProperty("provider","not recorded")+(id.isEmpty()?"":"\nRequest: "+id)+
             (imported()&&!cardMatches?"\n\nCard has changed since this import.":"")+
-            (imported()&&cardMatches?"\n\nSecurity data is loaded. Continue your task in the firmware.":"");
+            (imported()&&cardMatches?"\n\nSecurity data is loaded. Continue your task in the firmware.":"")+
+            (imported()?"\n\n"+ageDetails(cardMatches,Instant.now()):"");
     }
     public void save(File file)throws Exception{
         File tmp=new File(file.getParentFile(),file.getName()+".tmp");

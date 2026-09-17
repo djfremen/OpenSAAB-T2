@@ -87,7 +87,10 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                     navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
                     if(manualNavigation&&navigator!=null)navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
-                cardState=currentState;stateLabel.setText("Security status  "+cardState.label);stateLabel.setTextColor(cardState.color);
+                cardState=currentState;
+                String age=receipt==null?"Age unknown":receipt.freshness(cardMatches,java.time.Instant.now());
+                stateLabel.setText("Security status  "+cardState.label+(cardState==SsaState.POST_AUTH?" · "+age:""));
+                stateLabel.setTextColor(cardState==SsaState.POST_AUTH&&"Stale".equals(age)?0xffffd77c:cardState.color);
                 boolean prompt=SsaData.needsAccess(screen);
                 if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
                 setVisibility(VISIBLE);
@@ -115,7 +118,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     }
     private void show(String text,String label){message.setText(text);message.setOnClickListener(null);action.setText(label);action.setEnabled(true);}
     private void showReceipt(){new AlertDialog.Builder(activity).setTitle("Security status · "+cardState.label)
-        .setMessage(cardState.explanation+"\n\n"+(receipt==null?"No processing history for this vehicle.":receipt.details(running.getAsBoolean(),receiptCardMatches)))
+        .setMessage(cardState.explanation+"\n\n"+(receipt==null?"No processing history for this vehicle. Data age is unknown.":receipt.details(running.getAsBoolean(),receiptCardMatches)))
         .setPositiveButton("Done",null).show();}
     private void activate(){
         if(closed||busy)return;

@@ -23,6 +23,15 @@ public final class SecurityAccessStatusTest {
             s.imported(data,Instant.parse("2026-09-16T12:00:04Z"));s.save(file);s=SecurityAccessStatus.read(file);
             try(RandomAccessFile f=new RandomAccessFile(card,"rw")){f.seek(SsaData.OFFSET);f.write(data);}
             check(s.cardMatches(card),"Valid imported card not recognized");
+            Instant written=Instant.parse("2026-09-16T12:00:04Z");
+            check("Fresh".equals(s.freshness(true,written)),"Just-written data is not fresh");
+            check("Fresh".equals(s.freshness(true,written.plusSeconds(10799))),"Fresh boundary too early");
+            check("Stale".equals(s.freshness(true,written.plusSeconds(10800))),"Three-hour boundary missing");
+            check("Stale".equals(s.freshness(true,written.plusSeconds(86400))),"Old data became fresh");
+            check("Age unknown".equals(s.freshness(false,written)),"Changed card inherited freshness");
+            check("Age unknown".equals(s.freshness(true,written.minusSeconds(1))),"Future timestamp presented as fresh");
+            check(s.ageDetails(true,written.plusSeconds(10920)).contains("3 h 2 min"),"Elapsed time incorrect");
+            check(s.imported(),"Advisory staleness invalidated an import");
             check(s.sameSession(new File(dir,"collection-1"))&&!s.sameSession(new File(dir,"collection-2")),"Session scope lost");
             check(s.summary(true,true,true).startsWith("Post-auth written"),"Import implies vehicle grant");
             check(s.summary(false,false,true).startsWith("Post-auth written"),"Stopped session hid completed import");

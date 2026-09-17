@@ -7,3 +7,8 @@ Security labels match NoMoreGlobal_dotnet8_v8's BinAnalyzer.DetermineSsaStatus a
 Details distinguish Pre-auth collected, Post-auth received, and Post-auth written timestamps. Existing receipts remain readable. Private key/seed values are not printed in the UI or new tests. Processing history remains scoped to the current identified vehicle; a changed working card does not inherit a previous import's ready state.
 
 Validation: Java security-state and receipt tests; real Android keypad and security workflow instrumentation; synthetic session screenshot and equal-width/height/gap checks; 1024×600 head-unit layout measurement with a 480×280 minimum firmware area. Tests do not connect an adapter or call the security API. Pixel review build: preview.13; matching ARM32 build: headunit.7. Publication is separate from this device UI review.
+
+
+## Advisory data age
+
+POST-AUTH now appends Fresh for a matching import under three hours old, or Stale from three hours onward. This is an OpenSAAB display convention, not a claim about the original binary's authorization lifetime. Details includes elapsed time and the original write timestamp. Unknown/missing timestamps, changed cards, or timestamps in the future produce Age unknown. Only receipts already matched to the identified vehicle can supply an age. No expiry/reset/verification gate is added. The existing firmware security-access prompt remains the trigger for requesting another collection. Tests cover the exact three-hour boundary, reload, future timestamps, changed cards, and unchanged import state.
