@@ -41,9 +41,11 @@ public final class MainActivity extends Activity {
             return insets;
         });
         root.addView(new com.opensaab.usb.BrandHeader(this,"OpenSAAB T2"));
-        root.addView(label("Original firmware • USB adapters • Diagnostics", 12));
         vehicleSummary=label("Connect an adapter to identify your vehicle",13);
-        vehicleSummary.setTextIsSelectable(true);root.addView(vehicleSummary);
+        vehicleSummary.setSingleLine(true);vehicleSummary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        vehicleSummary.setContentDescription("Last vehicle details — tap to view");
+        vehicleSummary.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Last vehicle")
+            .setMessage(vehicleSummary.getText()).setPositiveButton("Done",null).show());root.addView(vehicleSummary);
         status = label("Ready — select an adapter to start", 13); status.setSingleLine(true); status.setEllipsize(android.text.TextUtils.TruncateAt.END); root.addView(status);
         LinearLayout actions = row(root);
         start = button(actions,"Start", () -> selectAdapter("native_dtc",true));
@@ -60,6 +62,12 @@ public final class MainActivity extends Activity {
         LinearLayout extras = row(root);
         button(extras,"Report issue",()->{if(running){status.setText("Stop emulation before preparing a report");return;}startActivity(new android.content.Intent(this,com.opensaab.usb.SupportReportActivity.class));});
         button(extras,"DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this));
+        button(extras,"Support",()->{
+            if(running || com.opensaab.usb.FirmwareGate.busy() || com.opensaab.usb.SecurityAccessView.workflowBusy()){
+                com.opensaab.usb.ProjectSupport.waitForSession(this);return;
+            }
+            com.opensaab.usb.ProjectSupport.show(this);
+        });
         LinearLayout systemActions = row(root);
         button(systemActions,"Check for updates",()->{if(running){status.setText("Stop firmware before checking for updates");return;}com.opensaab.usb.AppUpdates.show(this);});
         button(systemActions,"Adv. Features",()->com.opensaab.usb.AdvancedFeatures.show(this,()->running));
@@ -67,12 +75,6 @@ public final class MainActivity extends Activity {
         console.setTypeface(Typeface.MONOSPACE);
         consoleScroll = new ScrollView(this); consoleScroll.addView(console);
         root.addView(new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);}),new LinearLayout.LayoutParams(-1,0,1));
-        root.addView(com.opensaab.usb.ProjectSupport.button(this,()->{
-            if(running || com.opensaab.usb.FirmwareGate.busy() || com.opensaab.usb.SecurityAccessView.workflowBusy()){
-                com.opensaab.usb.ProjectSupport.waitForSession(this);return;
-            }
-            com.opensaab.usb.ProjectSupport.show(this);
-        }),new LinearLayout.LayoutParams(-1,-2));
         com.opensaab.usb.SessionStyle.stack(root);
         com.opensaab.usb.HeadunitLayout.apply(root);
         com.opensaab.usb.SessionStyle.fitPortrait(root);
