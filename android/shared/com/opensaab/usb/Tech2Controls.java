@@ -61,6 +61,12 @@ public final class Tech2Controls extends LinearLayout {
             }
             SessionStyle.row(row);
         }
+        TextView navigation=new TextView(context);navigation.setTag("tech2-navigation-hint");
+        navigation.setText("Swipe ↑ / ↓ · Hold for ENTER · EXIT goes back");
+        navigation.setTextSize(12);navigation.setTextColor(0xffedf4fa);navigation.setGravity(android.view.Gravity.CENTER);
+        navigation.setPadding(0,dp(4),0,0);navigation.setOnClickListener(v->showHelp());
+        navigation.setContentDescription("Navigation instructions. Tap for all firmware controls.");
+        addView(navigation,new LayoutParams(-1,-2));
         addView(body, new LayoutParams(-1, 0));
         LinearLayout footer = new LinearLayout(context);
         Button exit = button("EXIT", () -> send.accept(0x01));

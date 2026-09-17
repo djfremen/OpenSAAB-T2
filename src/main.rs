@@ -666,6 +666,7 @@ pub fn run_headless(
     let mut live_screen = String::new();
     let mut live_frame = artifacts::LiveFrame::default();
     let mut next_native_key = std::time::Instant::now();
+    let mut next_health_beat = std::time::Instant::now();
     let security_ssa_before = (settings.harness_target
         == Some(options::HarnessTarget::SecurityLink1367))
     .then(|| bus.card.get(0xfe0000..0xfe0000 + 714).map(<[u8]>::to_vec))
@@ -682,6 +683,17 @@ pub fn run_headless(
 
     while insns < limit_insns {
         if insns.is_multiple_of(50_000) {
+            if (settings.android_live || settings.interactive)
+                && std::time::Instant::now() >= next_health_beat
+            {
+                next_health_beat = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                // Written by the emulation loop, not an unrelated sampling thread.
+                let temporary = settings.output_dir.join("emulator-heartbeat.tmp");
+                if std::fs::write(&temporary, insns.to_string()).is_ok() {
+                    let _ =
+                        std::fs::rename(temporary, settings.output_dir.join("emulator-heartbeat"));
+                }
+            }
             if settings.android_live && std::time::Instant::now() >= next_live_frame {
                 next_live_frame = std::time::Instant::now() + std::time::Duration::from_millis(100);
                 let capture = (|| -> std::io::Result<()> {

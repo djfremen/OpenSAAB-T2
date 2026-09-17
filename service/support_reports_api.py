@@ -20,6 +20,9 @@ instructions pc host_cancelled_operations status connection_attempts stage outco
 elapsed_ms stages usb_vendor_id usb_product_id attempt_id android_process_exits timestamp_ms
 pss_kib rss_kib last-app-crash.json last-app-error.json utc kind exception_class stack unavailable'''.split())
 FIELDS.add('NEGATIVE RESPONSE')
+FIELDS.update('emulator_health heartbeat_age_ms input_wait_ms ui_delay_ms'.split())
+FIELDS.update('''security_processing security_reset started_utc processed_utc imported_utc
+failed_utc request_id provider vehicle_access_verified cleared_utc'''.split())
 FIELDS.update('''device_resources native_performance performance_schema sample_interval_ms sample_count
 first_frame_observed_ms complete samples cpu_ms peak_rss_kib minor_faults major_faults
 ram_total_kib ram_available_kib swap_free_kib frame_age_ms ram_total_bytes ram_available_bytes

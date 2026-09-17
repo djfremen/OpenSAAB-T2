@@ -40,6 +40,16 @@ public final class SupportReports {
         report.put("build_profile",AppBuildProfile.name(c)).put("apk_abi",AppBuildProfile.abi(c));
         report.put("app",c.getPackageName()).put("version",p.versionName==null?"development":p.versionName).put("version_code",p.versionCode).put("android_api",android.os.Build.VERSION.SDK_INT).put("device_model",android.os.Build.MODEL).put("abis",new JSONArray(Arrays.asList(android.os.Build.SUPPORTED_ABIS)));
         report.put("device_resources",PerformanceReport.device(c));
+        File health=new File(c.getFilesDir(),"last-emulator-health.json");
+        if(health.isFile()&&health.length()<4096)try{
+            JSONObject raw=FirmwareStore.json(health),safe=new JSONObject();
+            String reason=raw.optString("reason");
+            if(Arrays.asList("ui_unresponsive","emulator_heartbeat_missing","input_without_display_response","unexpected_emulator_exit").contains(reason)){
+                safe.put("reason",reason).put("utc",java.time.Instant.parse(raw.getString("utc")).toString());
+                for(String key:new String[]{"elapsed_ms","heartbeat_age_ms","input_wait_ms","ui_delay_ms"})if(raw.opt(key) instanceof Number)safe.put(key,raw.getLong(key));
+                report.put("emulator_health",safe);
+            }
+        }catch(Exception ignored){}
         report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts cover bounded log tails only.");
         JSONArray runs=new JSONArray();File files=c.getFilesDir();
         for(File dir:sessions(files)){

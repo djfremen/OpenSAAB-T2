@@ -55,6 +55,7 @@ public class NanoProbeActivity extends Activity {
     volatile File nativeDirectory;
     volatile String nativeFailure;
     ImageView nativeLcd;
+    EmulatorHealthMonitor health;
     final Handler lcdHandler=new Handler(Looper.getMainLooper());
     int logLines=0;
     final BroadcastReceiver receiver=new BroadcastReceiver() {
@@ -116,7 +117,7 @@ public class NanoProbeActivity extends Activity {
         if(nativeFirmware()) {
             start.setVisibility(android.view.View.GONE);channel.setVisibility(android.view.View.GONE);receive.setVisibility(android.view.View.GONE);vin.setVisibility(android.view.View.GONE);
             dtcReport=new DtcReportView(this,"nano",()->nativeDirectory);root.addView(dtcReport);
-            nativeLcd=new ImageView(this);
+            nativeLcd=new ImageView(this);health=new EmulatorHealthMonitor(this,this::cancel);
             lcdHandler.postDelayed(new Runnable(){public void run(){updateNativeLcd();if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
         }
         scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware())root.addView(new Tech2Controls(this,nativeLcd,scroll,code->nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code))),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -314,7 +315,7 @@ public class NanoProbeActivity extends Activity {
             if(dlcVoltage && !nativeFirmware())builder=new ProcessBuilder(executable,token,resultFile.getAbsolutePath(),"--voltage-check");
             if(nativeFirmware()){
                 nativeDirectory=new File(getFilesDir(),"native-"+java.util.UUID.randomUUID().toString());
-                if(!nativeDirectory.mkdir())throw new IOException("Cannot create native session directory");
+                if(!nativeDirectory.mkdir())throw new IOException("Cannot create native session directory");health.begin(nativeDirectory);
                 File firmware=new File(getFilesDir(),"firmware");
                 for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(firmware,name).isFile())throw new IOException("Missing original firmware: "+name);
                 builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so",
@@ -440,12 +441,13 @@ public class NanoProbeActivity extends Activity {
             if(!cleaned && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             if(requestedQuit && cleaned && resultPublished)progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             else if(!cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();}
-            closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);running.set(false);
+            closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null)health.ended();running.set(false);
             runOnUiThread(()->{if(retry!=null && !isFinishing())retry.setEnabled(true);});
         }
     }
     void nativeKey(String code){
         if(!nativeFirmware() || !running.get() || cancelled || nativeDirectory==null){log("No active native diagnostic session.");return;}
+        if(health!=null)health.input();
         File dest=new File(nativeDirectory,"native-key.txt");
         if(dest.exists()){log("Wait for the previous key to be consumed.");return;}
         try{
@@ -470,7 +472,7 @@ public class NanoProbeActivity extends Activity {
             int width=Integer.parseInt(parts[1]),height=Integer.parseInt(parts[2]);
             if(width!=320 || height!=240 || bytes.length-pos!=width*height*3)return;
             int[] pixels=new int[width*height];for(int i=0;i<pixels.length;i++){pixels[i]=0xff000000|((bytes[pos++]&255)<<16)|((bytes[pos++]&255)<<8)|(bytes[pos++]&255);}
-            nativeLcd.setImageBitmap(android.graphics.Bitmap.createBitmap(pixels,width,height,android.graphics.Bitmap.Config.ARGB_8888));
+            if(health!=null)health.frame();nativeLcd.setImageBitmap(android.graphics.Bitmap.createBitmap(pixels,width,height,android.graphics.Bitmap.Config.ARGB_8888));
         }catch(Exception ignored){} // Partial atomic snapshot: retain the previous real image.
     }
     // Captured normal-mode controls only; opcode 00 CAN transmission is excluded.
@@ -500,7 +502,7 @@ public class NanoProbeActivity extends Activity {
     }
     static final String[] EMERGENCY_CLOSE={"BB80004301C4BB","BB80004101C2BB","BB80004300C3BB","BB80004100C1BB"};
     void closeSockets() { try { if(client!=null)client.close(); }catch(IOException ignored){} try { if(server!=null)server.close(); }catch(IOException ignored){} }
-    void cancel() { if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requestGate.cancel();permissionPending=false;cancelled=true;closeSockets();log("Stop requested."); }
+    void cancel() { if(health!=null)health.expectedStop(); if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requestGate.cancel();permissionPending=false;cancelled=true;closeSockets();log("Stop requested."); }
     void leaveScreen() { cancel();finish(); }
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed() { leaveScreen(); }

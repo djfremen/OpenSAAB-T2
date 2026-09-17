@@ -23,6 +23,7 @@ public final class ChipsoftUsbActivity extends Activity {
     Runnable pendingVehicleStart;
     AlertDialog vehicleStartPrompt;
     NativeLcdPump lcdPump;
+    EmulatorHealthMonitor health;
     SecurityAccessView securityAccess;
     FirmwareMenuController menuShortcut;
     SessionWorkspace workspace;
@@ -86,7 +87,8 @@ public final class ChipsoftUsbActivity extends Activity {
             root.addView(menuShortcut);
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
             nativeLcd=new ImageView(this);
-            lcdPump=new NativeLcdPump(nativeLcd);
+            health=new EmulatorHealthMonitor(this,this::stop);
+            lcdPump=new NativeLcdPump(frame->{health.frame();nativeLcd.setImageBitmap(frame);});
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);updateWorkspace();if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
         ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);
@@ -272,7 +274,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(nativeFirmware){
                     if(identity==null)throw new IOException("Read a fresh vehicle VIN before starting firmware");
                     VehicleSession.save(new File(run,VehicleSession.FILE),identity);
-                    nativeDirectory=run;lcdPump.setDirectory(run);File f=new File(getFilesDir(),"firmware");
+                    nativeDirectory=run;health.begin(run);lcdPump.setDirectory(run);File f=new File(getFilesDir(),"firmware");
                     for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(f,name).isFile())throw new IOException("Missing original firmware: "+name);
                     builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so","--test-harness","--harness-target",symbolOnly?"dtc-link-1367":"native-manual","--candi-native-link","--candi-chipsoft-usb-token",token,"--candi-firmware",new File(f,"candi.bin").getPath(),"--boot",new File(f,"eprom.bin").getPath(),"--opsys",new File(f,"opsys.dwn").getPath(),"--max-insns","50000000000","--output-dir",run.getPath(),new File(f,(symbolOnly || audible)?"card-authorized.bin":"card.bin").getPath());if(symbolOnly)builder.command().add("--candi-chipsoft-symbol-only");if(seeds)builder.command().add("--candi-chipsoft-seeds");if(audible)builder.command().add("--candi-chipsoft-audible");
                     log("NATIVE_SESSION "+run.getName()+" requests=original-firmware command_policy="+(fullNative?"full-native":"restricted"));
@@ -310,7 +312,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 }
                 if(!quit)throw new IOException("Session cancelled or expired");
             }
-        }catch(Exception e){if(cancelled)progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}SupportReports.recordError(this,e,false);log("ERROR "+e.getMessage());}
+        }catch(Exception e){if(cancelled)progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}if(!cancelled)SupportReports.recordError(this,e,false);log("ERROR "+e.getMessage());}
         finally{
             if(conn!=null){
                 if(read!=null && queued){try{if(!read.cancel())clean=false;UsbRequest done=conn.requestWait(300);if(done!=read)clean=false;}catch(Exception e){clean=false;}}
@@ -333,6 +335,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 try{if(!cancelled && generation==vehicleGeneration){VehicleSession.save(new File(run,VehicleSession.FILE),identified);VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),identified);}}
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
+            if(nativeFirmware&&!vinCheck&&health!=null)health.ended();
             running.set(false);
             final VehicleIdentity ready=identified;
             if(vinCheck)runOnUiThread(()->{
@@ -382,6 +385,7 @@ public final class ChipsoftUsbActivity extends Activity {
         try{keyWorker.execute(()->{
             try{
                 if(!running.get() || cancelled || nativeDirectory!=run)return;
+                if(health!=null)health.input();
                 File dest=new File(run,"native-key.txt");
                 if(dest.exists()){log("Wait for previous key");return;}
                 File pending=new File(run,"native-key.tmp");
@@ -394,7 +398,7 @@ public final class ChipsoftUsbActivity extends Activity {
         });}catch(java.util.concurrent.RejectedExecutionException stopped){keyPending.set(false);}
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
-    void stop(){if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
+    void stop(){if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
     protected void onResume(){super.onResume();foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){

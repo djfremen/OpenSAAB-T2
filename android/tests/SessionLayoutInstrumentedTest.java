@@ -28,7 +28,7 @@ public final class SessionLayoutInstrumentedTest extends Instrumentation {
    current=startActivitySync(intent);final Activity a=current;waitForIdleSync();
    ui(()->{
     if(a instanceof ChipsoftUsbActivity){ChipsoftUsbActivity c=(ChipsoftUsbActivity)a;c.lcdHandler.removeCallbacksAndMessages(null);check(!c.running.get(),"Unexpected USB session");}
-    layouts(a);View root=a.getWindow().getDecorView();visible(root,"tech2-key-1");visible(root,"tech2-actions");visible(root,"session-menu");visible(root,"session-summary");
+    layouts(a);View root=a.getWindow().getDecorView();visible(root,"tech2-navigation-hint");visible(root,"tech2-key-1");visible(root,"tech2-actions");visible(root,"session-menu");visible(root,"session-summary");
     check(text(root,"Read DTC")==null&&text(root,"Check for updates")==null,"Secondary actions consume screen");
     check(root.findViewWithTag("tech2-gestures").getHeight()>=SessionStyle.dp(a,280),"Live firmware space too small");
    });

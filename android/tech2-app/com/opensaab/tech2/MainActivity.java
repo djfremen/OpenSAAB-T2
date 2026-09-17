@@ -19,6 +19,7 @@ public final class MainActivity extends Activity {
     private final Handler ui = new Handler();
     private volatile com.opensaab.usb.InteractiveKeyPump keyPump;
     private com.opensaab.usb.NativeLcdPump lcdPump;
+    private com.opensaab.usb.EmulatorHealthMonitor health;
     private boolean consoleDirty;
     private final Runnable consoleRefresh=new Runnable(){public void run(){
         if(consoleDirty && console.isShown()){consoleDirty=false;console.setText(logs.toString());consoleScroll.post(()->consoleScroll.fullScroll(View.FOCUS_DOWN));}
@@ -60,7 +61,8 @@ public final class MainActivity extends Activity {
         consoleScroll=new ScrollView(this);consoleScroll.addView(console);
         controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
         controls.setActions(this::showActions);
-        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{lcd.frame=frame;lcd.invalidate();});
+        health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
+        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{health.frame();lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         start=new Button(this);start.setText("Start · select adapter");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
@@ -193,6 +195,7 @@ public final class MainActivity extends Activity {
     }
     private void enqueue(String command) {
         if (!running || stopping.get()) { status.setText("Tap Start to select an adapter or emulation mode"); return; }
+        health.input();
         com.opensaab.usb.InteractiveKeyPump pump=keyPump;
         if(pump==null || !pump.offer(command)) status.setText("Key queue full or firmware starting — wait for the menu");
     }
@@ -245,6 +248,7 @@ public final class MainActivity extends Activity {
             long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(30);
             File mailbox=new File(session,"interactive-key.txt");
             keyPump=new com.opensaab.usb.InteractiveKeyPump(mailbox,e->ui.post(()->append("Input stopped: "+e)));
+            health.begin(session);
             lcdPump.setDirectory(session);
             while(child.isAlive() && !stopping.get() && System.nanoTime()<deadline) {
                 Thread.sleep(50); // Lifecycle only; input and changed-frame delivery are independent.
@@ -264,6 +268,7 @@ public final class MainActivity extends Activity {
             java.lang.Process child=process;
             if(child!=null && child.isAlive()) child.destroyForcibly();
             process=null;
+            health.ended();
             if(firmwareLease!=null)firmwareLease.close();
             final String message=end;
             ui.post(()->{running=false;start.setText("Start");start.setEnabled(true);status.setText(message);append(message);});
@@ -290,7 +295,7 @@ public final class MainActivity extends Activity {
         Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
     }
     private static void remove(File file) { File[] children=file.listFiles(); if(children!=null)for(File child:children)remove(child);file.delete(); }
-    private void stopSession(String reason) { if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
+    private void stopSession(String reason) { if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
     @Override protected void onStart() { super.onStart();foreground=true;ui.removeCallbacks(consoleRefresh);ui.post(consoleRefresh);
         ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — select an adapter to start");}
