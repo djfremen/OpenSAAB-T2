@@ -31,63 +31,32 @@ public final class MainActivity extends Activity {
     private final Runnable historyRefresh=new Runnable(){public void run(){if(foreground){refreshVehicleHistory();ui.postDelayed(this,60000);}}};
     private ScrollView consoleScroll;
     private LcdView lcd;
-    private Button start, stop;
+    private Button start;
+    private com.opensaab.usb.SessionWorkspace workspace;
+    private com.opensaab.usb.Tech2Controls controls;
+    private LinearLayout details;
+    private String compactVehicle="No vehicle connected", compactSecurity="";
     private final StringBuilder logs = new StringBuilder();
     private static final int[] DIGITS = {0x18,0x04,0x13,0x17,0x03,0x12,0x16,0x02,0x11,0x15};
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);com.opensaab.usb.BackNavigation.install(this,()->{if(running)key(0x01);else finish();});
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(13,22,32));
-        root.setOnApplyWindowInsetsListener((v,insets) -> {
-            v.setPadding(dp(12), insets.getSystemWindowInsetTop()+dp(8), dp(12), insets.getSystemWindowInsetBottom()+dp(8));
-            return insets;
-        });
-        root.addView(new com.opensaab.usb.BrandHeader(this,"OpenSAAB T2"));
-        vehicleSummary=label("Connect an adapter to identify your vehicle",13);
-        vehicleSummary.setSingleLine(true);vehicleSummary.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        vehicleSummary.setContentDescription("Last vehicle details — tap to view");
-        vehicleSummary.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Last vehicle")
-            .setMessage(vehicleDetails).setPositiveButton("Done",null).show());root.addView(vehicleSummary);
-        LinearLayout history=new LinearLayout(this);history.setOrientation(LinearLayout.VERTICAL);
-        connectionDate=label("Last connection · Date unknown",12);history.addView(connectionDate);
-        authStatus=label("auth_status: [N/A]",13);history.addView(authStatus);
-        authDate=label("Timestamp unavailable",12);history.addView(authDate);
-        history.setPadding(0,0,0,dp(2));root.addView(history);
-        status = label("Ready — select an adapter to start", 13); status.setSingleLine(true); status.setEllipsize(android.text.TextUtils.TruncateAt.END); root.addView(status);
-        LinearLayout actions = row(root);
-        start = button(actions,"Start", () -> selectAdapter("native_dtc",true));
-        stop = button(actions,"Stop emulation", () -> stopSession("Stopped by operator"));
-        stop.setEnabled(false);
-        button(actions,"Firmware",()->{if(running){status.setText("Stop emulation before changing firmware");return;}startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));});
-        LinearLayout diagnostics = row(root);
-        button(diagnostics,"Get security access",()->selectAdapter("native_seed",false));
-        button(diagnostics,"Read DTC",()->selectAdapter("native_dtc",false));
-        LinearLayout dataActions = row(root);
-        button(dataActions,"Clear DTC",()->selectAdapter("native_clear_dtc",false));
-        button(dataActions,"Engine Data",()->selectAdapter("native_engine_data",false));
-        lcd = new LcdView();
-        LinearLayout extras = row(root);
-        button(extras,"Report issue",()->{if(running){status.setText("Stop emulation before preparing a report");return;}startActivity(new android.content.Intent(this,com.opensaab.usb.SupportReportActivity.class));});
-        button(extras,"DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this));
-        button(extras,"Support",()->{
-            if(running || com.opensaab.usb.FirmwareGate.busy() || com.opensaab.usb.SecurityAccessView.workflowBusy()){
-                com.opensaab.usb.ProjectSupport.waitForSession(this);return;
-            }
-            com.opensaab.usb.ProjectSupport.show(this);
-        });
-        LinearLayout systemActions = row(root);
-        button(systemActions,"Check for updates",()->{if(running){status.setText("Stop firmware before checking for updates");return;}com.opensaab.usb.AppUpdates.show(this);});
-        button(systemActions,"Adv. Features",()->com.opensaab.usb.AdvancedFeatures.show(this,()->running));
-        console=label("Console: waiting for firmware",11);
-        console.setTypeface(Typeface.MONOSPACE);
-        consoleScroll = new ScrollView(this); consoleScroll.addView(console);
-        root.addView(new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);}),new LinearLayout.LayoutParams(-1,0,1));
-        com.opensaab.usb.SessionStyle.stack(root);
-        com.opensaab.usb.HeadunitLayout.apply(root);
-        com.opensaab.usb.SessionStyle.fitPortrait(root,58);
-        setContentView(root);
+        details=new LinearLayout(this);details.setOrientation(LinearLayout.VERTICAL);
+        vehicleSummary=label("Connect an adapter to identify your vehicle",14);details.addView(vehicleSummary);
+        vehicleSummary.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Last vehicle").setMessage(vehicleDetails).setPositiveButton("Done",null).show());
+        connectionDate=label("Last connection · Date unknown",13);details.addView(connectionDate);
+        authStatus=label("auth_status: [N/A]",14);details.addView(authStatus);
+        authDate=label("Timestamp unavailable",13);details.addView(authDate);
+        status=label("Ready — select an adapter to start",13);details.addView(status);
+        status.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int a,int c,int f){}public void onTextChanged(CharSequence t,int a,int b,int c){updateWorkspace();}public void afterTextChanged(android.text.Editable e){}});
+        lcd=new LcdView();console=label("Console: waiting for firmware",11);console.setTypeface(Typeface.MONOSPACE);
+        consoleScroll=new ScrollView(this);consoleScroll.addView(console);
+        controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
+        controls.setActions(this::showActions);
+        workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
+        start=new Button(this);start.setText("Start · select adapter");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
+        com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
         }
@@ -127,18 +96,35 @@ public final class MainActivity extends Activity {
     private TextView label(String text, int size) {
         TextView t=new TextView(this); t.setText(text); t.setTextSize(size); t.setTextColor(0xffdce9f2); return t;
     }
-    private LinearLayout row(LinearLayout parent) {
-        LinearLayout r=new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL);
-        parent.addView(r,new LinearLayout.LayoutParams(-1,dp(48))); return r;
+    private void updateWorkspace(){
+        if(workspace==null)return;
+        workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):compactVehicle+"\n"+(compactSecurity.isEmpty()?status.getText():compactSecurity));
+        if(start!=null)start.setVisibility(running?View.GONE:View.VISIBLE);
     }
-    private Button button(LinearLayout row,String text,Runnable action) {
-        Button b=new Button(this); b.setText(text); b.setTextSize(12); b.setAllCaps(false);
-        b.setPadding(0,0,0,0); b.setMinWidth(0); b.setMinimumWidth(0);
-        b.setContentDescription(text); b.setOnClickListener(v->action.run());
-        com.opensaab.usb.SessionStyle.button(b,false);
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);
-        if(row.getChildCount()>0)p.leftMargin=dp(8);
-        row.setBaselineAligned(false);row.addView(b,p);return b;
+    public android.app.Dialog showActions(){
+        return new com.opensaab.usb.SessionSheet.Menu(this)
+            .add("Get security access",()->selectAdapter("native_seed",false))
+            .add("Read DTC",()->selectAdapter("native_dtc",false))
+            .add("Clear DTC",()->com.opensaab.usb.SessionSheet.confirmClear(this,()->selectAdapter("native_clear_dtc",false)))
+            .add("Engine Data",()->selectAdapter("native_engine_data",false))
+            .add("Saved DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this))
+            .add(workspace.expanded()?"Show header":"Expand screen",workspace::toggleExpanded)
+            .add("App menu",this::showAppMenu).show("Actions");
+    }
+    private void showAppMenu(){
+        com.opensaab.usb.SessionSheet.Menu menu=new com.opensaab.usb.SessionSheet.Menu(this);
+        if(running)menu.add("Stop emulation",()->stopSession("Stopped by operator"));
+        menu.add("Firmware selection",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));})
+            .add("Adapter & advanced tools",()->com.opensaab.usb.AdvancedFeatures.show(this,()->running))
+            .add("Report issue",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.SupportReportActivity.class));})
+            .add("Console",controls::showConsole)
+            .add("Check for updates",()->{if(idleTool())com.opensaab.usb.AppUpdates.show(this);})
+            .add("About / Support",()->{if(idleTool())com.opensaab.usb.ProjectSupport.show(this);})
+            .add("Firmware controls help",controls::showHelp).show("App menu");
+    }
+    private boolean idleTool(){
+        if(!running&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy())return true;
+        Toast.makeText(this,"Stop the current session before opening this tool",Toast.LENGTH_LONG).show();return false;
     }
     private void key(int code) { enqueue(String.format(Locale.ROOT,"0x%02x",code)); }
     private void selectAdapter(String mode,boolean allowEmulation) {
@@ -163,7 +149,7 @@ public final class MainActivity extends Activity {
         if(devices.isEmpty()){
             new com.opensaab.usb.ConnectionAttempt(this,com.opensaab.usb.ConnectionAttempt.Adapter.SELECTION)
                 .finish(com.opensaab.usb.ConnectionAttempt.Outcome.FAILED,com.opensaab.usb.ConnectionAttempt.Reason.NO_ADAPTER);
-            picker.setMessage("No supported adapter detected. Connect a USB adapter, then tap Refresh. If this keeps happening, use Report issue on the home screen.");
+            picker.setMessage("No supported adapter detected. Connect a USB adapter, then tap Refresh. If this keeps happening, use App menu → Report issue.");
         }
         else picker.setItems(labels.toArray(new String[0]),(dialog,index)->connectAdapter(devices.get(index),mode,!allowEmulation));
         picker.setPositiveButton("Refresh",(dialog,which)->selectAdapter(mode,allowEmulation));
@@ -218,7 +204,7 @@ public final class MainActivity extends Activity {
         }
         if(getFilesDir().getUsableSpace()<64L*1024*1024) { status.setText("Need 64 MB free for session logs"); return; }
         running=true; stopping.set(false); keys.clear(); logs.setLength(0);
-        start.setEnabled(false); stop.setEnabled(true); lcd.frame=null; lcd.invalidate();
+        start.setEnabled(false); lcd.frame=null; lcd.invalidate();
         status.setText("Emulation mode • Offline • No vehicle connection");
         new Thread(()->runSession(firmware),"tech2-session").start();
     }
@@ -279,7 +265,7 @@ public final class MainActivity extends Activity {
             process=null;
             if(firmwareLease!=null)firmwareLease.close();
             final String message=end;
-            ui.post(()->{running=false;stop.setEnabled(false);start.setText("Start");start.setEnabled(true);status.setText(message);append(message);});
+            ui.post(()->{running=false;start.setText("Start");start.setEnabled(true);status.setText(message);append(message);});
         }
     }
     private void readLogs(java.lang.Process child) {
@@ -328,6 +314,8 @@ public final class MainActivity extends Activity {
                 historyPending.set(false);if(!foreground||isDestroyed())return;
                 vehicleSummary.setText(last==null?"Connect an adapter to identify your vehicle":"Last vehicle · "+last.description());
                 connectionDate.setText(history.connection);authStatus.setText(history.auth);authStatus.setTextColor(history.color);authDate.setText(history.timestamp);
+                compactVehicle=last==null?"No vehicle connected · tap for details":"Last vehicle · "+last.modelYear+" · "+last.platform;
+                compactSecurity=last==null?"":history.auth.replace("auth_status:","Security:");updateWorkspace();
                 vehicleDetails=(last==null?"No saved vehicle connection":last.description()+"\nVIN: "+last.vin)+"\n\n"+history.connection+"\n"+history.auth+"\n"+history.timestamp+
                     "\n\nSecurity status describes the saved emulator data. Fresh/Stale is an age reminder, not a vehicle-access expiry.";
             });

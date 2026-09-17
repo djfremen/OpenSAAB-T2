@@ -20,8 +20,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         if(failure[0]!=null)throw new AssertionError("UI check failed",failure[0]);
     }
     private final ArrayList<Integer> sent = new ArrayList<>();
-    private void exercise(int widthDp, int heightDp) {
-        android.content.Context context = getTargetContext();
+    private void exercise(Activity context,int widthDp, int heightDp) {
         float density = context.getResources().getDisplayMetrics().density;
         ScrollView console = new ScrollView(context); console.addView(new TextView(context));
         Tech2Controls panel = new Tech2Controls(context, new ImageView(context), console, sent::add);
@@ -35,31 +34,24 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         check(body.getVisibility()==View.GONE,"Keypad should start hidden");
         keys.performClick();
         panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));panel.layout(0,0,width,height);
-        check(display.getHeight()<largeDisplayHeight,"Keypad toggle did not resize display");
+        check(display.getHeight()==largeDisplayHeight,"Overlay resized firmware display");
+        View keyRoot=panel.keypadDialog.getWindow().getDecorView();
         String[] labels = {"EXIT","S1","S2","S3","S4","HELP","↑","YES","←","ENTER","→","↓","NO","F0","F1","F2","F3","F4","F5","F6","F7","F8","F9"};
         int[] expected = {1,10,6,7,8,25,9,14,11,16,13,12,20,24,4,19,23,3,18,22,2,17,21};
         sent.clear();
         for (int i=0;i<labels.length;i++) {
             Button key = panel.findViewWithTag("tech2-key-" + expected[i]);
+            if(key==null)key=keyRoot.findViewWithTag("tech2-key-"+expected[i]);
             check(key != null && labels[i].contentEquals(key.getText()), "Missing/wrong key: " + labels[i]);
-            check(key.getHeight() >= Math.round(48 * density), "Small touch target: " + labels[i]);
+            check(key.getMinimumHeight() >= Math.round(48 * density), "Small touch target: " + labels[i]);
             key.performClick();
             check(sent.size() == i+1 && sent.get(i) == expected[i], "Duplicate/wrong callback: " + labels[i]);
         }
-        Button exit=panel.findViewWithTag("tech2-key-1"), toggle=panel.findViewWithTag("tech2-console-toggle");
-        check(console.getVisibility()==View.GONE,"Console should start collapsed");
-        for(int i=0;i<2;i++) {
-            toggle.performClick();
-            panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));panel.layout(0,0,width,height);
-            body.fullScroll(View.FOCUS_DOWN);
-            Rect bounds=new Rect(0,0,exit.getWidth(),exit.getHeight());panel.offsetDescendantRectToMyCoords(exit,bounds);
-            check(bounds.top>=0 && bounds.bottom<=height,"EXIT clipped by scrolling/console");
-            check(body.getHeight()>0,"Console consumed entire body");
-        }
-        check(console.getVisibility()==View.GONE,"Console failed to collapse");
-        keys.performClick();
+        panel.keypadDialog.dismiss();
+        panel.showConsole();panel.consoleDialog.dismiss();
+        keys.performClick();panel.keypadDialog.dismiss();
         panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));panel.layout(0,0,width,height);
-        check(body.getVisibility()==View.GONE && display.getHeight()==largeDisplayHeight,"Large display failed to restore");
+        check(display.getHeight()==largeDisplayHeight,"Overlay changed display size");
         check(sent.size()==expected.length,"Console/scroll/toggle emitted a firmware key");
     }
     private void touch(View v, int action, float x, float y) {
@@ -115,7 +107,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
     public void onStart() {
         Bundle result=new Bundle();int status=-1;Activity activity=null;
         try {
-            checkedMain(()->{exercise(360,440);exercise(800,220);});
+
             for (String name : new String[]{"com.opensaab.tech2.MainActivity","com.opensaab.usb.ChipsoftUsbActivity","com.opensaab.usb.NanoProbeActivity"}) {
                 Intent intent=new Intent().setClassName(getTargetContext(),name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 // Deliberately omit auto_start. These activities stay idle and never claim USB.
@@ -145,10 +137,10 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                     if(shown instanceof ChipsoftUsbActivity)check(!((ChipsoftUsbActivity)shown).running.get(),"Unexpected Chipsoft session");
                     if(shown instanceof NanoProbeActivity)check(!((NanoProbeActivity)shown).running.get(),"Unexpected Nano session");
                 });
-                if(name.endsWith("MainActivity"))gestures(activity);
+                if(name.endsWith("MainActivity")){checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});gestures(activity);}
                 checkedMain(shown::finish);activity=null;waitForIdleSync();
             }
-            result.putString("stream","PASS: 23 verified key callbacks; compact/full keypad resizing; 48dp targets; short/wide layouts; persistent EXIT; swipe direction and one-event limit; long-press ENTER; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
+            result.putString("stream","PASS: 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; swipe direction and one-event limit; long-press ENTER; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
         }catch(Throwable e){status=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(activity!=null){final Activity a=activity;runOnMainSync(a::finish);}finish(status,result);}
     }

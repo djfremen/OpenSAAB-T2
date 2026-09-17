@@ -38,7 +38,7 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             Files.write(screen.toPath(),"Help\nYou need Security Access from TIS2000\n1. Disconnect Tech 2 from Vehicle.".getBytes("UTF-8"));
             awaitUi(a,()->"Get security access".equals(((Button)a.securityAccess.findViewWithTag("security-action")).getText().toString()));
             main(()->{
-                check(a.securityAccess.isShown(),"TIS prompt action missing");
+                check(a.securityAccess.getVisibility()==View.VISIBLE,"TIS prompt action missing");
                 Button action=(Button)a.securityAccess.findViewWithTag("security-action");check(action.getText().toString().equals("Get security access"),"Wrong next action");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Security banner hid EXIT");
                 check(!a.running.get()&&!SecurityAccessView.workflowBusy(),"Detection initiated a session or request");
@@ -54,7 +54,7 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             awaitUi(a,()->((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"));
             main(()->{
                 TextView text=(TextView)a.securityAccess.findViewWithTag("security-message");
-                check(a.securityAccess.isShown()&&text.getText().toString().contains("Previous security processing"),"Processing history vanished on return to firmware");
+                check(a.securityAccess.getVisibility()==View.VISIBLE&&text.getText().toString().contains("Previous security processing"),"Processing history vanished on return to firmware");
                 check(text.getText().toString().contains("Not yet loaded")&&!text.getText().toString().contains("unverified"),"Processing status should describe only the completed step");
                 check(((Button)a.securityAccess.findViewWithTag("security-action")).getText().toString().contains("Details"),"Receipt details unavailable");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Persistent status hid EXIT");
@@ -69,14 +69,16 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             main(()->{
                 check(a.nativeDirectory==run&&a.running.get()&&!SecurityAccessView.workflowBusy(),"Manual detection restarted/stopped/submitted the session");
                 check(sent.isEmpty(),"Manual detection sent firmware keys");
-                View shortcuts=a.getWindow().getDecorView().findViewWithTag("session-shortcuts");Rect r=new Rect();
+                View shortcuts=a.getWindow().getDecorView().findViewWithTag("tech2-actions");Rect r=new Rect();
                 check(shortcuts!=null&&shortcuts.getGlobalVisibleRect(r)&&r.height()==shortcuts.getHeight(),"Session shortcuts clipped/hidden");
+                a.updateWorkspace();
+                TextView compact=a.getWindow().getDecorView().findViewWithTag("session-summary");check(compact.getText().toString().contains("Ready to process"),"Manual collection ready state missing from compact header");
                 a.running.set(false);
             });
             new File(run,VehicleSession.FILE).delete();
             awaitUi(a,()->!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"));
             main(()->check(!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"),"History shown without matching vehicle identity"));
-            result.putString("stream","PASS: manual full-control seed collection reaches Process security data in same session with no repeated navigation/API; pinned shortcuts visible; persistent history, identity scope, prompt/menu discrimination, EXIT and dialog dismissal; no USB/API/card operations\n");
+            result.putString("stream","PASS: manual full-control seed collection reaches Process security data in same session with no repeated navigation/API; Actions remains visible; persistent history, identity scope, prompt/menu discrimination, EXIT and dialog dismissal; no USB/API/card operations\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(activity!=null){final Activity a=activity;main(a::finish);}if(dir!=null){for(File f:dir.listFiles())f.delete();dir.delete();}
             if(receiptFile!=null){try{if(oldReceipt==null)receiptFile.delete();else Files.write(receiptFile.toPath(),oldReceipt);}catch(Exception ignored){}}

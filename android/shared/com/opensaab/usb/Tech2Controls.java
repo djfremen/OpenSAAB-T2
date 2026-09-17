@@ -23,19 +23,21 @@ public final class Tech2Controls extends LinearLayout {
         {0x16, 0x02, 0x11}, {0x15, -1, -1}
     };
     private FirmwareGestureView display;
-    private ScrollView keypad;
-    private boolean keypadVisible;
+    android.app.Dialog keypadDialog,consoleDialog;
     private ScrollView consoleView;
+    private Button actionButton;
+    private Runnable actions;
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
 
     public Tech2Controls(Context context, View lcd, ScrollView console, IntConsumer send) {
         super(context);
         setOrientation(VERTICAL);
         ScrollView body = new ScrollView(context);
-        keypad = body; body.setTag("tech2-keypad"); body.setVisibility(GONE);
+        body.setTag("tech2-keypad"); body.setVisibility(GONE);
         body.setContentDescription("Scroll for more firmware keys");
         LinearLayout content = new LinearLayout(context); content.setOrientation(VERTICAL);
         body.addView(content);
+        TextView hint=new TextView(context);hint.setText("Swipe ↑ / ↓ on the screen to move one item. Hold for ENTER.");hint.setTextSize(14);hint.setTextColor(0xffedf4fa);content.addView(hint,new LayoutParams(-1,-2));
         display = new FirmwareGestureView(context, send);
         display.setTag("tech2-gestures");
         consoleView = console;
@@ -60,11 +62,6 @@ public final class Tech2Controls extends LinearLayout {
             SessionStyle.row(row);
         }
         addView(body, new LayoutParams(-1, 0));
-        TextView hint = new TextView(context);
-        hint.setText("Swipe ↑ / ↓ one item · Hold for ENTER");
-        hint.setTextSize(12); hint.setGravity(android.view.Gravity.CENTER);
-        hint.setTag("tech2-gesture-hint");
-        addView(hint, new LayoutParams(-1, dp(24)));
         LinearLayout footer = new LinearLayout(context);
         Button exit = button("EXIT", () -> send.accept(0x01));
         exit.setTag("tech2-key-1"); exit.setContentDescription("EXIT — return in firmware");
@@ -73,41 +70,22 @@ public final class Tech2Controls extends LinearLayout {
         keys.setTag("tech2-keypad-toggle"); keys.setContentDescription("Show full keypad");
         keys.setOnClickListener(v -> {
             display.cancelGesture();
-            keypadVisible = !keypadVisible;
-            body.setVisibility(keypadVisible ? VISIBLE : GONE);
-            keys.setText(keypadVisible ? "Hide keys" : "Keypad");
-            keys.setContentDescription(keypadVisible ? "Hide full keypad" : "Show full keypad");
-            requestLayout();
+            body.removeView(content);
+            android.app.Dialog dialog=SessionSheet.show((android.app.Activity)getContext(),"Firmware keypad",content);
+            keypadDialog=dialog;
+            dialog.setOnDismissListener(d->{if(content.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)content.getParent()).removeView(content);body.addView(content);});
         });
         footer.addView(keys, new LayoutParams(0, -1, 1));
-        Button toggle = button("Console", () -> {});
-        toggle.setTag("tech2-console-toggle");
-        toggle.setContentDescription("Show console");
-        toggle.setOnClickListener(v -> {
-            display.cancelGesture();
-            boolean show = console.getVisibility() != VISIBLE;
-            console.setVisibility(show ? VISIBLE : GONE);
-            toggle.setText(show ? "Hide log" : "Console");
-            toggle.setContentDescription(show ? "Hide console" : "Show console");
-        });
-        footer.addView(toggle, new LayoutParams(0, -1, 1));
+        actionButton=button("Console",this::showConsole);actionButton.setTag("tech2-actions");
+        footer.addView(actionButton,new LayoutParams(0,-1,1));
         SessionStyle.row(footer);
-        addView(footer, new LayoutParams(-1, dp(48)));
-        console.setVisibility(GONE);
-        // Limit expansion on short/landscape windows so navigation retains room.
-        int consoleHeight = Math.min(120, getResources().getConfiguration().screenHeightDp / 5);
-        addView(console, new LayoutParams(-1, dp(consoleHeight)));
+        LayoutParams fp=new LayoutParams(-1,dp(48));fp.topMargin=dp(8);addView(footer,fp);
     }
-    @Override protected void onMeasure(int width, int height) {
-        int available = View.MeasureSpec.getSize(height);
-        consoleView.getLayoutParams().height = Math.min(dp(120), available / 5);
-        if (consoleView.getVisibility() == VISIBLE) available -= consoleView.getLayoutParams().height;
-        // The display takes all remaining room with keys hidden. Opening keys
-        // gives their scrolling panel 55% of the flexible area. EXIT remains outside that scroll.
-        int flexible = Math.max(0, available - dp(128)); // soft keys + hint + footer
-        keypad.getLayoutParams().height = keypadVisible ? flexible * 55 / 100 : 0;
-        super.onMeasure(width, height);
-    }
+    public void setActions(Runnable open){actions=open;actionButton.setText("Actions");actionButton.setContentDescription("Open diagnostic actions");actionButton.setOnClickListener(v->{display.cancelGesture();actions.run();});}
+    public void showConsole(){display.cancelGesture();consoleDialog=SessionSheet.show((android.app.Activity)getContext(),"Console",consoleView);}
+    public void showHelp(){new android.app.AlertDialog.Builder(getContext()).setTitle("Firmware controls")
+        .setMessage("Swipe up or down on the Tech2 screen to move one item. Hold the screen for ENTER. S1–S4 follow the firmware labels. EXIT returns within the firmware; it does not stop emulation. Open Keypad for arrows, numbers and other keys.")
+        .setPositiveButton("Got it",null).show();}
     private Button button(String text, Runnable action) {
         Button b = new Button(getContext()); b.setText(text); b.setTextSize(14);
         b.setAllCaps(false); b.setPadding(0, 0, 0, 0); b.setMinWidth(0); b.setMinimumWidth(0);

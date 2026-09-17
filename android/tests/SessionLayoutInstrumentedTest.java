@@ -1,63 +1,43 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.opensaab.usb;
 import android.app.*;import android.content.*;import android.os.*;import android.view.*;import android.widget.*;import android.graphics.*;import java.io.*;
-/** Synthetic presentation fixture; never starts USB or changes the working card. */
+/** Runs idle UI only. No adapter, card writes, API calls or firmware commands. */
 public final class SessionLayoutInstrumentedTest extends Instrumentation {
  public void onCreate(Bundle b){super.onCreate(b);start();}
- void headunit(android.content.Context original){
-  android.content.res.Configuration config=new android.content.res.Configuration(original.getResources().getConfiguration());
-  config.screenWidthDp=1024;config.screenHeightDp=600;config.densityDpi=160;
-  android.content.Context context=new android.content.ContextWrapper(original.createConfigurationContext(config)){
-   public String getPackageName(){return "com.opensaab.tech2.headunit32";}
-  };
-  LinearLayout root=new LinearLayout(context);root.setOrientation(LinearLayout.VERTICAL);
-  root.addView(new BrandHeader(context,"OpenSAAB T2 · Chipsoft"));
-  LinearLayout actions=new LinearLayout(context);for(String name:new String[]{"Start firmware","Stop USB","Back"}){Button b=new Button(context);b.setText(name);actions.addView(b);}
-  SessionStyle.row(actions);root.addView(actions,new LinearLayout.LayoutParams(-1,56));
-  ScrollView console=new ScrollView(context);console.addView(new TextView(context));
-  Tech2Controls controls=new Tech2Controls(context,new ImageView(context),console,key->{});root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));
-  SessionStyle.stack(root);HeadunitLayout.apply(root);SessionStyle.fitPortrait(root);
-  root.measure(View.MeasureSpec.makeMeasureSpec(1024,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(600,View.MeasureSpec.EXACTLY));root.layout(0,0,1024,600);
-  View lcd=root.findViewWithTag("tech2-gestures");if(root.findViewWithTag("headunit-actions")==null||lcd.getWidth()<480||lcd.getHeight()<280)throw new AssertionError("Head-unit firmware area too small");
+ void ui(Runnable task){final Throwable[] error={null};runOnMainSync(()->{try{task.run();}catch(Throwable e){error[0]=e;}});if(error[0]!=null)throw new AssertionError(error[0]);}
+ static void check(boolean b,String message){if(!b)throw new AssertionError(message);}
+ static TextView text(View v,String label){if(v instanceof TextView&&label.contentEquals(((TextView)v).getText()))return (TextView)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){TextView f=text(((ViewGroup)v).getChildAt(i),label);if(f!=null)return f;}return null;}
+ void visible(View root,String tag){View v=root.findViewWithTag(tag);Rect r=new Rect();check(v!=null&&v.getGlobalVisibleRect(r)&&r.height()==v.getHeight()&&r.width()==v.getWidth(),"Clipped: "+tag);}
+ void layouts(Activity a){
+  for(int[] size:new int[][]{{360,660},{360,724},{393,780},{1024,600},{800,480}}){
+   ScrollView log=new ScrollView(a);log.addView(new TextView(a));
+   Tech2Controls display=new Tech2Controls(a,new ImageView(a),log,key->{throw new AssertionError("Unexpected firmware input");});display.setActions(()->{});
+   SessionWorkspace w=new SessionWorkspace(a,"OpenSAAB T2 · Chipsoft",display,()->{},()->{});w.summary("2004 9-3 · Connected\nSecurity: [POST-AUTH] · Fresh");
+   int width=SessionStyle.dp(a,size[0]),height=SessionStyle.dp(a,size[1]);
+   w.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));w.layout(0,0,width,height);
+   View lcd=w.findViewWithTag("tech2-gestures");check(lcd.getHeight()>=SessionStyle.dp(a,size[0]>size[1]?260:280),"Firmware too short "+size[0]+"x"+size[1]);
+   check(lcd.getWidth()>=SessionStyle.dp(a,size[0]>size[1]?500:330),"Firmware too narrow");
+   check(w.getOrientation()==(size[0]>=720&&size[0]>size[1]?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL),"Wrong responsive layout");
+   int old=lcd.getHeight();w.toggleExpanded();w.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));w.layout(0,0,width,height);
+   check(lcd.getHeight()>=old,"Expanded screen shrank");check(w.findViewWithTag("tech2-actions").getVisibility()==View.VISIBLE,"Expanded screen has no way back");
+  }
  }
- static TextView findText(View v,String label){if(v instanceof TextView&&label.contentEquals(((TextView)v).getText()))return (TextView)v;
-  if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){TextView found=findText(((ViewGroup)v).getChildAt(i),label);if(found!=null)return found;}return null;}
- static Button find(View v,String label){TextView found=findText(v,label);return found instanceof Button?(Button)found:null;}
- public void onStart(){Bundle out=new Bundle();ChipsoftUsbActivity a=null;try{
-  a=(ChipsoftUsbActivity)startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.usb.ChipsoftUsbActivity").putExtra("full_native",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-  final ChipsoftUsbActivity v=a;runOnMainSync(()->{headunit(v);
-   v.lcdHandler.removeCallbacksAndMessages(null);v.status.setText("USB disconnected");v.vinSummary.setText("Last vehicle · 2004 Saab 9-3 Sport Sedan\nB207R · Turbo · Silver Metallic");
-   v.securityAccess.setVisibility(View.VISIBLE);TextView state=v.securityAccess.findViewWithTag("security-state");state.setText("Security status  [POST-AUTH]");state.setTextColor(SsaState.POST_AUTH.color);
-   ((TextView)v.securityAccess.findViewWithTag("security-message")).setText("Post-auth written · Sep 16, 17:06:23 PDT");
-   ((Button)v.securityAccess.findViewWithTag("security-action")).setText("Details");v.reportConnection.setVisibility(View.VISIBLE);
-  });waitForIdleSync();SystemClock.sleep(300);
-  runOnMainSync(()->{
-   View exit=v.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();if(!exit.getGlobalVisibleRect(r)||r.height()!=exit.getHeight())throw new AssertionError("EXIT clipped");
-   Button b=v.securityAccess.findViewWithTag("security-action");LinearLayout row=(LinearLayout)b.getParent();if(row.getChildCount()!=1||b.getHeight()<SessionStyle.dp(v,48))throw new AssertionError("Clear offset must live in advanced tools; Details must retain touch target");
-   if(v.running.get()||SecurityAccessView.workflowBusy())throw new AssertionError("Unexpected vehicle work");
-  });
-  File file=new File(getTargetContext().getExternalFilesDir(null),"session-layout.png");try(FileOutputStream f=new FileOutputStream(file)){getUiAutomation().takeScreenshot().compress(Bitmap.CompressFormat.PNG,100,f);}
-  runOnMainSync(v::finish);
-  Activity main=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-  waitForIdleSync();SystemClock.sleep(300);
-  final AlertDialog[] dialog={null};
-  runOnMainSync(()->{
-   View root=main.getWindow().getDecorView();
-   Button advanced=find(root,"Adv. Features");if(advanced==null)throw new AssertionError("Missing advanced tools");
-   for(String label:new String[]{"Adapters","USB tests","System Check","Security Access Password","Clear offset · refresh access"})if(find(root,label)!=null)throw new AssertionError("Advanced tool on home: "+label);
-   Button read=find(root,"Read DTC");Button security=find(root,"Get security access");
-   if(read==null||security==null||read.getHeight()!=security.getHeight()||Math.abs(read.getWidth()-security.getWidth())>1||read.getLeft()-security.getRight()<SessionStyle.dp(main,8))throw new AssertionError("Main buttons uneven/colliding");
-   View exit=root.findViewWithTag("tech2-key-1");Rect r=new Rect();if(!exit.getGlobalVisibleRect(r)||r.height()!=exit.getHeight())throw new AssertionError("Main EXIT clipped");
-   dialog[0]=AdvancedFeatures.show(main,()->false);
-  });waitForIdleSync();SystemClock.sleep(200);
-  runOnMainSync(()->{
-   View root=dialog[0].getWindow().getDecorView();
-   for(String label:new String[]{"Adapters","USB tests","System Check","Security Access Password","Clear offset · refresh access","Done"}){
-    Button b=find(root,label);if(b==null||b.getHeight()<SessionStyle.dp(main,48))throw new AssertionError("Missing/short advanced tool: "+label);
-   }
-   if(findText(root,"Chipsoft restricted mode")==null)throw new AssertionError("Missing restricted switch");
-   dialog[0].dismiss();main.finish();
-  });
-  out.putString("stream","PASS: advanced tools grouped, equal main buttons with 8dp gap, 48dp targets, visible EXIT, head-unit firmware space; no card/USB/API operations");finish(-1,out);
- }catch(Throwable e){out.putString("stream","FAIL: "+e);finish(0,out);}finally{if(a!=null){final Activity v=a;runOnMainSync(v::finish);}}}
+ public void onStart(){Bundle out=new Bundle();Activity current=null;try{
+  for(String name:new String[]{"com.opensaab.tech2.MainActivity","com.opensaab.usb.ChipsoftUsbActivity"}){
+   Intent intent=new Intent().setClassName(getTargetContext(),name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);if(name.contains("Chipsoft"))intent.putExtra("full_native",true);
+   current=startActivitySync(intent);final Activity a=current;waitForIdleSync();
+   ui(()->{
+    if(a instanceof ChipsoftUsbActivity){ChipsoftUsbActivity c=(ChipsoftUsbActivity)a;c.lcdHandler.removeCallbacksAndMessages(null);check(!c.running.get(),"Unexpected USB session");}
+    layouts(a);View root=a.getWindow().getDecorView();visible(root,"tech2-key-1");visible(root,"tech2-actions");visible(root,"session-menu");visible(root,"session-summary");
+    check(text(root,"Read DTC")==null&&text(root,"Check for updates")==null,"Secondary actions consume screen");
+    check(root.findViewWithTag("tech2-gestures").getHeight()>=SessionStyle.dp(a,280),"Live firmware space too small");
+   });
+   File file=new File(getTargetContext().getExternalFilesDir(null),name.contains("Chipsoft")?"workspace-chipsoft.png":"workspace-main.png");try(FileOutputStream f=new FileOutputStream(file)){getUiAutomation().takeScreenshot().compress(Bitmap.CompressFormat.PNG,100,f);}
+   final Dialog[] sheet={null};
+   ui(()->{sheet[0]=a instanceof ChipsoftUsbActivity?((ChipsoftUsbActivity)a).showActions():((com.opensaab.tech2.MainActivity)a).showActions();});waitForIdleSync();
+   ui(()->{View root=sheet[0].getWindow().getDecorView();for(String title:new String[]{"Get security access","Read DTC","Clear DTC","Engine Data","Saved DTC reports"})check(text(root,title)!=null,"Missing action "+title);sheet[0].dismiss();});
+   ui(a::finish);waitForIdleSync();current=null;
+  }
+  out.putString("stream","PASS: Main and Chipsoft firmware-first workspaces; 360dp Mate/phone and 800/1024 landscape sizing; visible EXIT/Actions/menu/status; expansion retains controls; no USB/card/API operations");finish(-1,out);
+ }catch(Throwable e){out.putString("stream","FAIL: "+e);finish(0,out);}finally{if(current!=null){final Activity a=current;runOnMainSync(a::finish);}}}
 }
