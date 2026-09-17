@@ -47,6 +47,12 @@ public final class FirmwareMenuNavigator {
         String text=screen.trim();
         if(!candidate.equals(text)){candidate=text;stableAt=now;return null;}
         if(text.isEmpty()||text.equals(sent)||now-stableAt<50)return null;
+        // The operator can return to the logo after a task or an automatic post-auth restart.
+        // Advance only the explicit ENTER splash prompt, then continue through the normal menus.
+        if(stage==Stage.MAIN&&text.contains("Software Version")
+                &&(text.contains("Press [ENTER]")||text.contains("Press ENTER"))){
+            joinCurrentMenu=false;proposed=Stage.MAIN;return 0x10;
+        }
         if(joinCurrentMenu){
             joinCurrentMenu=false;
             if(text.contains("Main Menu")&&function(text,"Diagnostics")!=null)stage=Stage.MAIN;

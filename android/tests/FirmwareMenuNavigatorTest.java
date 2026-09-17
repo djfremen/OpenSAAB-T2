@@ -48,6 +48,18 @@ public final class FirmwareMenuNavigatorTest {
         none(n,"Programming in progress\nDo not disconnect");if(n.active())throw new AssertionError("Unknown active task must be left alone");
         if(SsaData.collectingAccess("All\nF6: Get Security Access")||SsaData.collectingAccess("You need Security Access from TIS2000\nDisconnect Tech 2 from Vehicle"))throw new AssertionError("Menu/help falsely adopted as fresh collection");
         if(!SsaData.collectingAccess("Checking Security Access\nReading all vehicle VINs OK\nReading all vehicle Seed Working"))throw new AssertionError("Manual seed sweep missed");
+        for(FirmwareMenuNavigator.Target target:FirmwareMenuNavigator.Target.values()){
+            n=new FirmwareMenuNavigator(SecurityMenuNavigatorTest.car(2004,"9440"),target,true);
+            none(n,"");
+            key(n,"32 MB\nPress [ENTER] to continue.\nSoftware Version: 9.250\nNorth American Operations",0x10);
+            none(n,"");
+            key(n,"Main Menu\nF0: Diagnostics",0x18);
+            key(n,"Model Year\n2004",0x10);
+            n.cancel();none(n,"Press [ENTER] to continue.\nSoftware Version: 9.250");
+        }
+        n=nav(FirmwareMenuNavigator.Target.READ_DTC,2004);
+        key(n,"Press ENTER to continue\nSoftware Version: 9.250",0x10);
+        key(n,"Main Menu\nF0: Diagnostics",0x18);
         System.out.println("Diagnostic shortcuts: year/platform, Read/Clear DTC, Engine Data, confirmations, manual takeover, timeout PASS");
     }
 }
