@@ -14,7 +14,7 @@ Setup downloads the selected emulator from official GitHub releases, verifies it
 
 Initial catalog: ARM64 `v0.1.0-preview.2` / 100002; ARM32 `headunit-v0.1.0-headunit.3` / 100003. No emulator release changed as part of the installer rollout. Architecture indicator changes are committed in source but not in those existing emulator APKs.
 
-Maintenance: `android/compatibility-checker/com/opensaab/checker/` (UI, catalog/download verification and narrow installer provider), `scripts/android/build-compatibility-checker.py` (signed build), `android/tests/SetupInstrumentedTest.java` (disposable emulator tests), `service/catalog/releases.json` (published releases). Website: `/Users/mini4/Documents/Projects/opensaab-research-update/static/t2/`.
+Maintenance: `android/compatibility-checker/com/opensaab/checker/` (UI, catalog/download verification and narrow installer provider), `scripts/android/build-compatibility-checker.py` (signed build), `android/tests/SetupInstrumentedTest.java` (disposable emulator tests), `service/catalog/releases.json` (published releases). Website: `$PROJECTS/opensaab-research-update/static/t2/`.
 
 Release process: publish/test an emulator APK first; verify its signature/hash/source receipt; update only its catalog entry. Keep archived APKs/source available on GitHub for reproducibility and testing, while the website offers Setup as the single download. No automatic architecture migration or silent updates.
 

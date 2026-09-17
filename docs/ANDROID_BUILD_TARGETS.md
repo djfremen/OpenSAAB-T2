@@ -20,8 +20,8 @@ The separate package keeps files, preferences, sessions and provider authorities
 ## Development workspace
 
 Development branch: `feature/headunit-arm32`.
-Local worktree: `/Users/mini4/Documents/Projects/OpenSAAB-T2-headunit-arm32`.
-Existing public ARM64 checkout: `/Users/mini4/Documents/Projects/OpenSAAB-T2-public`.
+Local worktree: `$PROJECTS/OpenSAAB-T2-headunit-arm32`.
+Existing public ARM64 checkout: `$PROJECTS/OpenSAAB-T2-public`.
 
 The existing published preview APK and release tag remain unchanged. Do not publish ARM32 artifacts under an ARM64 filename or attach experimental builds to that existing release.
 

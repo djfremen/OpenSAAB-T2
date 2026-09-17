@@ -4,20 +4,20 @@
     {
       "abi": "arm64-v8a",
       "package": "com.opensaab.tech2",
-      "version": "0.1.0-preview.4",
-      "version_code": 100004,
-      "bytes": 4552359,
-      "sha256": "4ac56d79887692827344ef2fe929aa5bfd087db80c63758aa81335404fcf940d",
-      "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.4/OpenSAAB-T2-arm64-v8a.apk"
+      "version": "0.1.0-preview.12",
+      "version_code": 100012,
+      "bytes": 4585127,
+      "sha256": "a23f722987203013fab6768877552e1ffb78ae83891d158de222541fb457b16e",
+      "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.12/OpenSAAB-T2-arm64-v8a.apk"
     },
     {
       "abi": "armeabi-v7a",
       "package": "com.opensaab.tech2.headunit32",
-      "version": "0.1.0-headunit.3",
-      "version_code": 100003,
-      "bytes": 3298989,
-      "sha256": "3b7a72fb5e6f039426c0c60e6dbf9de6841a33291d81e6d9ce314f3d6cc0fa20",
-      "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/headunit-v0.1.0-headunit.3/OpenSAAB-T2-headunit-armeabi-v7a.apk"
+      "version": "0.1.0-headunit.6",
+      "version_code": 100006,
+      "bytes": 3380909,
+      "sha256": "1f1dce9980307e73e56c6c65099929bb3394a120cdd1f09992619dfcc6828a12",
+      "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/headunit-v0.1.0-headunit.6/OpenSAAB-T2-headunit-armeabi-v7a.apk"
     }
   ]
 }
