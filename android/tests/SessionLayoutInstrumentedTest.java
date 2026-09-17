@@ -20,6 +20,9 @@ public final class SessionLayoutInstrumentedTest extends Instrumentation {
   root.measure(View.MeasureSpec.makeMeasureSpec(1024,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(600,View.MeasureSpec.EXACTLY));root.layout(0,0,1024,600);
   View lcd=root.findViewWithTag("tech2-gestures");if(root.findViewWithTag("headunit-actions")==null||lcd.getWidth()<480||lcd.getHeight()<280)throw new AssertionError("Head-unit firmware area too small");
  }
+ static TextView findText(View v,String label){if(v instanceof TextView&&label.contentEquals(((TextView)v).getText()))return (TextView)v;
+  if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){TextView found=findText(((ViewGroup)v).getChildAt(i),label);if(found!=null)return found;}return null;}
+ static Button find(View v,String label){TextView found=findText(v,label);return found instanceof Button?(Button)found:null;}
  public void onStart(){Bundle out=new Bundle();ChipsoftUsbActivity a=null;try{
   a=(ChipsoftUsbActivity)startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.usb.ChipsoftUsbActivity").putExtra("full_native",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
   final ChipsoftUsbActivity v=a;runOnMainSync(()->{headunit(v);
@@ -30,11 +33,31 @@ public final class SessionLayoutInstrumentedTest extends Instrumentation {
   });waitForIdleSync();SystemClock.sleep(300);
   runOnMainSync(()->{
    View exit=v.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();if(!exit.getGlobalVisibleRect(r)||r.height()!=exit.getHeight())throw new AssertionError("EXIT clipped");
-   Button b=v.securityAccess.findViewWithTag("security-action");LinearLayout row=(LinearLayout)b.getParent();View next=row.getChildAt(1);
-   if(b.getHeight()!=next.getHeight()||Math.abs(b.getWidth()-next.getWidth())>1||next.getLeft()-b.getRight()<SessionStyle.dp(v,8))throw new AssertionError("Uneven/colliding security controls");
+   Button b=v.securityAccess.findViewWithTag("security-action");LinearLayout row=(LinearLayout)b.getParent();if(row.getChildCount()!=1||b.getHeight()<SessionStyle.dp(v,48))throw new AssertionError("Clear offset must live in advanced tools; Details must retain touch target");
    if(v.running.get()||SecurityAccessView.workflowBusy())throw new AssertionError("Unexpected vehicle work");
   });
   File file=new File(getTargetContext().getExternalFilesDir(null),"session-layout.png");try(FileOutputStream f=new FileOutputStream(file)){getUiAutomation().takeScreenshot().compress(Bitmap.CompressFormat.PNG,100,f);}
-  out.putString("stream","PASS: equal security button widths/heights, 8dp gap, visible EXIT; synthetic screenshot; no card/USB/API operations");finish(-1,out);
+  runOnMainSync(v::finish);
+  Activity main=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+  waitForIdleSync();SystemClock.sleep(300);
+  final AlertDialog[] dialog={null};
+  runOnMainSync(()->{
+   View root=main.getWindow().getDecorView();
+   Button advanced=find(root,"Adv. Features");if(advanced==null)throw new AssertionError("Missing advanced tools");
+   for(String label:new String[]{"Adapters","USB tests","System Check","Security Access Password","Clear offset · refresh access"})if(find(root,label)!=null)throw new AssertionError("Advanced tool on home: "+label);
+   Button read=find(root,"Read DTC");Button security=find(root,"Get security access");
+   if(read==null||security==null||read.getHeight()!=security.getHeight()||Math.abs(read.getWidth()-security.getWidth())>1||read.getLeft()-security.getRight()<SessionStyle.dp(main,8))throw new AssertionError("Main buttons uneven/colliding");
+   View exit=root.findViewWithTag("tech2-key-1");Rect r=new Rect();if(!exit.getGlobalVisibleRect(r)||r.height()!=exit.getHeight())throw new AssertionError("Main EXIT clipped");
+   dialog[0]=AdvancedFeatures.show(main,()->false);
+  });waitForIdleSync();SystemClock.sleep(200);
+  runOnMainSync(()->{
+   View root=dialog[0].getWindow().getDecorView();
+   for(String label:new String[]{"Adapters","USB tests","System Check","Security Access Password","Clear offset · refresh access","Done"}){
+    Button b=find(root,label);if(b==null||b.getHeight()<SessionStyle.dp(main,48))throw new AssertionError("Missing/short advanced tool: "+label);
+   }
+   if(findText(root,"Chipsoft restricted mode")==null)throw new AssertionError("Missing restricted switch");
+   dialog[0].dismiss();main.finish();
+  });
+  out.putString("stream","PASS: advanced tools grouped, equal main buttons with 8dp gap, 48dp targets, visible EXIT, head-unit firmware space; no card/USB/API operations");finish(-1,out);
  }catch(Throwable e){out.putString("stream","FAIL: "+e);finish(0,out);}finally{if(a!=null){final Activity v=a;runOnMainSync(v::finish);}}}
 }

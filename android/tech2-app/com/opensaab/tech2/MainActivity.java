@@ -50,38 +50,19 @@ public final class MainActivity extends Activity {
         stop = button(actions,"Stop emulation", () -> stopSession("Stopped by operator"));
         stop.setEnabled(false);
         button(actions,"Firmware",()->{if(running){status.setText("Stop emulation before changing firmware");return;}startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));});
-        android.content.SharedPreferences adapterSettings=getSharedPreferences("adapter_settings",MODE_PRIVATE);
-        Switch restricted=new Switch(this);
-        restricted.setText("Chipsoft restricted mode");restricted.setTextColor(0xffdce9f2);
-        restricted.setChecked(adapterSettings.getBoolean("chipsoft_restricted",false));
-        restricted.setOnCheckedChangeListener((view,checked)->
-            adapterSettings.edit().putBoolean("chipsoft_restricted",checked).apply());
-        root.addView(restricted);
         LinearLayout diagnostics = row(root);
         button(diagnostics,"Get security access",()->selectAdapter("native_seed",false));
         button(diagnostics,"Read DTC",()->selectAdapter("native_dtc",false));
-        button(diagnostics,"Clear DTC",()->selectAdapter("native_clear_dtc",false));
-        button(diagnostics,"Engine Data",()->selectAdapter("native_engine_data",false));
+        LinearLayout dataActions = row(root);
+        button(dataActions,"Clear DTC",()->selectAdapter("native_clear_dtc",false));
+        button(dataActions,"Engine Data",()->selectAdapter("native_engine_data",false));
         lcd = new LcdView();
         LinearLayout extras = row(root);
-        button(extras,"Adapters",()->{
-            if(running){status.setText("Stop firmware before opening adapter detection");return;}
-            startActivity(new android.content.Intent(this,com.opensaab.usb.AdapterDetectorActivity.class));
-        });
-        button(extras,"USB tests",()->{
-            if(running){status.setText("Stop offline menus before opening USB tests");return;}
-            startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class),27);
-        });
         button(extras,"Report issue",()->{if(running){status.setText("Stop emulation before preparing a report");return;}startActivity(new android.content.Intent(this,com.opensaab.usb.SupportReportActivity.class));});
         button(extras,"DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this));
-        Button updates=new Button(this);updates.setText("Check for updates");updates.setAllCaps(false);
-        updates.setOnClickListener(v->{if(running){status.setText("Stop firmware before checking for updates");return;}com.opensaab.usb.AppUpdates.show(this);});
         LinearLayout systemActions = row(root);
-        systemActions.addView(updates,new LinearLayout.LayoutParams(0,-2,1));
-        button(systemActions,"System check",()->com.opensaab.usb.DeviceCompatibility.show(this));
-        LinearLayout authActions=row(root);
-        button(authActions,"Security access password",()->com.opensaab.usb.SecurityAuthorization.show(this));
-        button(authActions,"Clear offset · fresh access",()->com.opensaab.usb.SecurityReset.show(this,()->running));
+        button(systemActions,"Check for updates",()->{if(running){status.setText("Stop firmware before checking for updates");return;}com.opensaab.usb.AppUpdates.show(this);});
+        button(systemActions,"Adv. Features",()->com.opensaab.usb.AdvancedFeatures.show(this,()->running));
         console=label("Console: waiting for firmware",11);
         console.setTypeface(Typeface.MONOSPACE);
         consoleScroll = new ScrollView(this); consoleScroll.addView(console);
@@ -92,7 +73,9 @@ public final class MainActivity extends Activity {
             }
             com.opensaab.usb.ProjectSupport.show(this);
         }),new LinearLayout.LayoutParams(-1,-2));
+        com.opensaab.usb.SessionStyle.stack(root);
         com.opensaab.usb.HeadunitLayout.apply(root);
+        com.opensaab.usb.SessionStyle.fitPortrait(root);
         setContentView(root);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
@@ -135,13 +118,16 @@ public final class MainActivity extends Activity {
     }
     private LinearLayout row(LinearLayout parent) {
         LinearLayout r=new LinearLayout(this); r.setOrientation(LinearLayout.HORIZONTAL);
-        parent.addView(r,new LinearLayout.LayoutParams(-1,dp(44))); return r;
+        parent.addView(r,new LinearLayout.LayoutParams(-1,dp(48))); return r;
     }
     private Button button(LinearLayout row,String text,Runnable action) {
         Button b=new Button(this); b.setText(text); b.setTextSize(12); b.setAllCaps(false);
         b.setPadding(0,0,0,0); b.setMinWidth(0); b.setMinimumWidth(0);
         b.setContentDescription(text); b.setOnClickListener(v->action.run());
-        row.addView(b,new LinearLayout.LayoutParams(0,-1,1)); return b;
+        com.opensaab.usb.SessionStyle.button(b,false);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-1,1);
+        if(row.getChildCount()>0)p.leftMargin=dp(8);
+        row.setBaselineAligned(false);row.addView(b,p);return b;
     }
     private void key(int code) { enqueue(String.format(Locale.ROOT,"0x%02x",code)); }
     private void selectAdapter(String mode,boolean allowEmulation) {
@@ -168,13 +154,13 @@ public final class MainActivity extends Activity {
                 .finish(com.opensaab.usb.ConnectionAttempt.Outcome.FAILED,com.opensaab.usb.ConnectionAttempt.Reason.NO_ADAPTER);
             picker.setMessage("No supported adapter detected. Connect a USB adapter, then tap Refresh. If this keeps happening, use Report issue on the home screen.");
         }
-        else picker.setItems(labels.toArray(new String[0]),(dialog,index)->connectAdapter(devices.get(index),mode));
+        else picker.setItems(labels.toArray(new String[0]),(dialog,index)->connectAdapter(devices.get(index),mode,!allowEmulation));
         picker.setPositiveButton("Refresh",(dialog,which)->selectAdapter(mode,allowEmulation));
         picker.setNegativeButton("Cancel",null);
         if(allowEmulation)picker.setNeutralButton("Run in emulation mode",(dialog,which)->startSession());
         picker.show();
     }
-    private void connectAdapter(android.hardware.usb.UsbDevice chosen,String mode){
+    private void connectAdapter(android.hardware.usb.UsbDevice chosen,String mode,boolean shortcut){
         android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
         android.hardware.usb.UsbDevice current=usb.getDeviceList().get(chosen.getDeviceName());
         if(current==null || current.getDeviceId()!=chosen.getDeviceId()
@@ -196,6 +182,7 @@ public final class MainActivity extends Activity {
                 // Default to full control; persist an explicit read-only choice.
                 // ADB automation profiles remain independent of this UI setting.
                 .putExtra(restricted?"native_firmware":mode.equals("native_seed")?"native_seeds":"full_native",true);
+            if(shortcut&&!mode.equals("native_seed"))launch.putExtra("menu_shortcut",mode);
         }else{status.setText("This adapter is detected, but its Android driver is not ready");return;}
         status.setText("Opening selected adapter…");
         startActivityForResult(launch.putExtra("usb_device_name",chosen.getDeviceName()).putExtra("auto_start",true),27);

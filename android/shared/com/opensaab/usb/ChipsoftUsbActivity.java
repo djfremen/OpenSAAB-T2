@@ -24,6 +24,7 @@ public final class ChipsoftUsbActivity extends Activity {
     AlertDialog vehicleStartPrompt;
     NativeLcdPump lcdPump;
     SecurityAccessView securityAccess;
+    FirmwareMenuController menuShortcut;
     DtcReportView dtcReport;
     final java.util.concurrent.ExecutorService keyWorker=java.util.concurrent.Executors.newSingleThreadExecutor(r->new Thread(r,"chipsoft-keys"));
     final AtomicBoolean keyPending=new AtomicBoolean();
@@ -71,24 +72,32 @@ public final class ChipsoftUsbActivity extends Activity {
         if(fullNative||seeds){
             securityAccess=new SecurityAccessView(this,seeds,()->nativeDirectory,()->running.get(),()->nativeKey("stop"),
                 ()->openSecuritySession(true),this::resumeSecurityFirmware);
-            securityAccess.setMenuKey(code->{
-                File run=nativeDirectory;
-                if(!foreground||!running.get()||cancelled||run==null||keyPending.get()||new File(run,"native-key.txt").exists())return false;
-                nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));return true;
-            });
+            securityAccess.setMenuKey(this::sendMenuKey);
             root.addView(securityAccess);
-            securityAccess.addResetAction(()->SecurityReset.show(this,()->running.get()));
+
         }
         if(nativeFirmware){
+            Button advanced=new Button(this);advanced.setText("Adv. Features");
+            advanced.setOnClickListener(v->AdvancedFeatures.show(this,()->running.get()));root.addView(advanced);
+            FirmwareMenuNavigator.Target target=FirmwareMenuNavigator.Target.fromShortcut(getIntent().getStringExtra("menu_shortcut"));
+            if(target!=null){
+                menuShortcut=new FirmwareMenuController(this,target,()->nativeDirectory,()->foreground&&running.get()&&!cancelled,this::sendMenuKey);
+                root.addView(menuShortcut);
+            }
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
             nativeLcd=new ImageView(this);
             lcdPump=new NativeLcdPump(nativeLcd);
-            lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,securityAccess!=null&&securityAccess.navigating()?100:1000);}},1000);
+            lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
-        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);HeadunitLayout.apply(root);SessionStyle.fitPortrait(root);setContentView(root);
+        ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);if(nativeFirmware)root.addView(new Tech2Controls(this,nativeLcd,scroll,code->{if(menuShortcut!=null)menuShortcut.cancel();if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));}),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);HeadunitLayout.apply(root);SessionStyle.fitPortrait(root);setContentView(root);
         IntentFilter f=new IntentFilter(permission);f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);
         if(state==null && getIntent().getBooleanExtra("auto_start",false))new Handler(Looper.getMainLooper()).post(this::requestVehicleStart);
+    }
+    boolean sendMenuKey(int code){
+        File run=nativeDirectory;
+        if(!foreground||!running.get()||cancelled||run==null||keyPending.get()||new File(run,"native-key.txt").exists())return false;
+        nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));return true;
     }
     void openSecuritySession(boolean collect){
         if(running.get())return;
@@ -329,7 +338,7 @@ public final class ChipsoftUsbActivity extends Activity {
         });}catch(java.util.concurrent.RejectedExecutionException stopped){keyPending.set(false);}
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
-    void stop(){if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
+    void stop(){if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
     protected void onResume(){super.onResume();foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){
@@ -338,5 +347,5 @@ public final class ChipsoftUsbActivity extends Activity {
         }
     }
     protected void onPause(){foreground=false;super.onPause();}
-    protected void onDestroy(){if(dtcReport!=null)dtcReport.close();if(securityAccess!=null)securityAccess.close();stop();keyWorker.shutdownNow();if(lcdPump!=null)lcdPump.close();lcdHandler.removeCallbacksAndMessages(null);unregisterReceiver(receiver);super.onDestroy();}
+    protected void onDestroy(){if(menuShortcut!=null)menuShortcut.close();if(dtcReport!=null)dtcReport.close();if(securityAccess!=null)securityAccess.close();stop();keyWorker.shutdownNow();if(lcdPump!=null)lcdPump.close();lcdHandler.removeCallbacksAndMessages(null);unregisterReceiver(receiver);super.onDestroy();}
 }

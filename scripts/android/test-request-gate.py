@@ -20,6 +20,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/DtcReport.java'),
         str(repo/'android/shared/com/opensaab/usb/VehicleIdentity.java'),
         str(repo/'android/shared/com/opensaab/usb/SecurityMenuNavigator.java'),
+        str(repo/'android/shared/com/opensaab/usb/FirmwareMenuNavigator.java'),
+        str(repo/'android/tests/FirmwareMenuNavigatorTest.java'),
         str(repo/'android/tests/SecurityMenuNavigatorTest.java'),
         str(repo/'android/tests/DtcReportTest.java'),
         str(repo/'android/shared/com/opensaab/usb/SsaData.java'),
@@ -63,5 +65,6 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityAccessStatusTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityMenuNavigatorTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareMenuNavigatorTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SsaStateTest'],check=True)
