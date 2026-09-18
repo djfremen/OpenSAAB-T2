@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.opensaab.usb;
-/** Explicit experimental package; released packages keep their current startup. */
+/** Fast ARMv7 startup; ARM64 keeps its existing startup behavior. */
 public final class DemandStartup {
     public static boolean enabled(android.content.Context context) {
-        return context.getPackageName().equals("com.opensaab.tech2.headunit32.test")
-            && (context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
+        return context.getPackageName().equals("com.opensaab.tech2.headunit32")
+            || (context.getPackageName().equals("com.opensaab.tech2.headunit32.test")
+            && (context.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0);
     }
     public static void configure(android.content.Context context,ProcessBuilder builder) {
         if(!enabled(context) || !builder.command().contains("--candi-native-link"))return;

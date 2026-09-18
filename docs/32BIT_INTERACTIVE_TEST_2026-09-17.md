@@ -70,11 +70,11 @@ does. This is an expected test boundary, not successful ECU communication.
 
 ## Android adapter screens
 
-Only the explicit debuggable test package adds `--candi-on-demand` and startup
-acceleration. Existing Nano/Chipsoft native screens wait for the emulator's first
+The regular ARM32 package and the explicit debuggable test package add
+`--candi-on-demand` and startup acceleration. Existing Nano/Chipsoft native screens wait for the emulator's first
 backend connection instead of expiring after 5–15 seconds of menu browsing.
 Cancellation, emulator exit, and a 30-minute wait limit still end that wait.
-Production package names keep their existing behavior.
+The ARM64 package keeps its existing behavior.
 
 USB permission/CDC opening and existing Chipsoft VIN preflight remain in their
 existing adapter-selection flow. Native CANdi/backend construction is deferred;
@@ -120,3 +120,18 @@ The device test intentionally requires an explicit serial and targets only the
 isolated test package. Its automated navigation uses the guest mailbox; physical
 touch navigation is a separate check. The APK builder rejects release signing
 for this experimental profile.
+
+## Promotion to the regular 32-bit package
+
+The quick-load integration is now enabled for `com.opensaab.tech2.headunit32`,
+including non-debuggable signed builds. The installed package and launcher stay
+**OpenSAAB T2 Head Unit 32-bit**, so an in-place signed update preserves existing
+firmware and settings. The regular ARM32 build wrapper includes `load-test`,
+Cortex-A7 optimization, fat LTO and one codegen unit. ARM64 builds remain unchanged.
+The isolated interactive test and standalone load benchmark remain available.
+
+Signed update version: `0.1.0-headunit.16` (100016). This is still the experimental
+head-unit channel; actual adapter/vehicle validation is pending. The preceding
+measurements describe the test APK; signed-package measurements are recorded
+separately in the private `regular32-quickload` evidence directory. Release
+signing does not itself publish the APK or update the public download catalog.

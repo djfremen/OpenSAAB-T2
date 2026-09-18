@@ -8,9 +8,9 @@ with tempfile.TemporaryDirectory(prefix='opensaab-demand-') as tmp:
  root=Path(tmp)
  sources={
  'android/content/Context.java':'''package android.content;
- public class Context { public String name="com.opensaab.tech2.headunit32.test";
+ public class Context { public String name="com.opensaab.tech2.headunit32.test"; public int flags=2;
  public String getPackageName(){return name;}
- public android.content.pm.ApplicationInfo getApplicationInfo(){return new android.content.pm.ApplicationInfo();}}''',
+ public android.content.pm.ApplicationInfo getApplicationInfo(){android.content.pm.ApplicationInfo info=new android.content.pm.ApplicationInfo();info.flags=flags;return info;}}''',
  'android/content/pm/ApplicationInfo.java':'''package android.content.pm;
  public class ApplicationInfo {public static final int FLAG_DEBUGGABLE=2;public int flags=2;}''',
  'android/os/SystemClock.java':'''package android.os;public class SystemClock {
@@ -30,6 +30,11 @@ with tempfile.TemporaryDirectory(prefix='opensaab-demand-') as tmp:
  ProcessBuilder command=new ProcessBuilder("native","--candi-native-link");
  DemandStartup.configure(context,command);check(command.command().contains("--candi-on-demand"));
  check(command.environment().get("LOAD_TEST_ACCELERATE").equals("1"));
+ context.flags=0;check(!DemandStartup.enabled(context));
+ context.name="com.opensaab.tech2.headunit32";
+ ProcessBuilder signed=new ProcessBuilder("native","--candi-native-link");
+ DemandStartup.configure(context,signed);check(signed.command().contains("--candi-on-demand"));
+ check(signed.environment().get("LOAD_TEST_ACCELERATE").equals("1"));
  ExecutorService pool=Executors.newSingleThreadExecutor();
  try(ServerSocket server=new ServerSocket(0,1,InetAddress.getLoopbackAddress())){
  Child child=new Child();AtomicBoolean cancelled=new AtomicBoolean();

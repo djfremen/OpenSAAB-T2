@@ -1,5 +1,5 @@
 #!/bin/sh
-# ARM64 remains the default. ARM32 requires an explicit development target.
+# ARM64 remains the default. ARM32 includes the verified fast-start path.
 set -eu
 
 profile=${1:-arm64}
@@ -25,5 +25,12 @@ case "$profile" in
     headunit-arm32) export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$linker" ;;
 esac
 export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$repo=/opensaab --remap-path-prefix=$HOME/.cargo=/cargo"
+set --
+if [ "$profile" = headunit-arm32 ]; then
+    export RUSTFLAGS="$RUSTFLAGS -C target-cpu=cortex-a7"
+    export CARGO_PROFILE_RELEASE_LTO=fat
+    export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+    set -- --features load-test
+fi
 exec cargo build --locked --release --no-default-features \
-    --target "$target" --bin tech2-emu --bin nano-usb-probe --bin chipsoft-usb-probe
+    "$@" --target "$target" --bin tech2-emu --bin nano-usb-probe --bin chipsoft-usb-probe
