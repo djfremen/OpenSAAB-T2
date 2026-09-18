@@ -29,6 +29,9 @@ public final class MainActivity extends Activity {
     private volatile java.lang.Process process;
     private volatile boolean running;
     private boolean foreground;
+    private com.opensaab.usb.StartupMeasurement startup;
+    private long launchOrigin;
+    private boolean autoStarted;
     private File session;
     private TextView status, console;
     private TextView vehicleSummary,connectionDate,authStatus,authDate;
@@ -47,7 +50,7 @@ public final class MainActivity extends Activity {
     private static final int[] DIGITS = {0x18,0x04,0x13,0x17,0x03,0x12,0x16,0x02,0x11,0x15};
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);com.opensaab.usb.BackNavigation.install(this,()->{if(running)key(0x01);else finish();});
+        super.onCreate(state);launchOrigin=getIntent().getLongExtra("launch_origin_elapsed_ms",android.os.SystemClock.elapsedRealtime());com.opensaab.usb.BackNavigation.install(this,()->{if(running)key(0x01);else finish();});
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         details=new LinearLayout(this);details.setOrientation(LinearLayout.VERTICAL);
         vehicleSummary=label("Connect an adapter to identify your vehicle",14);details.addView(vehicleSummary);
@@ -64,7 +67,7 @@ public final class MainActivity extends Activity {
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
         lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{health.frame();lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
-        start=new Button(this);start.setText("Start · select adapter");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
+        start=new Button(this);start.setText(com.opensaab.usb.DemandStartup.enabled(this)?"Start emulator":"Start · select adapter");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->{if(com.opensaab.usb.DemandStartup.enabled(this))startSession();else selectAdapter("native_dtc",true);});workspace.addLaunch(start);
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
@@ -213,6 +216,7 @@ public final class MainActivity extends Activity {
             if(!new File(firmware,name).isFile()) { status.setText("Missing "+name+" — install your firmware files first"); return; }
         }
         if(getFilesDir().getUsableSpace()<64L*1024*1024) { status.setText("Need 64 MB free for session logs"); return; }
+        if(com.opensaab.usb.DemandStartup.enabled(this)){startup=new com.opensaab.usb.StartupMeasurement(this,autoStarted?android.os.SystemClock.elapsedRealtime():launchOrigin);autoStarted=true;}
         running=true; stopping.set(false); logs.setLength(0);consoleDirty=true;
         start.setEnabled(false); lcd.frame=null; lcd.invalidate();
         status.setText("Emulation mode • Offline • No vehicle connection");
@@ -239,6 +243,8 @@ public final class MainActivity extends Activity {
                 "--max-insns","50000000000","--output-dir",session.toString(),
                 new File(firmware,"card.bin").toString()));
             ProcessBuilder builder=new ProcessBuilder(args).directory(session).redirectErrorStream(true);
+            com.opensaab.usb.DemandStartup.configure(this,builder);
+            if(startup!=null)startup.session(session);
             builder.environment().put("OPENSAAB_PERFORMANCE_DIR",session.getAbsolutePath());
             java.lang.Process child=builder.start();
             process=child;
@@ -281,6 +287,16 @@ public final class MainActivity extends Activity {
             while((line=in.readLine())!=null) {
                 if(line.length()>4096) line=line.substring(0,4096);
                 if(saved<2*1024*1024) { byte[] bytes=(line+"\n").getBytes(StandardCharsets.UTF_8);output.write(bytes);saved+=bytes.length; }
+                if(startup!=null && line.startsWith("STARTUP_READY:")) {
+                    startup.ready(line.substring("STARTUP_READY:".length()));
+                    ui.post(()->{status.setText("Ready · CANdi starts when needed · offline test");lcd.invalidate();});
+                }
+                if(line.startsWith("CANDI_STARTING:"))ui.post(()->status.setText("Starting CANdi…"));
+                if(line.startsWith("CANDI_INITIALIZED:")) {
+                    final boolean failed=line.contains("\"status\":\"failed\"");
+                    ui.post(()->status.setText(failed?"CANdi initialization failed":"Preparing CANdi firmware…"));
+                }
+                if(line.startsWith("CANDI_GUEST_INITIALIZED:"))ui.post(()->status.setText("CANdi firmware initialized · no adapter connected"));
                 final String text=line;
                 // Avoid thousands of pending UI callbacks from boot diagnostics.
                 if(text.startsWith("LCD:") || text.startsWith("KEYPAD:") || text.startsWith("SESSION:") || text.contains("ERROR") || text.contains("CRASH") || text.contains("| CANDI]")) {
@@ -298,6 +314,7 @@ public final class MainActivity extends Activity {
     private void stopSession(String reason) { if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
     @Override protected void onStart() { super.onStart();foreground=true;ui.removeCallbacks(consoleRefresh);ui.post(consoleRefresh);
         ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
+        if(com.opensaab.usb.DemandStartup.enabled(this) && !autoStarted && new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty())ui.post(this::startSession);
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — select an adapter to start");}
     }
     @Override protected void onStop() { foreground=false;ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
@@ -350,7 +367,8 @@ public final class MainActivity extends Activity {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);canvas.drawColor(0xff04090e);
             if(frame!=null) {float scale=Math.min(getWidth()/320f,getHeight()/240f);float w=320*scale,h=240*scale;
-                canvas.drawBitmap(frame,null,new RectF((getWidth()-w)/2,(getHeight()-h)/2,(getWidth()+w)/2,(getHeight()+h)/2),paint);}
+                canvas.drawBitmap(frame,null,new RectF((getWidth()-w)/2,(getHeight()-h)/2,(getWidth()+w)/2,(getHeight()+h)/2),paint);
+                if(startup!=null)startup.drawn(frame);}
         }
     }
 }

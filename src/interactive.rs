@@ -59,6 +59,7 @@ pub struct Session<'a> {
     frame: artifacts::LiveFrame,
     checkpoint: Option<recovery::Checkpoint>,
     waiting: Option<Instant>,
+    connection_wait: Option<Instant>,
 }
 impl<'a> Session<'a> {
     pub fn new(dir: &'a Path) -> Self {
@@ -72,6 +73,7 @@ impl<'a> Session<'a> {
             frame: artifacts::LiveFrame::default(),
             checkpoint: None,
             waiting: None,
+            connection_wait: None,
         }
     }
     pub fn poll(&mut self, cpu: &mut CpuCore, bus: &mut Tech2Bus) -> io::Result<Poll> {
@@ -99,7 +101,7 @@ impl<'a> Session<'a> {
         }
         // Input is polled independently from rendering and log housekeeping.
         if now >= self.next_frame {
-            self.next_frame = now + Duration::from_millis(33);
+            self.next_frame = now + Duration::from_millis(if bus.pending_candi.is_some() && !bus.demand_boot_complete { 150 } else { 33 });
             // Publish by rename so a reader never sees a partially written PPM.
             self.frame.publish(bus, self.dir)?;
             let screen = bus.screen_text();
@@ -114,8 +116,13 @@ impl<'a> Session<'a> {
             }
             if self.waiting.is_none() {
                 if let Some(reason) = recovery::unavailable_reason(&self.screen) {
-                    println!("SESSION: {reason} Returning to previous menu in 5 seconds.");
-                    self.waiting = Some(now);
+                    let checking = self.screen.to_ascii_lowercase().contains("checking") && self.screen.to_ascii_lowercase().contains("working");
+                    let demand = bus.pending_candi.is_some() || bus.demand_boot_complete;
+                    let give_connection_time = checking && demand && (bus.demand_guest_init.is_some() || now.duration_since(*self.connection_wait.get_or_insert(now)) < Duration::from_secs(30));
+                    if !give_connection_time {
+                        println!("SESSION: {reason} Returning to previous menu in 5 seconds.");
+                        self.waiting = Some(now);
+                    }
                 }
             }
         }
@@ -154,6 +161,7 @@ impl<'a> Session<'a> {
                 if let Some(saved) = self.checkpoint.take() {
                     saved.restore(cpu, bus);
                     self.waiting = None;
+                    self.connection_wait = None;
                     self.screen.clear();
                     println!("SESSION: Operation cancelled; restored previous guest menu (offline recovery)");
                 } else {

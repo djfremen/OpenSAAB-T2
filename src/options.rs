@@ -28,6 +28,7 @@ pub struct Options {
     pub strict: bool,
     pub candi: bool,
     pub candi_native_link: bool,
+    pub candi_on_demand: bool,
     pub candi_nano_ssh: Option<String>,
     pub candi_seatbelt_audible: bool,
     pub candi_j2534_adapter: tech2_emu::vcx::J2534Adapter,
@@ -112,6 +113,7 @@ impl Options {
             strict: parse_bool("STRICT_BOOT", env("STRICT_BOOT"))?
                 || parse_bool("STRICT_GUEST_BOOT", env("STRICT_GUEST_BOOT"))?,
             candi_native_link: false,
+            candi_on_demand: false,
             candi_nano_ssh: None,
             candi_seatbelt_audible: false,
             candi_j2534_adapter: tech2_emu::vcx::J2534Adapter::default(),
@@ -164,6 +166,7 @@ impl Options {
                     "--fast-boot" | "--fake-post" => { out.fast_boot = true; continue; }
                     "--mock-vehicle" => { out.mock_vehicle = true; continue; }
                     "--strict" => { out.strict = true; continue; }
+                    "--candi-on-demand" => { out.candi_on_demand = true; continue; }
                     "--candi-native-link" => { out.candi_native_link = true; out.candi = true; continue; }
                     "--candi-nano-clear-dtc" => { out.candi_nano_clear_dtc = true; continue; }
                     "--candi-chipsoft-audible" => {out.candi_chipsoft_audible=true;continue;}
@@ -274,6 +277,10 @@ impl Options {
             return Err("--vcx-ssh enables the GUI host page; use the vcx-vin binary for a headless live read".into());
         }
         out.research |= out.test_harness || out.fast_boot;
+        if out.candi_on_demand && (!cfg!(feature = "load-test") || !out.candi_native_link || !out.research) {
+            return Err("--candi-on-demand requires the experimental load-test build, --research-harness and --candi-native-link".into());
+        }
+
         if out.ecm_information && (out.headless || !out.research) {
             return Err("--ecm-information requires a GUI build and --research-harness; use vcx-vin for a headless live read".into());
         }
@@ -413,6 +420,7 @@ Usage: tech2-emu [OPTIONS] [CARD_IMAGE]
   --candi-nano-clear-dtc   Explicitly permit original firmware DTC clearing in USB dtc-link-1367 sessions
   --candi-nano-control PATH SSH multiplex control socket for native bridge
   --headless, -h           Run without a window; verify guest splash
+  --candi-on-demand       Experimental: initialize native CANdi at first guest dependency
   --interactive-headless  Manual LCD/key mailbox session, offline, 30-minute deadline
   --verbose, -v           Write navigation/command observations to trace.jsonl
   --trace-calls           Also log every stepped JSR/BSR and RTS/RTD/RTR (large)

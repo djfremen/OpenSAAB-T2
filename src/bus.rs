@@ -227,6 +227,9 @@ impl Ata {
 
 pub struct Tech2Bus {
     pub candi_link: Option<crate::candi::native_link::NativeLink>,
+    pub pending_candi: Option<crate::candi::demand::Pending>,
+    pub demand_boot_complete: bool,
+    pub demand_guest_init: Option<crate::candi::demand::GuestInit>,
     pub execution_mode: ExecutionMode,
     pub flash: Vec<u8>,
     pub ram: Vec<u8>,
@@ -319,6 +322,9 @@ impl Tech2Bus {
     /// Complete guest state; the live host trace is intentionally not copied.
     pub fn recovery_snapshot(&self) -> Self {
         Self {
+            pending_candi: self.pending_candi.clone(),
+            demand_boot_complete: self.demand_boot_complete,
+            demand_guest_init: self.demand_guest_init.clone(),
             candi_link: None, // Checkpoint::capture copies the virtual link separately and handles errors.
             execution_mode: self.execution_mode,
             flash: self.flash.clone(),
@@ -532,6 +538,9 @@ impl Tech2Bus {
         f[..n].copy_from_slice(&flash[..n]);
         let mut s = Self {
             candi_link: None,
+            pending_candi: None,
+            demand_boot_complete: false,
+            demand_guest_init: None,
             execution_mode,
             flash: f,
             ram: vec![0; RAM_SIZE as usize],
@@ -823,6 +832,28 @@ impl Tech2Bus {
         ((picr >> 8) & 7) as u8
     }
 
+    pub(crate) fn ensure_candi(&mut self, trigger: &str) {
+        let Some(pending) = self.pending_candi.take() else { return; };
+        let began = std::time::Instant::now();
+        println!("CANDI_STARTING: trigger={trigger} pc={:#x} insns={} live_adapter={}", self.current_pc, self.current_insns, pending.has_adapter());
+        // Called before the initiating bus operation. Guest execution is held
+        // here; that operation is neither dropped nor replayed after starting.
+        let result = pending.start();
+        let status = match result {
+            Ok(link) => { self.candi_link = Some(link); "ready" }
+            Err(error) => { self.failure_reason = Some(format!("CANdi initialization failed: {error}")); "failed" }
+        };
+        let report = serde_json::json!({"status":status,"trigger":trigger,"pc":self.current_pc,"instructions":self.current_insns,"initialization_ms":began.elapsed().as_millis(),"live_adapter":pending.has_adapter(),"error":self.failure_reason});
+        let _ = std::fs::write(pending.output.join("candi-startup.json"), report.to_string());
+        println!("CANDI_INITIALIZED: {report}");
+        if pending.transport_trace && !self.trace.has_writer() {
+            match crate::trace::Trace::open(&pending.output.join("trace.jsonl"), false) {
+                Ok(mut trace) => { trace.concise_transport(); self.trace = trace; }
+                Err(error) => self.failure_reason = Some(format!("CANdi trace failed: {error}")),
+            }
+        }
+    }
+
     /// Offline load-test scheduling only: never skip a native CANdi poll.
     #[cfg(feature = "load-test")]
     pub fn load_test_deadline(&self) -> Option<u64> {
@@ -900,6 +931,9 @@ impl Tech2Bus {
                 }
             }
         }
+        if let Some(pending) = &self.pending_candi {
+            self.tpu_countdown.advance_uart(&mut self.sim, insns, pending.uart.receive_idle());
+        }
         if let Some(period) = self.pit_period() {
             let next = *self
                 .pit_next_tick
@@ -923,6 +957,7 @@ impl Tech2Bus {
             } else {
                 0
             })
+            .max(if self.pending_candi.as_ref().is_some_and(|pending| pending.uart.irq()) { 5 } else { 0 })
             .max(u8::from(self.key_irq_pending()))
             .max(crate::tpu::interrupt(&self.sim).map_or(0, |(level, _)| level))
     }
@@ -1316,7 +1351,7 @@ impl Tech2Bus {
     pub fn exit_key(&mut self) {
         // Native CANdi sessions must consume the real keypad EXIT themselves.
         // Never inject the legacy abort flags into an original diagnostic flow.
-        if self.execution_mode.is_research_harness() && self.candi_link.is_none() {
+        if self.execution_mode.is_research_harness() && self.candi_link.is_none() && self.pending_candi.is_none() {
             if self.compatibility_splash {
                 crate::log_info!(
                     "KEY",
@@ -1429,12 +1464,10 @@ impl Tech2Bus {
                     };
                     self.sim[0x0D00 + slot * 2] = 0x00;
                     self.sim[0x0D00 + slot * 2 + 1] = rx_val;
-                } else if pcs & 0x0e == 2 && self.candi_link.is_some() {
-                    let rx = self
-                        .candi_link
-                        .as_mut()
-                        .unwrap()
-                        .adc_transfer(self.cs6[0], u16::from_be_bytes([tx_hi, tx_lo]));
+                } else if pcs & 0x0e == 2 && (self.candi_link.is_some() || self.pending_candi.is_some()) {
+                    let rx = if let Some(pending) = &mut self.pending_candi {
+                        crate::candi::demand::cable_adc(&mut pending.adc_channel, self.cs6[0], u16::from_be_bytes([tx_hi,tx_lo]))
+                    } else { self.candi_link.as_mut().unwrap().adc_transfer(self.cs6[0], u16::from_be_bytes([tx_hi,tx_lo])) };
                     let [hi, lo] = rx.to_be_bytes();
                     self.sim[0x0d00 + slot * 2] = hi;
                     self.sim[0x0d01 + slot * 2] = lo;
@@ -1696,7 +1729,7 @@ impl Tech2Bus {
 
 impl AddressBus for Tech2Bus {
     fn interrupt_acknowledge(&mut self, level: u8) -> u32 {
-        if level == 5 && self.candi_link.as_ref().is_some_and(|link| link.irq()) {
+        if level == 5 && (self.candi_link.as_ref().is_some_and(|link| link.irq()) || self.pending_candi.as_ref().is_some_and(|pending| pending.uart.irq())) {
             return 0x1d;
         }
 
@@ -1720,6 +1753,9 @@ impl AddressBus for Tech2Bus {
         let a = address & A24;
         self.trace_eram_access('R', a, None);
         if (0x400800..0x400810).contains(&a) {
+            if let Some(pending) = &mut self.pending_candi {
+                return pending.uart.read(a, &mut Vec::new());
+            }
             if let Some(link) = &mut self.candi_link {
                 return link.read(a);
             }
@@ -1926,6 +1962,13 @@ impl AddressBus for Tech2Bus {
         let a = address & A24;
         self.trace_eram_access('W', a, Some(value));
         if (0x400800..0x400810).contains(&a) {
+            if let Some(pending) = &mut self.pending_candi {
+                if !pending.uart.needs_processor(a, value) {
+                    pending.uart.write(a, value, &mut Vec::new());
+                    return;
+                }
+            }
+            self.ensure_candi("serial-transmit");
             if let Some(link) = &mut self.candi_link {
                 link.write(a, value);
                 return;
@@ -2116,6 +2159,7 @@ impl AddressBus for Tech2Bus {
                 self.sim[off] = value;
             }
             if off == OFF_HSRR0 && value & 3 == 1 {
+                if self.demand_boot_complete { self.ensure_candi("presence-probe"); }
                 if let Some(link) = &mut self.candi_link {
                     link.presence_announced = false;
                     self.sim[0xff2] = 0xff;
@@ -2124,7 +2168,7 @@ impl AddressBus for Tech2Bus {
                 }
             }
             if (OFF_HSRR0..=OFF_HSRR1 + 1).contains(&off) {
-                if self.candi_link.is_some() && off == OFF_HSRR1 {
+                if (self.candi_link.is_some() || self.pending_candi.is_some()) && off == OFF_HSRR1 {
                     self.tpu_countdown.uart_host_service(value);
                     self.trace_event("candi_uart_timer", &format!(
                         "host_service={value:#04x} ch4_words={:02x?} ch5_words={:02x?} functions={:02x?} sequence={:02x?} priority={:02x?} external_tx=false",

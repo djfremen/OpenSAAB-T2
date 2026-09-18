@@ -19,7 +19,9 @@ parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
 profile = PROFILES[args.profile]
-experimental = args.profile == 'headunit-arm32'
+experimental = profile.abi == 'armeabi-v7a'
+demand_test = args.profile == 'headunit-arm32-test'
+if demand_test and args.release: parser.error('The demand-start integration profile is development-only')
 if experimental and not args.release:
     args.version_name = '0.1-headunit-arm32-dev'
 if args.version_code < 1 or args.version_code > 2100000000:
@@ -53,6 +55,7 @@ for name, spec in (support.items() if bundle_support else []):
 build = repo / ('target/android-tech2-release' if args.release else 'target/android-tech2-app')
 if experimental:
     build = repo / ('target/android-headunit-arm32-release' if args.release else 'target/android-headunit-arm32')
+if demand_test: build = repo / 'target/android-headunit32-interactive-test'
 classes = build / 'classes'
 shutil.rmtree(classes, ignore_errors=True)
 classes.mkdir(parents=True, exist_ok=True)
@@ -120,6 +123,7 @@ run(bt / 'zipalign', '-f', '4', unsigned, aligned)
 apk = build / ('OpenSAAB-T2-arm64-v8a.apk' if args.release else 'opensaab-tech2.apk')
 if experimental:
     apk = build / ('OpenSAAB-T2-headunit-armeabi-v7a.apk' if args.release else 'OpenSAAB-T2-headunit-armeabi-v7a-dev.apk')
+if demand_test: apk = build / 'OpenSAAB-32-bit-interactive-test.apk'
 if args.release:
     keystore = os.environ.get('OPENSAAB_RELEASE_KEYSTORE')
     password_file = os.environ.get('OPENSAAB_RELEASE_PASSWORD_FILE')

@@ -70,6 +70,7 @@ impl Trace {
     pub fn concise_transport(&mut self) {
         self.concise = true;
     }
+    pub fn has_writer(&self) -> bool { self.writer.is_some() }
     pub fn enabled(&self) -> bool {
         (self.writer.is_some() || self.live_console) && self.error.is_none()
     }

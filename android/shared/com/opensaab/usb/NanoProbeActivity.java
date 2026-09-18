@@ -328,6 +328,7 @@ public class NanoProbeActivity extends Activity {
             }
             if(nativeFirmware())progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);
             if(nativeFirmware())builder.environment().put("OPENSAAB_PERFORMANCE_DIR",nativeDirectory.getAbsolutePath());
+            DemandStartup.configure(this,builder);
             child=builder.redirectErrorStream(true).start();
             final java.lang.Process probeChild=child;
             final File processLog=new File(nativeFirmware()?nativeDirectory:getFilesDir(),nativeFirmware()?"native-process.log":resultFile.getName()+".process.log");
@@ -342,7 +343,7 @@ public class NanoProbeActivity extends Activity {
                     }else if(count++<256)log("PROBE "+line);}
                 }catch(IOException e){log("Probe output closed: "+e.getMessage());}
             },"nano-probe-log");outputReader.setDaemon(true);outputReader.start();
-            client=server.accept();client.setSoTimeout(4000);client.setTcpNoDelay(true);
+            client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);
             InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
             if(!readLine(in).equals("HELLO "+token))throw new IOException("Session token mismatch");
             out.println(nativeFirmware()?"READY native-firmware":"READY adapter-only");

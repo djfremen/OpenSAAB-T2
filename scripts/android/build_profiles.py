@@ -15,6 +15,8 @@ class Profile:
 PROFILES = {
     'arm64': Profile('arm64-v8a', 'aarch64-linux-android', 2, 183,
                      'com.opensaab.tech2', 'OpenSAAB T2'),
+    'headunit-arm32-test': Profile('armeabi-v7a', 'armv7-linux-androideabi', 1, 40,
+                             'com.opensaab.tech2.headunit32.test', 'OpenSAAB 32-bit interactive test'),
     'headunit-arm32': Profile('armeabi-v7a', 'armv7-linux-androideabi', 1, 40,
                              'com.opensaab.tech2.headunit32', 'OpenSAAB T2 Head Unit 32-bit'),
 }

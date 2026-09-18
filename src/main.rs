@@ -80,6 +80,7 @@ pub fn service_interrupt(cpu: &mut CpuCore, bus: &mut Tech2Bus, level: u8) {
 }
 
 pub fn step_guest(cpu: &mut CpuCore, bus: &mut Tech2Bus, insns: u64) -> StepResult {
+    if bus.failure_reason.is_some() { return StepResult::Stopped; }
     let pc = cpu.pc;
     bus.current_pc = pc;
     bus.current_insns = insns;
@@ -140,6 +141,10 @@ pub fn step_guest(cpu: &mut CpuCore, bus: &mut Tech2Bus, insns: u64) -> StepResu
             ),
         );
     }
+    candi::demand::guest_dependency(cpu, bus);
+    if bus.failure_reason.is_some() { return StepResult::Stopped; }
+    let pc = cpu.pc;
+    bus.current_pc = pc;
     communication::observe(cpu, bus);
     let research_harness = bus.execution_mode.is_research_harness();
 
@@ -650,6 +655,7 @@ pub fn run_headless(
     settings: RunSettings<'_>,
     pc_counts: &mut std::collections::HashMap<u32, u64>,
 ) -> HeadlessRunResult {
+    let boot_started = std::time::Instant::now();
     let limit_insns = settings.limit_insns;
     let mut interactive = settings
         .interactive
@@ -662,8 +668,8 @@ pub fn run_headless(
     let mut splash_ready = false;
     #[cfg(feature = "load-test")]
     let accelerate_load = options::env_flag("LOAD_TEST_ACCELERATE")
-        && !settings.interactive && !settings.android_live
-        && settings.harness_target.is_none() && settings.replay.is_empty()
+        && (!settings.android_live || bus.pending_candi.is_some())
+        && settings.replay.is_empty()
         && !bus.trace.enabled() && bus.candi_link.is_none();
     let mut ring: [u32; 64] = [0; 64];
     let mut ring_i: usize = 0;
@@ -746,7 +752,7 @@ pub fn run_headless(
             }
         }
         #[cfg(feature = "load-test")]
-        if accelerate_load && load_test::candidate(cpu) {
+        if accelerate_load && !splash_ready && load_test::candidate(cpu) {
             let bound = limit_insns.min((insns / 50_000 + 1) * 50_000);
             let skipped = load_test::advance(cpu, bus, insns, bound);
             if skipped != 0 { insns += skipped; continue; }
@@ -1000,6 +1006,17 @@ pub fn run_headless(
                 }
             }
             if bus.guest_splash_reached() {
+                if !splash_ready {
+                    bus.demand_boot_complete = bus.pending_candi.is_some();
+                    let ready = serde_json::json!({"verified_welcome":true,"native_boot_ms":boot_started.elapsed().as_millis(),"instructions":insns,"candi_started":bus.candi_link.is_some()});
+                    let _ = std::fs::write(settings.output_dir.join("startup.json"), ready.to_string());
+                    // Publish the complete original LCD before announcing readiness.
+                    let _ = artifacts::save_screen(bus, &settings.output_dir.join("welcome.ppm"));
+                    let _ = artifacts::save_screen(bus, &settings.output_dir.join("welcome.tmp"));
+                    let _ = std::fs::rename(settings.output_dir.join("welcome.tmp"), settings.output_dir.join("live.ppm"));
+                    println!("STARTUP_READY: {}", ready);
+                    if settings.interactive && bus.pending_candi.is_some() { bus.trace.enable_console(); }
+                }
                 splash_ready = true;
                 if !settings.interactive && harness.is_none() && settings.replay.is_empty() {
                     #[cfg(feature = "load-test")]
@@ -1372,6 +1389,10 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
     if initial_security_ssa.is_some() {
         bus.ssa_flash = Some(ssa_flash::SsaFlash::default());
     }
+    if opts.candi_on_demand {
+        bus.pending_candi = Some(candi::demand::Pending::from_options(&opts));
+        println!("CANDI_DEFERRED: no CANdi CPU or adapter started; waiting for guest dependency");
+    } else {
     if opts.candi_native_link {
         let path = opts
             .candi_firmware
@@ -1438,10 +1459,11 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
             link.enable_ignition_monitor(&opts.output);
         }
     }
-    if opts.interactive_headless {
+    }
+    if opts.interactive_headless && !opts.candi_on_demand {
         bus.trace.enable_console();
     }
-    if opts.verbose || (opts.candi_native_link && !opts.interactive_headless) {
+    if opts.verbose || (opts.candi_native_link && !opts.interactive_headless && !opts.candi_on_demand) {
         let path = opts.output.join("trace.jsonl");
         bus.trace = trace::Trace::open(&path, opts.trace_calls)
             .map_err(|e| (4, format!("trace {}: {e}", path.display())))?;

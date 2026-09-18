@@ -282,8 +282,9 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(fullNative)builder.environment().put("TECH2_CHIPSOFT_FULL_NATIVE","1");
                 if(keyStatus)builder.environment().put("TECH2_CHIPSOFT_KEY_STATUS","1");
                 if(nativeFirmware){progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);builder.environment().put("OPENSAAB_PERFORMANCE_DIR",run.getAbsolutePath());}
+                DemandStartup.configure(this,builder);
                 child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();
-                client=server.accept();client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
+                client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
                 if(!NanoProbeActivity.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
                 long until=fullNative?Long.MAX_VALUE:SystemClock.elapsedRealtime()+(nativeFirmware?330000:receiveTest?45000:8000);boolean sent=false;long received=0,transmits=0,diagnosticTransmits=0;
                 while(!cancelled && SystemClock.elapsedRealtime()<until){

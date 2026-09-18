@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Opt-in research cooperative Tech2 UART ↔ native CANdi SCI experiment.
 //! Optional raw Nano backend. Unknown CANdi devices stop its CPU and are reported.
-use std::collections::VecDeque;
 use std::path::Path;
 use tech2_emu::candi_cpu::{Firmware, Machine};
 
 pub struct NativeLink {
     machine: Machine,
+    uart: super::uart::Uart,
     bridge: Option<Box<dyn tech2_emu::can_adapter::Backend>>,
     live_clock: Option<(std::time::Instant, u64)>,
     clock_sample_at: std::time::Duration,
@@ -16,12 +16,6 @@ pub struct NativeLink {
     ignition: Option<tech2_emu::ignition::Monitor>,
     adc_channel: u8,
     rx_frame: Vec<u8>,
-    registers: [u8; 8],
-    divisor: [u8; 2],
-    tx: Vec<u8>,
-    rx: VecDeque<Option<u8>>,
-    tx_irq: bool,
-    line_ack: bool,
     stopped: bool,
     pub presence_announced: bool,
     events: Vec<String>,
@@ -35,6 +29,7 @@ impl NativeLink {
             )));
         }
         Ok(Self {
+            uart: self.uart.clone(),
             bridge: None,
             live_clock: None,
             clock_sample_at: std::time::Duration::ZERO,
@@ -45,12 +40,6 @@ impl NativeLink {
             machine: self.machine.checkpoint()?,
             adc_channel: self.adc_channel,
             rx_frame: self.rx_frame.clone(),
-            registers: self.registers,
-            divisor: self.divisor,
-            tx: self.tx.clone(),
-            rx: self.rx.clone(),
-            tx_irq: self.tx_irq,
-            line_ack: self.line_ack,
             stopped: self.stopped,
             presence_announced: self.presence_announced,
             events: self.events.clone(),
@@ -61,6 +50,7 @@ impl NativeLink {
         machine.install_application_inventory()?;
         machine.enable_can_register_probe();
         Ok(Self {
+            uart: Default::default(),
             bridge: None,
             live_clock: None,
             clock_sample_at: std::time::Duration::ZERO,
@@ -71,16 +61,19 @@ impl NativeLink {
             machine,
             adc_channel: 0,
             rx_frame: Vec::new(),
-            registers: [0; 8],
-            divisor: [0; 2],
-            tx: Vec::new(),
-            rx: VecDeque::new(),
-            tx_irq: false,
-            line_ack: false,
             stopped: false,
             presence_announced: false,
             events: vec!["virtual application inventory at 0x4000; source=loaded-header+OEM-record-layout; bootloader absent".into()],
         })
+    }
+    /// Run the supported application's bounded cold initialization while its
+    /// initiating Tech2 call is held. This is real CPU execution, with no serial
+    /// requests, backend or wall-clock protocol deadline started yet.
+    pub fn prepare_serial(&mut self) -> Result<(), String> {
+        for _ in 0..100_000 {
+            if !self.machine.step(u64::MAX) { return Err(format!("CANdi boot stopped: {:?}",self.machine.snapshot().reason)); }
+        }
+        Ok(())
     }
     pub fn attach_nano(
         &mut self,
@@ -243,17 +236,9 @@ impl NativeLink {
     /// Original emulator.exe 0x4483a0: mux latch at 0x600000, ADC PCS=3.
     /// These are virtual cable/reference voltages, never ECU measurements.
     pub fn adc_transfer(&mut self, mux: u8, command: u16) -> u16 {
-        match command {
-            0x0180 => self.adc_channel = mux & 15,
-            0x01c0 => self.adc_channel = mux >> 4,
-            _ => {}
-        }
-        match self.adc_channel {
-            15 => 0x0225, // Original cable table index 1 (default at 0x509d58).
-            13 => 0x07fe, // Original reference word at 0x509d54.
-            _ => 0xffff,  // Original default word at 0x509d50.
-        }
+        super::demand::cable_adc(&mut self.adc_channel, mux, command)
     }
+    pub fn restore_adc(&mut self, channel: u8) { self.adc_channel = channel; }
     pub fn advance(&mut self) {
         if self.stopped {
             return;
@@ -325,17 +310,17 @@ impl NativeLink {
         if output.is_empty() {
             return;
         }
-        if self.rx.len() + output.len() > 4096 {
+        if self.uart.rx.len() + output.len() > 4096 {
             self.events
                 .push("UART receive overflow; link stopped".into());
             self.stopped = true;
         } else {
             // A status read before a character arrives cannot acknowledge its
             // error. The final delimiter can follow the checksum in a later slice.
-            if self.rx.is_empty() {
-                self.line_ack = false;
+            if self.uart.rx.is_empty() {
+                self.uart.line_ack = false;
             }
-            self.rx.extend(output);
+            self.uart.rx.extend(output);
         }
     }
     pub fn snapshot(&self) -> tech2_emu::candi_cpu::Snapshot {
@@ -348,58 +333,18 @@ impl NativeLink {
         !self.stopped
     }
     pub fn uart_receive_idle(&self) -> bool {
-        self.rx.is_empty()
+        self.uart.rx.is_empty()
     }
-    fn interrupt_id(&self) -> u8 {
-        let ier = self.registers[1];
-        if ier & 4 != 0 && self.rx.front() == Some(&None) && !self.line_ack {
-            6
-        } else if ier & 1 != 0 && !self.rx.is_empty() {
-            4
-        } else if ier & 2 != 0 && self.tx_irq {
-            2
-        } else {
-            1
+    pub fn irq(&self) -> bool { self.uart.irq() }
+    pub fn read(&mut self, address: u32) -> u8 { self.uart.read(address, &mut self.events) }
+    pub fn restore_uart(&mut self, uart: super::uart::Uart) { self.uart = uart; }
+    pub fn write(&mut self, address: u32, value: u8) {
+        if let Some((frame, delimiter)) = self.uart.write(address, value, &mut self.events) {
+            self.finish_frame(frame, delimiter);
         }
+        self.stopped |= self.uart.stopped;
     }
-    pub fn irq(&self) -> bool {
-        self.interrupt_id() & 1 == 0
-    }
-    pub fn read(&mut self, address: u32) -> u8 {
-        let index = ((address >> 1) & 7) as usize;
-        if self.registers[3] & 0x80 != 0 && index < 2 {
-            return self.divisor[index];
-        }
-        match index {
-            0 => {
-                self.line_ack = false;
-                let byte = self.rx.pop_front();
-                self.events.push(format!(
-                    "UART receive read event={byte:02x?} origin=tech2-firmware"
-                ));
-                byte.flatten().unwrap_or(0)
-            }
-            2 => {
-                let id = self.interrupt_id();
-                if id == 2 {
-                    self.tx_irq = false;
-                }
-                id
-            }
-            5 => {
-                let line = if self.rx.front() == Some(&None) && !self.line_ack {
-                    0x18
-                } else {
-                    0
-                };
-                self.line_ack = true;
-                0x60 | u8::from(!self.rx.is_empty()) | line
-            }
-            _ => self.registers[index],
-        }
-    }
-    fn finish_frame(&mut self, delimiter: &str) {
-        let frame = std::mem::take(&mut self.tx);
+    fn finish_frame(&mut self, frame: Vec<u8>, delimiter: &str) {
         self.events.push(frame_log(true, &frame));
         self.events.push(format!(
             "Tech2->CANdi bytes={frame:02x?} end={delimiter} native_pc={:#010x} native_insns={} origin=tech2-firmware",
@@ -410,53 +355,7 @@ impl NativeLink {
             self.events.push(e);
         }
     }
-    pub fn write(&mut self, address: u32, value: u8) {
-        self.events.push(format!(
-            "UART write address={address:#08x} value={value:#04x} origin=tech2-firmware"
-        ));
-        let index = ((address >> 1) & 7) as usize;
-        if self.registers[3] & 0x80 != 0 && index < 2 {
-            self.divisor[index] = value;
-            return;
-        }
-        match index {
-            0 => {
-                if self.registers[3] & 0x3f == 0x3f && value == 0 {
-                    // Guest sends zero with space parity (LCR 0x3f): the low
-                    // parity bit occupies SCI's stop bit, terminating the frame.
-                    self.finish_frame("space-parity-zero");
-                } else if self.registers[4] & 0x10 != 0 {
-                    if self.rx.len() < 4096 {
-                        self.rx.push_back(Some(value));
-                    }
-                } else if self.tx.len() < 4096 {
-                    self.tx.push(value);
-                } else {
-                    self.stopped = true;
-                    self.events
-                        .push("UART transmit overflow; link stopped".into());
-                }
-                self.tx_irq = true;
-            }
-            1 => {
-                self.tx_irq |= value & 2 != 0 && self.registers[1] & 2 == 0;
-                self.registers[1] = value;
-            }
-            2 => {
-                if value & 2 != 0 {
-                    self.rx.clear();
-                    self.line_ack = false;
-                }
-            }
-            3 => {
-                if value & 0x40 != 0 && self.registers[3] & 0x40 == 0 {
-                    self.finish_frame("break");
-                }
-                self.registers[3] = value;
-            }
-            _ => self.registers[index] = value,
-        }
-    }
+
 }
 
 /// Observation only: preserve every byte; labels never change transport behavior.
@@ -538,7 +437,7 @@ mod tests {
         }
         link.write(0x400800, 0x90);
         let mut saved = link.checkpoint().unwrap();
-        assert_eq!(saved.tx, [0x90]);
+        assert_eq!(saved.uart.tx, [0x90]);
         for candidate in [&mut link, &mut saved] {
             candidate.write(0x400800, 3);
             candidate.write(0x400800, 0x6d);
@@ -550,7 +449,7 @@ mod tests {
         }
         assert_eq!(link.snapshot().pc, saved.snapshot().pc);
         assert_eq!(link.snapshot().serial_tx, saved.snapshot().serial_tx);
-        assert_eq!(link.rx, saved.rx);
+        assert_eq!(link.uart.rx, saved.uart.rx);
         assert_eq!(link.snapshot().serial_tx.len(), 24);
     }
 
@@ -564,7 +463,7 @@ mod tests {
         link.write(0x400806, 0x80);
         link.write(0x400800, 26);
         assert_eq!(link.read(0x400800), 26);
-        assert!(link.tx.is_empty());
+        assert!(link.uart.tx.is_empty());
         link.write(0x400806, 7);
         link.write(0x400802, 2);
         assert!(link.irq());
@@ -573,8 +472,8 @@ mod tests {
         link.write(0x400808, 0x10);
         link.write(0x400800, 0x42);
         assert_eq!(link.read(0x400800), 0x42);
-        assert!(link.tx.is_empty());
-        link.rx.push_back(None);
+        assert!(link.uart.tx.is_empty());
+        link.uart.rx.push_back(None);
         link.write(0x400802, 5);
         assert_eq!(link.read(0x400804), 6);
         assert_ne!(link.read(0x40080a) & 0x10, 0);
