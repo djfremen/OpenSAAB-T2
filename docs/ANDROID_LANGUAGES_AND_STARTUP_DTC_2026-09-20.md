@@ -46,7 +46,7 @@ Observed Pixel menu times from starting each native process, including scripted 
 | Russian 148.000 | 5.86 |
 | Swedish 148.000 | 8.22 |
 
-Pixel currently has no USB adapter attached. The earlier Chipsoft/Trionic 8 bench result supports the underlying DTC reader, but does not substitute for a live test of this new startup integration on Pixel. Pixel was unlocked and the real language-selector/startup-cancellation and transactional firmware-store tests passed. The old app and downloaded setup APK were removed. The requested clean-install MP4 is pending Wi-Fi reconnection: both ADB transports dropped before the recorder started or the new APK downloaded. Nothing has been published to the production download site by this task.
+Pixel currently has no USB adapter attached. The earlier Chipsoft/Trionic 8 bench result supports the underlying DTC reader, but does not substitute for a live test of this new startup integration on Pixel. Pixel was unlocked and the real language-selector/startup-cancellation and transactional firmware-store tests passed. The old app and downloaded setup APK were removed. The Pixel recording was interrupted when both ADB transports dropped. At the user’s request, the clean installation and MP4 were subsequently completed in the Android Studio ARM64 emulator; see `ANDROID_STUDIO_LANGUAGE_WALKTHROUGH_2026-09-20.md`. Nothing has been published to the production download site by this task.
 
 Private local evidence: `~/.local/share/opensaab/pixel-languages-20260920/`. This includes the previous Pixel APK, language LCD frames and native logs; it is not committed.
 
