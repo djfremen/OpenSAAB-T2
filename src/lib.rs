@@ -7,6 +7,7 @@ pub mod candi_cpu;
 pub mod candi_transport;
 // Compatibility re-exports keep CLI/API callers stable while code lives in adapter buckets.
 pub mod adapters;
+pub mod chipsoft_dtc;
 pub use adapters::chipsoft::backend as chipsoft_backend;
 pub use adapters::chipsoft::channel as chipsoft_channel;
 pub use adapters::chipsoft::probe as chipsoft_probe;

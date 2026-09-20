@@ -38,6 +38,8 @@ public final class ChipsoftUsbActivity extends Activity {
     IgnitionStatusView ignitionStatus;
     UsbManager manager; UsbDevice selected; TextView status,console;
     final AtomicBoolean running=new AtomicBoolean();
+    boolean dtcRead;
+    TextView engineCodes;
     boolean fullNative,keyStatus,audible,seeds,vinCheck,symbolOnly,nativeFirmware,receiveTest;volatile File nativeDirectory;ImageView nativeLcd;final Handler lcdHandler=new Handler(Looper.getMainLooper());volatile boolean cancelled; boolean pending,foreground;
     volatile ServerSocket server; volatile Socket client;
     final RequestGate requests=new RequestGate(); String permission;long permissionEpoch;
@@ -57,7 +59,7 @@ public final class ChipsoftUsbActivity extends Activity {
         }
     };
     public void onCreate(Bundle state){
-        super.onCreate(state);fullNative=getIntent().getBooleanExtra("full_native",false);keyStatus=getIntent().getBooleanExtra("key_status",false);audible=getIntent().getBooleanExtra("audible",false);seeds=getIntent().getBooleanExtra("native_seeds",false);if((fullNative?1:0)+(keyStatus?1:0)+(seeds?1:0)+(audible?1:0)+(getIntent().getBooleanExtra("symbol_only",false)?1:0)>1){finish();return;}getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);vinCheck=getIntent().getBooleanExtra("vin_check",false);symbolOnly=getIntent().getBooleanExtra("symbol_only",false);nativeFirmware=fullNative || keyStatus || audible || seeds || symbolOnly || getIntent().getBooleanExtra("native_firmware",false);receiveTest=vinCheck || nativeFirmware || getIntent().getBooleanExtra("receive_test",false);manager=(UsbManager)getSystemService(USB_SERVICE);permission=getPackageName()+".CHIPSOFT_USB_PERMISSION";
+        super.onCreate(state);dtcRead=getIntent().getBooleanExtra("dtc_read",false);fullNative=getIntent().getBooleanExtra("full_native",false);keyStatus=getIntent().getBooleanExtra("key_status",false);audible=getIntent().getBooleanExtra("audible",false);seeds=getIntent().getBooleanExtra("native_seeds",false);if((fullNative?1:0)+(keyStatus?1:0)+(seeds?1:0)+(audible?1:0)+(getIntent().getBooleanExtra("symbol_only",false)?1:0)>1){finish();return;}getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);vinCheck=getIntent().getBooleanExtra("vin_check",false);symbolOnly=getIntent().getBooleanExtra("symbol_only",false);nativeFirmware=fullNative || keyStatus || audible || seeds || symbolOnly || getIntent().getBooleanExtra("native_firmware",false);if(dtcRead && (vinCheck || nativeFirmware)){finish();return;}receiveTest=dtcRead || vinCheck || nativeFirmware || getIntent().getBooleanExtra("receive_test",false);manager=(UsbManager)getSystemService(USB_SERVICE);permission=getPackageName()+".CHIPSOFT_USB_PERMISSION";
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(12,12,12,12);root.setBackgroundColor(0xff101922);
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(SessionStyle.dp(this,12),i.getSystemWindowInsetTop()+SessionStyle.dp(this,8),SessionStyle.dp(this,12),i.getSystemWindowInsetBottom()+SessionStyle.dp(this,8));return i;});
         root.addView(new BrandHeader(this,"OpenSAAB T2 · Chipsoft"));
@@ -67,10 +69,10 @@ public final class ChipsoftUsbActivity extends Activity {
             root.addView(modeLabel);
         }
         status=new TextView(this);status.setMaxLines(2);status.setEllipsize(android.text.TextUtils.TruncateAt.END);status.setText(fullNative?"Original Tech2 + CANdi · Full native control":keyStatus?"Original firmware · CIM key-status diagnostic test":vinCheck?"Read VIN / model year · startup discovery":audible?"Original firmware · BCM audible reminder":symbolOnly?"Original firmware · BCM Symbol Only operation":seeds?"Original firmware · collect security data":nativeFirmware?"Original Tech2 + CANdi · Chipsoft · read-only":receiveTest?"Raw P-bus / I-bus receive test · no diagnostic requests":"Identify adapter · no vehicle commands");root.addView(status);
-        if(vinCheck || nativeFirmware){vinSummary=new TextView(this);vinSummary.setTextSize(14);vinSummary.setTextIsSelectable(true);vinSummary.setText("VIN: connect to identify vehicle");root.addView(vinSummary);}
+        if(dtcRead || vinCheck || nativeFirmware){vinSummary=new TextView(this);vinSummary.setTextSize(14);vinSummary.setTextIsSelectable(true);vinSummary.setText("VIN: connect to identify vehicle");root.addView(vinSummary);}
         if(nativeFirmware){ignitionStatus=new IgnitionStatusView(this);root.addView(ignitionStatus);}
         LinearLayout actions=new LinearLayout(this);root.addView(actions,new LinearLayout.LayoutParams(-1,SessionStyle.dp(this,56)));
-        Button identify=new Button(this);identify.setText(vinCheck?"Read vehicle VIN":nativeFirmware?"Connect and start":receiveTest?"Receive P-bus / I-bus · 8 seconds":"Identify connected Chipsoft");identify.setOnClickListener(v->requestVehicleStart());actions.addView(identify,new LinearLayout.LayoutParams(0,-2,1));
+        Button identify=new Button(this);identify.setText(dtcRead?"Read engine codes — HS-CAN":vinCheck?"Read vehicle VIN":nativeFirmware?"Connect and start":receiveTest?"Receive P-bus / I-bus · 8 seconds":"Identify connected Chipsoft");identify.setOnClickListener(v->requestVehicleStart());actions.addView(identify,new LinearLayout.LayoutParams(0,-2,1));
         Button stop=new Button(this);stop.setText("Stop USB");stop.setOnClickListener(v->stop());actions.addView(stop,new LinearLayout.LayoutParams(0,-2,1));
         Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->{stop();finish();});actions.addView(back,new LinearLayout.LayoutParams(0,-2,1));
         SessionStyle.row(actions);SessionStyle.button(identify,true);
@@ -93,6 +95,10 @@ public final class ChipsoftUsbActivity extends Activity {
             lcdPump=new NativeLcdPump(frame->{health.frame();nativeLcd.setImageBitmap(frame);if(controls!=null)controls.showFirstUseGuide();});
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);updateWorkspace();if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
+        if(dtcRead){
+            status.setText("Trionic 8 engine codes · HS-CAN · read only");
+            Button saved=new Button(this);saved.setText("Saved DTC reports");saved.setOnClickListener(v->DtcReportView.showSavedReports(this));root.addView(saved);
+        }
         ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);
         if(nativeFirmware){
             root.removeViewAt(0);root.removeView(actions);actions.removeAllViews();
@@ -101,7 +107,10 @@ public final class ChipsoftUsbActivity extends Activity {
             controls.setActions(this::showActions);
             workspace=new SessionWorkspace(this,"OpenSAAB T2 · Chipsoft",controls,this::showAppMenu,()->SessionSheet.show(this,"Vehicle and security details",sessionDetails));
             launchFirmware=identify;workspace.addLaunch(identify);updateWorkspace();setContentView(workspace);
-        }else{root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);setContentView(root);}
+        }else{
+            if(dtcRead){engineCodes=new TextView(this);engineCodes.setTextSize(16);engineCodes.setTextIsSelectable(true);engineCodes.setText("Connect Chipsoft to the powered Trionic 8 ECM. Reads current/history engine codes over HS-CAN; does not clear codes.");scroll.removeAllViews();scroll.addView(engineCodes);}
+            root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));SessionStyle.stack(root);setContentView(root);
+        }
         IntentFilter f=new IntentFilter(permission);f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);
         if(state==null && getIntent().getBooleanExtra("auto_start",false))new Handler(Looper.getMainLooper()).post(this::requestVehicleStart);
@@ -132,6 +141,7 @@ public final class ChipsoftUsbActivity extends Activity {
             .add(securityAccess!=null&&securityAccess.readyToProcess()?"Process security data":"Get security access",()->runShortcut(FirmwareMenuNavigator.Target.SECURITY))
             .add("ECU information",()->runShortcut(FirmwareMenuNavigator.Target.ECU_INFO))
             .add("Original menus",()->{if(menuShortcut!=null)menuShortcut.cancel();})
+            .add("Read engine codes — HS-CAN",this::openEngineCodes)
             .add("Read DTC",()->runShortcut(FirmwareMenuNavigator.Target.READ_DTC))
             .add("Clear DTC",()->SessionSheet.confirmClear(this,()->runShortcut(FirmwareMenuNavigator.Target.CLEAR_DTC)))
             .add("Engine Data",()->runShortcut(FirmwareMenuNavigator.Target.ENGINE_DATA))
@@ -139,6 +149,22 @@ public final class ChipsoftUsbActivity extends Activity {
             .add("Vehicle and security details",()->SessionSheet.show(this,"Vehicle and security details",sessionDetails))
             .add(workspace.expanded()?"Show header":"Expand screen",workspace::toggleExpanded)
             .add("App menu",this::showAppMenu).show("Actions");
+    }
+    void openEngineCodes(){
+        if(SecurityAccessView.workflowBusy()){Toast.makeText(this,"Finish the current security task first",Toast.LENGTH_LONG).show();return;}
+        stop();
+        final long until=SystemClock.elapsedRealtime()+10000;
+        lcdHandler.post(new Runnable(){public void run(){
+            if(isFinishing()||isDestroyed()||!foreground)return;
+            if(running.get()){
+                if(SystemClock.elapsedRealtime()<until)lcdHandler.postDelayed(this,100);
+                else Toast.makeText(ChipsoftUsbActivity.this,"USB is still closing. Retry when the session stops.",Toast.LENGTH_LONG).show();
+                return;
+            }
+            Intent next=new Intent(ChipsoftUsbActivity.this,ChipsoftUsbActivity.class).putExtra("dtc_read",true).putExtra("auto_start",true);
+            if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
+            startActivity(next);finish();
+        }});
     }
     void showAppMenu(){
         SessionSheet.Menu menu=new SessionSheet.Menu(this);
@@ -206,18 +232,19 @@ public final class ChipsoftUsbActivity extends Activity {
     void showConnectionReport(){runOnUiThread(()->{if(!isFinishing() && reportConnection!=null)reportConnection.setVisibility(android.view.View.VISIBLE);});}
     void requestVehicleStart(){
         if(running.get()||pending||(vehicleStartPrompt!=null&&vehicleStartPrompt.isShowing()))return;
-        if(!vinCheck&&!nativeFirmware){discover();return;}
+        if(!vinCheck&&!nativeFirmware&&!dtcRead){discover();return;}
         LinearLayout prompt=new LinearLayout(this);prompt.setOrientation(LinearLayout.VERTICAL);int pad=SessionStyle.dp(this,20);prompt.setPadding(pad,pad,pad,0);
-        TextView instructions=new TextView(this);instructions.setText("Connect the adapter and turn the ignition key to ON (dashboard lights on; engine does not need to run). ACC/accessory is not enough. A fresh VIN will be read before firmware starts.");prompt.addView(instructions);
+        TextView instructions=new TextView(this);instructions.setText(dtcRead?"Power the bench ECM or turn the vehicle ignition ON. OpenSAAB will read a fresh VIN, then current/history Trionic 8 engine codes over HS-CAN. Codes will not be cleared.":"Connect the adapter and turn the ignition key to ON (dashboard lights on; engine does not need to run). ACC/accessory is not enough. A fresh VIN will be read before firmware starts.");prompt.addView(instructions);
         CheckBox details=new CheckBox(this);details.setText("Look up engine and color online (optional)");details.setChecked(getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("online_vehicle_details",false));prompt.addView(details);
         TextView disclosure=new TextView(this);disclosure.setText("If selected, your VIN is sent to OpenSAAB and its vehicle-data provider. Details load in the background; diagnostics do not wait for internet.");prompt.addView(disclosure);
         vehicleStartPrompt=new AlertDialog.Builder(this).setTitle("Turn the key to ON").setView(prompt)
-            .setNegativeButton("Cancel",null).setPositiveButton(nativeFirmware?"Key is ON · Connect and start":"Key is ON · Read VIN",(d,w)->{
+            .setNegativeButton("Cancel",null).setPositiveButton(dtcRead?"Read engine codes":nativeFirmware?"Key is ON · Connect and start":"Key is ON · Read VIN",(d,w)->{
                 onlineDetails=details.isChecked();getSharedPreferences("adapter_settings",MODE_PRIVATE).edit().putBoolean("online_vehicle_details",onlineDetails).apply();discover();
             }).show();
     }
 
     void discover(){
+        if(dtcRead && FirmwareGate.sessionActive()){log("Stop the other session before reading engine codes");return;}
         if(FirmwareGate.busy()){log("Finish firmware installation first");return;}
         if(nativeFirmware){String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty()){log("Firmware setup needed: "+missing);startActivity(new Intent(this,FirmwareActivity.class));return;}}
         if(SecurityAccessView.workflowBusy()){log("Finish security processing before starting another session");return;}
@@ -234,9 +261,11 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;long generation=vehicleGeneration;
         if(vinSummary!=null)vinSummary.setText("Reading VIN from vehicle…");
-        new Thread(()->probe(d,nativeFirmware,null,generation),"chipsoft-usb").start();}
+        if(engineCodes!=null)engineCodes.setText("Reading fresh VIN, then engine codes…");
+        new Thread(()->probe(d,nativeFirmware || dtcRead,null,generation),"chipsoft-usb").start();}
     void probe(UsbDevice d,boolean identifyFirst,VehicleIdentity identity,long generation){
         // Finish the existing bounded VIN probe and release USB before firmware opens it.
+        final boolean dtcRead=this.dtcRead && !identifyFirst;
         final boolean nativeFirmware=this.nativeFirmware && !identifyFirst;
         final boolean vinCheck=this.vinCheck || identifyFirst;
         final boolean receiveTest=this.receiveTest || identifyFirst;
@@ -280,7 +309,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 progress.stage(ConnectionAttempt.Stage.TRANSPORT_START);
                 server=new ServerSocket();server.bind(new InetSocketAddress("127.0.0.1",35674),1);server.setSoTimeout(5000);
                 String token=java.util.UUID.randomUUID().toString().replace("-","");
-                ProcessBuilder builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/"+ChipsoftProfile.PROFILE.probeExecutable,token,new File(run,"result.json").getPath());if(receiveTest)builder.command().add(vinCheck?"--vin-check":"--receive-test");
+                ProcessBuilder builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/"+ChipsoftProfile.PROFILE.probeExecutable,token,new File(run,"result.json").getPath());if(receiveTest)builder.command().add(dtcRead?"--dtc-read":vinCheck?"--vin-check":"--receive-test");
                 if(nativeFirmware){
                     if(identity==null)throw new IOException("Read a fresh vehicle VIN before starting firmware");
                     synchronized(identityLock){
@@ -299,7 +328,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 DemandStartup.configure(this,builder);
                 child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();
                 client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
-                if(!UsbBridgeCodec.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
+                if(!UsbBridgeCodec.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(dtcRead?"READY chipsoft-dtc":fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
                 long until=fullNative?Long.MAX_VALUE:SystemClock.elapsedRealtime()+(nativeFirmware?330000:receiveTest?45000:8000);boolean sent=false;long received=0,transmits=0,diagnosticTransmits=0;
                 while(!cancelled && SystemClock.elapsedRealtime()<until){
                     String cmd=UsbBridgeCodec.readLine(in);if(cmd.equals("QUIT")){quit=true;break;}
@@ -307,7 +336,8 @@ public final class ChipsoftUsbActivity extends Activity {
                         byte[] bytes=UsbBridgeCodec.unhex(cmd.substring(3));
                         if(++transmits>(nativeFirmware?250000:5000) && !fullNative)throw new IOException("USB command budget exhausted (includes receive polling)");
                         if(bytes.length>1 && bytes[0]==15 && bytes[1]==0 && ++diagnosticTransmits>5000 && !fullNative)throw new IOException("Diagnostic transmission budget exhausted");
-                        if(!(fullNative?ChipsoftCommandGate.fullNative(bytes):vinCheck?ChipsoftCommandGate.vinProbe(bytes):audible?ChipsoftCommandGate.audible(bytes):symbolOnly?ChipsoftCommandGate.symbolOnly(bytes):seeds?ChipsoftCommandGate.seeds(bytes):keyStatus?ChipsoftCommandGate.keyStatus(bytes):nativeFirmware?ChipsoftCommandGate.nativeRead(bytes):receiveTest?ChipsoftCommandGate.receive(bytes):cmd.equals("TX 0100000000000000")&&!sent))throw new IOException("Chipsoft command gate rejected request");
+                        if(!(dtcRead?ChipsoftCommandGate.engineDtc(bytes):fullNative?ChipsoftCommandGate.fullNative(bytes):vinCheck?ChipsoftCommandGate.vinProbe(bytes):audible?ChipsoftCommandGate.audible(bytes):symbolOnly?ChipsoftCommandGate.symbolOnly(bytes):seeds?ChipsoftCommandGate.seeds(bytes):keyStatus?ChipsoftCommandGate.keyStatus(bytes):nativeFirmware?ChipsoftCommandGate.nativeRead(bytes):receiveTest?ChipsoftCommandGate.receive(bytes):cmd.equals("TX 0100000000000000")&&!sent))throw new IOException("Chipsoft command gate rejected request");
+                        if(dtcRead && bytes[0]==15 && diagnosticTransmits>3)throw new IOException("Engine DTC request budget exceeded");
                         if(vinCheck && bytes[0]==15 && (diagnosticTransmits>2 || (bytes[32]&255)!=(diagnosticTransmits==1?2:0x30)))throw new IOException("VIN request/flow-control budget exceeded");
                         int opcode=(bytes[0]&255)|((bytes[1]&255)<<8);
                         if(opcode==1)progress.stage(ConnectionAttempt.Stage.IDENTIFICATION);
@@ -336,7 +366,7 @@ public final class ChipsoftUsbActivity extends Activity {
             }
             if(out!=null && quit)out.println(clean?"CLOSED":"ERROR cleanup");
             if(child!=null)try{if(!child.waitFor(2,TimeUnit.SECONDS)){child.destroyForcibly();clean=false;}else {log("RUST_EXIT "+child.exitValue());if(child.exitValue()!=0)clean=false;}}catch(InterruptedException e){child.destroyForcibly();Thread.currentThread().interrupt();clean=false;}
-            try{File result=new File(run,"result.json");if(quit && clean && result.length()>0){String report=new String(java.nio.file.Files.readAllBytes(result.toPath()),StandardCharsets.UTF_8);log(report);if(vinCheck){identified=VehicleSession.fromProbe(new org.json.JSONObject(report));}}}catch(Exception e){log("Result read failed");}
+            try{File result=new File(run,"result.json");if(quit && clean && result.length()>0){String report=new String(java.nio.file.Files.readAllBytes(result.toPath()),StandardCharsets.UTF_8);log(report);if(dtcRead && !cancelled)saveEngineCodes(report,identity,run);if(vinCheck){identified=VehicleSession.fromProbe(new org.json.JSONObject(report));}}}catch(Exception e){if(dtcRead)clean=false;log("Result read failed: "+e.getMessage());}
             if(symbolOnly || audible){new File(getFilesDir(),audible?"chipsoft-audible-authority.json":"chipsoft-symbol-authority.json").delete();new File(getFilesDir(),"firmware/card-authorized.bin").delete();}
             if(!clean && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             if(vinCheck && identified==null && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.VIN_UNAVAILABLE);showConnectionReport();}
@@ -350,6 +380,7 @@ public final class ChipsoftUsbActivity extends Activity {
             }
             if(nativeFirmware&&!vinCheck&&health!=null)health.ended(TransportFailure.from(run));
             running.set(false);
+            if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
             final VehicleIdentity ready=identified;
             if(vinCheck)runOnUiThread(()->{
                 if(cancelled || generation!=vehicleGeneration || isFinishing() || isDestroyed())return;
@@ -365,6 +396,27 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(onlineDetails)enrichVehicle(ready,run,generation);
             });
         }
+    }
+    void saveEngineCodes(String report,VehicleIdentity identity,File run)throws Exception{
+        org.json.JSONObject result=new org.json.JSONObject(report);
+        if(!"dtc_complete".equals(result.getString("status")) || !result.getBoolean("usb_closed") || identity==null)throw new IOException("Unverified engine report");
+        org.json.JSONArray codes=result.getJSONArray("dtcs");
+        String observed=java.time.Instant.now().toString();
+        StringBuilder text=new StringBuilder("Trionic 8 engine codes — HS-CAN\nVIN: ").append(identity.vin).append("\nRead: ").append(observed).append("\nChipsoft · 500 kbit/s · current/history\nComplete report · codes not cleared\n\n");
+        if(codes.length()==0)text.append("No current/history engine codes reported.\n");
+        for(int i=0;i<codes.length();i++){
+            org.json.JSONObject code=codes.getJSONObject(i);int flags=code.getInt("status");
+            text.append(code.getString("code")).append((flags&2)!=0?" · Current":"").append((flags&16)!=0?" · History":"")
+                .append(String.format(java.util.Locale.ROOT," · failure %02X · status %02X\n",code.getInt("failure_type"),flags));
+        }
+        result.put("vin",identity.vin);result.put("observed_utc",observed);result.put("scope","Trionic 8 ECM HS-CAN current/history");
+        File reports=new File(getFilesDir(),"dtc-reports");java.nio.file.Files.createDirectories(reports.toPath());
+        String name="android_chipsoft_dtc_"+observed.replaceAll("[^0-9TZ]","")+"_"+java.util.UUID.randomUUID();
+        java.nio.file.Files.write(new File(reports,name+".json").toPath(),result.toString(2).getBytes(StandardCharsets.UTF_8));
+        java.nio.file.Files.write(new File(reports,name+".txt").toPath(),text.toString().getBytes(StandardCharsets.UTF_8));
+        VehicleSession.save(new File(run,VehicleSession.FILE),identity);
+        log("ENGINE_DTC_REPORT records="+codes.length()+" complete=true saved="+name);
+        runOnUiThread(()->{if(!isDestroyed()&&engineCodes!=null)engineCodes.setText(text.toString());});
     }
     void showVehicle(boolean disconnected){
         if(vinSummary==null || vehicle==null)return;

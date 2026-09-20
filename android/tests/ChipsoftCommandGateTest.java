@@ -77,6 +77,14 @@ public class ChipsoftCommandGateTest {
             int wireSum=0;for(int i=8;i<malformed.length;i++)wireSum+=malformed[i]&255;malformed[6]=(byte)wireSum;malformed[7]=(byte)(wireSum>>>8);
             check(!ChipsoftCommandGate.fullNative(malformed));checks++;
         }
+        for(int[] data:new int[][]{{2,0x10,2},{3,0xa9,0x81,0x12},{1,0x20}}){
+            byte[] wire=hsRequest(0x7e0,data);check(ChipsoftCommandGate.engineDtc(wire));checks++;
+            for(int i=0;i<wire.length;i++){check(!ChipsoftCommandGate.engineDtc(java.util.Arrays.copyOf(wire,i)));checks++;}
+            wire[6]^=1;check(!ChipsoftCommandGate.engineDtc(wire));checks++;
+        }
+        for(byte[] wire:new byte[][]{hsRequest(0x7e0,1,4),hsRequest(0x7e0,2,0x27,1),hsRequest(0x7e1,3,0xa9,0x81,0x12),request(0x7e0,3,0xa9,0x81,0x12),hsRequest(0x7e0,3,0xa9,0x81,0x10),hex("04000c0000009300088000000000000035820000")}){
+            check(!ChipsoftCommandGate.engineDtc(wire));checks++;
+        }
         System.out.println("CHIPSOFT_RECEIVE_GATE checks="+checks+" PASS; hardware_opened=false");
     }
 }

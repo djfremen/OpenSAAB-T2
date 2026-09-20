@@ -118,6 +118,7 @@ public final class MainActivity extends Activity {
     public android.app.Dialog showActions(){
         return new com.opensaab.usb.SessionSheet.Menu(this)
             .add("Get security access",()->selectAdapter("native_seed",false))
+            .add("Read engine codes — HS-CAN",()->selectAdapter("dtc_read",false))
             .add("Read DTC",()->selectAdapter("native_dtc",false))
             .add("Clear DTC",()->com.opensaab.usb.SessionSheet.confirmClear(this,()->selectAdapter("native_clear_dtc",false)))
             .add("Engine Data",()->selectAdapter("native_engine_data",false))
@@ -195,7 +196,10 @@ public final class MainActivity extends Activity {
         }
         com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(current.getVendorId(),current.getProductId());
         android.content.Intent launch;
-        if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){
+        if(mode.equals("dtc_read")){
+            if(match.backend()!=com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){android.widget.Toast.makeText(this,"Direct HS-CAN engine-code reading currently requires Chipsoft",android.widget.Toast.LENGTH_LONG).show();return;}
+            launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("dtc_read",true);
+        }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){
             launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode,true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){
             boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);

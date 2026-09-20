@@ -14,8 +14,9 @@ use tech2_emu::{
 
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    let dtc_read = args.len() == 3 && args[2] == "--dtc-read";
     let vin_check = args.len() == 3 && args[2] == "--vin-check";
-    let receive = vin_check || (args.len() == 3 && args[2] == "--receive-test");
+    let receive = dtc_read || vin_check || (args.len() == 3 && args[2] == "--receive-test");
     if !(args.len() == 2 || receive)
         || args[0].len() != 32
         || !args[0].bytes().all(|b| b.is_ascii_hexdigit())
@@ -39,7 +40,9 @@ fn run() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut usb = SocketUsb(BufReader::new(stream));
     if usb.command(&format!("HELLO {}", args[0]))?
-        != if vin_check {
+        != if dtc_read {
+            "READY chipsoft-dtc"
+        } else if vin_check {
             "READY chipsoft-vin"
         } else if receive {
             "READY chipsoft-receive"
@@ -80,6 +83,7 @@ fn run() -> Result<(), String> {
         Err(format!("GET_INFO deadline expired; {:?}", decoder.finish()))
     })();
     let mut vin_result = None;
+    let mut dtc_result = None;
     let mut vehicle_tx = 0u32;
     let mut counts = [0u64; 2];
     let mut empty_statuses = 0;
@@ -92,7 +96,7 @@ fn run() -> Result<(), String> {
             c.checked(&command(8, vec![]))?;
             for (i, protocol) in PROTOCOLS
                 .iter()
-                .take(if vin_check { 1 } else { 2 })
+                .take(if vin_check || dtc_read { 1 } else { 2 })
                 .enumerate()
             {
                 opened[i] = true;
@@ -103,6 +107,11 @@ fn run() -> Result<(), String> {
                         r.opcode, r.payload
                     );
                 }
+            }
+            if dtc_read {
+                dtc_result = Some(tech2_emu::chipsoft_dtc::read(&mut c)?);
+                vehicle_tx = 3;
+                return Ok(());
             }
             let mut vin_reply = tech2_emu::vin_probe::VinReply::default();
             let vin_tx = |data: Vec<u8>| {
@@ -131,7 +140,10 @@ fn run() -> Result<(), String> {
             }
             let until = Instant::now() + Duration::from_secs(if vin_check { 4 } else { 8 });
             while Instant::now() < until {
-                for protocol in PROTOCOLS.iter().take(if vin_check { 1 } else { 2 }) {
+                for protocol in PROTOCOLS
+                    .iter()
+                    .take(if vin_check || dtc_read { 1 } else { 2 })
+                {
                     let r = c.exchange(&command(0x10, words(&[*protocol, 10])))?;
                     if r.status == 0x85 && r.payload.is_empty() {
                         empty_statuses += 1;
@@ -184,7 +196,7 @@ fn run() -> Result<(), String> {
     if cleanup? != "CLOSED" {
         return Err("USB cleanup not confirmed".into());
     }
-    let report = serde_json::json!({"status":if vin_check {if vin_result.is_some(){"vin_received"}else{"vin_no_reply"}}else if receive{"raw_receive_complete"}else{"identified"},"identity":identity,"elapsed_ms":started.elapsed().as_millis(),"channel_rx":counts,"empty_status_0085":empty_statuses,"vehicle_commands_sent":vehicle_tx,"vin":vin_result,"model_year":vin_result.as_deref().and_then(|v|tech2_emu::vin_probe::saab_tech2_year(v).ok()),"request_origin":if vin_check{"host-startup-discovery"}else{"none"},"usb_closed":true});
+    let report = serde_json::json!({"dtcs":dtc_result.map(|records|records.into_iter().map(|d|serde_json::json!({"code":d.code,"failure_type":d.failure_type,"status":d.status})).collect::<Vec<_>>()),"status":if dtc_read {"dtc_complete"}else if vin_check {if vin_result.is_some(){"vin_received"}else{"vin_no_reply"}}else if receive{"raw_receive_complete"}else{"identified"},"identity":identity,"elapsed_ms":started.elapsed().as_millis(),"channel_rx":counts,"empty_status_0085":empty_statuses,"vehicle_commands_sent":vehicle_tx,"vin":vin_result,"model_year":vin_result.as_deref().and_then(|v|tech2_emu::vin_probe::saab_tech2_year(v).ok()),"request_origin":if dtc_read{"host-hscan-dtc"}else if vin_check{"host-startup-discovery"}else{"none"},"usb_closed":true});
     writeln!(result_file, "{}", report).map_err(|e| e.to_string())?;
     println!("CHIPSOFT_RESULT {report}");
     Ok(())

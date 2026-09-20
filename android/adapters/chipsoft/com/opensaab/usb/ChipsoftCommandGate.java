@@ -21,6 +21,17 @@ public final class ChipsoftCommandGate {
     static byte[] filter(int protocol){ByteArrayOutputStream b=new ByteArrayOutputStream();word(b,protocol);word(b,1);for(int n=0;n<3;n++){for(int i=0;i<12;i++)b.write(0);b.write(n==2?0:4);word(b,protocol);word(b,0);}return b.toByteArray();}
     static int u16(byte[] b,int at){return (b[at]&255)|((b[at+1]&255)<<8);}
     static int u32(byte[] b,int at){return u16(b,at)|(u16(b,at+2)<<16);}
+    public static boolean engineDtc(byte[] wire){
+        if(receive(wire)){
+            int op=u16(wire,0);
+            return op==1 || op==8 || op==0x20 || (wire.length>=12 && u32(wire,8)==5);
+        }
+        if(!fullNative(wire) || wire.length!=40 || u32(wire,12)!=5 || u32(wire,22)!=0 || wire[30]!=7 || (wire[31]&255)!=0xe0)return false;
+        byte[] data=Arrays.copyOfRange(wire,32,40);
+        return Arrays.equals(data,new byte[]{2,0x10,2,0,0,0,0,0})
+            || Arrays.equals(data,new byte[]{3,(byte)0xa9,(byte)0x81,0x12,0,0,0,0})
+            || Arrays.equals(data,new byte[]{1,0x20,0,0,0,0,0,0});
+    }
     public static boolean vinProbe(byte[] wire){
         if(receive(wire))return true;
         if(!nativeRead(wire) || wire.length!=40 || u32(wire,12)!=5 || u32(wire,22)!=0 || wire[30]!=7 || (wire[31]&255)!=0xe0)return false;
