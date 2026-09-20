@@ -4,11 +4,7 @@
 use crate::nano_usb::{Decoder, Frame, ReplyDeadline};
 use std::time::Duration;
 
-pub trait UsbTransport {
-    fn write(&mut self, bytes: &[u8]) -> Result<(), String>;
-    /// A bounded read; empty bytes mean no data yet.
-    fn read(&mut self) -> Result<Vec<u8>, String>;
-}
+pub use crate::adapters::common::usb::UsbTransport;
 
 pub fn control(channel: u8, opcode: u8, payload: &[u8]) -> Frame {
     Frame {

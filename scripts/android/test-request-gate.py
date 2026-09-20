@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise permission/cancellation ordering without Android or USB hardware."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,6 +11,14 @@ jdk=Path(os.environ.get('JAVA_HOME','/Applications/Android Studio.app/Contents/j
 with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/javac'),'-d',output,
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/AdapterProfile.java'),
+        str(repo/'android/shared/com/opensaab/usb/UsbBridgeCodec.java'),
+        str(repo/'android/tests/UsbBridgeCodecTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/AdapterCatalog.java'),
+        str(repo/'android/shared/com/opensaab/usb/adapters/chipsoft/ChipsoftProfile.java'),
+        str(repo/'android/shared/com/opensaab/usb/adapters/vcx_nano/NanoProfile.java'),
+        str(repo/'android/tests/AdapterCatalogTest.java'),
+        str(repo/'android/tests/AdapterRoutingTest.java'),
         str(repo/'android/shared/com/opensaab/usb/TransportFailure.java'),
         str(repo/'android/tests/TransportFailureTest.java'),
         str(repo/'android/shared/com/opensaab/usb/EmulatorArchitecture.java'),
@@ -45,8 +54,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/IgnitionStatusText.java'),
         str(repo/'android/tests/IgnitionStatusTextTest.java'),
         str(repo/'android/tests/RequestGateTest.java'),
-        str(repo/'android/shared/com/opensaab/usb/NativeCommandGate.java'),
-        str(repo/'android/shared/com/opensaab/usb/ChipsoftCommandGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/adapters/vcx_nano/NativeCommandGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/adapters/chipsoft/ChipsoftCommandGate.java'),
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)
@@ -75,3 +84,10 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SsaStateTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.TransportFailureTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.AdapterCatalogTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.AdapterRoutingTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.UsbBridgeCodecTest'],check=True)
+
+subprocess.run([sys.executable,str(repo/'scripts/android/test-adapter-boundaries.py')],check=True)

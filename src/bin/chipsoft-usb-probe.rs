@@ -7,9 +7,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tech2_emu::{
+    adapters::common::usb::SocketUsb,
+    adapters::common::usb::UsbTransport,
     chipsoft::{Decoder, Frame},
-    nano_backend::SocketUsb,
-    nano_channel::UsbTransport,
 };
 
 fn run() -> Result<(), String> {

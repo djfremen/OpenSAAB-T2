@@ -58,7 +58,7 @@ fn bytes(s: &str) -> Result<Vec<u8>, String> {
 /// A specific experimental mapping: native channel 0's wake helper selects low
 /// GPIO bits 10; capture-backed J2534 operation is SW_CAN_HV_TX, never HS CAN.
 pub fn encode(controller: usize, tx: &CanTransmission) -> Result<String, String> {
-    let flags = crate::can_adapter::nano_route(controller, tx)?.j2534_flags;
+    let flags = crate::can_adapter::electrical_route(controller, tx)?.j2534_flags;
     Ok(format!(
         "TX {controller} {} {flags:04X} {:03X} {}",
         tx.ticket,

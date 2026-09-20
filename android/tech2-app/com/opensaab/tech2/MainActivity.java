@@ -147,9 +147,8 @@ public final class MainActivity extends Activity {
         List<android.hardware.usb.UsbDevice> found=new ArrayList<>();
         for(android.hardware.usb.UsbDevice d:usb.getDeviceList().values())if(com.opensaab.usb.AdapterCatalog.adapterCandidate(com.opensaab.usb.AdapterCatalog.identify(d.getVendorId(),d.getProductId())))found.add(d);
         String label="Connect and start";
-        if(found.size()==1){String family=com.opensaab.usb.AdapterCatalog.identify(found.get(0).getVendorId(),found.get(0).getProductId()).family;
-            if(family.equals("chipsoft_candidate"))label="Chipsoft detected · Connect and start";
-            else if(family.equals("nano_candidate"))label="VCX Nano detected · Connect and start";}
+        if(found.size()==1){com.opensaab.usb.AdapterProfile profile=com.opensaab.usb.AdapterCatalog.identify(found.get(0).getVendorId(),found.get(0).getProductId()).profile;
+            if(profile!=null)label=profile.candidateLabel()+" · Connect and start";}
         start.setText(label);
     }
     private void selectAdapter(String mode,boolean allowEmulation) {
@@ -167,7 +166,7 @@ public final class MainActivity extends Activity {
             com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(device.getVendorId(),device.getProductId());
             if(!com.opensaab.usb.AdapterCatalog.adapterCandidate(match))continue;
             devices.add(device);
-            String label=match.family.equals("nano_candidate")?"VCX Nano":match.family.equals("chipsoft_candidate")?"Chipsoft Pro":match.label+" — not supported yet";
+            String label=match.profile!=null?match.profile.candidateLabel():match.label+" — not supported yet";
             labels.add(label+"\nUSB "+device.getDeviceName());
         }
         if(devices.size()==1&&com.opensaab.usb.AdapterCatalog.supported(com.opensaab.usb.AdapterCatalog.identify(devices.get(0).getVendorId(),devices.get(0).getProductId()))){
@@ -192,11 +191,11 @@ public final class MainActivity extends Activity {
             || current.getVendorId()!=chosen.getVendorId() || current.getProductId()!=chosen.getProductId()){
             status.setText("Selected adapter disconnected — select again");return;
         }
-        String family=com.opensaab.usb.AdapterCatalog.identify(current.getVendorId(),current.getProductId()).family;
+        com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(current.getVendorId(),current.getProductId());
         android.content.Intent launch;
-        if(family.equals("nano_candidate")){
+        if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){
             launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode,true);
-        }else if(family.equals("chipsoft_candidate")){
+        }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){
             boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);
             if(restricted && (mode.equals("native_seed") || mode.equals("native_clear_dtc"))){
                 status.setText("Turn off Chipsoft restricted mode to collect security data or clear DTCs");
@@ -209,7 +208,8 @@ public final class MainActivity extends Activity {
                 .putExtra(restricted?"native_firmware":mode.equals("native_seed")?"native_seeds":"full_native",true);
             if(shortcut&&!mode.equals("native_seed"))launch.putExtra("menu_shortcut",mode);
         }else{status.setText("This adapter is detected, but its Android driver is not ready");return;}
-        status.setText("Opening selected adapter…");
+        status.setText(match.profile.openingMessage());
+        android.util.Log.i("OpenSaabAdapters","BACKEND_SELECTED backend="+match.backend()+" identity_verified=false probe="+match.profile.probeExecutable);
         startActivityForResult(launch.putExtra("usb_device_name",chosen.getDeviceName()).putExtra("auto_start",true),27);
     }
     private void enqueue(String command) {

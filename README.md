@@ -50,3 +50,7 @@ This is a clean source export, not a publication of private research history. Le
 Include app version, device/Android version, adapter model, menu path and expected versus actual behavior. Use **Report issue** to prepare a support report and review it before sharing. Do not publish VINs, seeds/keys, SSA files, raw captures, firmware, passwords or private screenshots. Reports are shared by the user, not silently uploaded.
 
 Donations are voluntary and do not unlock features. A Google Play closed test is not running. Independent community project; not affiliated with Saab, GM or adapter manufacturers.
+
+### Adapter implementations
+
+Adapter-specific USB code is organized into [Chipsoft Pro, VCX Nano and shared transport buckets](docs/adapters/README.md). That document describes detection, initialization ownership and tested coverage.

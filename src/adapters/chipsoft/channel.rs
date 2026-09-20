@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Chipsoft raw channel wire contract, derived from OEM DLL and USBPcap.
 use crate::{
+    adapters::common::usb::UsbTransport,
     chipsoft::{Decoder, Frame},
-    nano_channel::UsbTransport,
 };
 use std::time::{Duration, Instant};
 pub fn command(opcode: u16, payload: Vec<u8>) -> Frame {
@@ -22,7 +22,7 @@ pub fn transmit(
     controller: usize,
     tx: &crate::candi_cpu::CanTransmission,
 ) -> Result<Frame, String> {
-    let route = crate::can_adapter::nano_route(controller, tx)?;
+    let route = crate::can_adapter::electrical_route(controller, tx)?;
     let protocol = PROTOCOLS[route.channel as usize];
     let mut p = words(&[50, protocol, 0]);
     p.extend(((4 + tx.frame.data.len()) as u16).to_le_bytes());

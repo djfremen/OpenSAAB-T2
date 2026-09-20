@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Original CANdi requests over Android-owned Chipsoft USB. No ECU client here.
 use crate::{
+    adapters::common::policy::{CommandGate, Profile},
+    adapters::common::usb::SocketUsb,
     can_adapter::{Backend, CompletionSource, Event},
     candi_cpu::{CanFrame, CanTransmission},
     chipsoft_channel::{command, decode_read, setup, words, Client, PROTOCOLS},
-    nano_backend::SocketUsb,
-    nano_native::{CommandGate, Profile},
 };
 use std::{
     fs::OpenOptions,
@@ -34,7 +34,7 @@ impl KeyStatusGate {
             || controller != 2
             || tx.frame.id != 0x241
             || tx.frame.data != [3, 0xae, 3, 2, 0, 0, 0, 0]
-            || crate::can_adapter::nano_route(controller, tx).is_err()
+            || crate::can_adapter::electrical_route(controller, tx).is_err()
         {
             return false;
         }
@@ -57,7 +57,11 @@ pub struct Bridge {
 }
 // Interactive firmware must be allowed to wait for the operator. These total
 // budgets belong to bounded research profiles, not an in-progress module Add.
-fn session_budget_error(full_native: bool, elapsed: Duration, received: u64) -> Option<&'static str> {
+fn session_budget_error(
+    full_native: bool,
+    elapsed: Duration,
+    received: u64,
+) -> Option<&'static str> {
     if full_native {
         None
     } else if elapsed > Duration::from_secs(300) {
@@ -183,7 +187,9 @@ impl Bridge {
                 }
                 ready.try_send(()).map_err(|_| "Native startup cancelled")?;
                 while !cancelled.load(Ordering::Relaxed) {
-                    if let Some(error) = session_budget_error(full_native, began.elapsed(), rx_count) {
+                    if let Some(error) =
+                        session_budget_error(full_native, began.elapsed(), rx_count)
+                    {
                         return Err(error.into());
                     }
                     for _ in 0..16 {
@@ -220,7 +226,9 @@ impl Bridge {
                         }
                         for raw in decode_read(&reply)? {
                             rx_count = rx_count.saturating_add(1);
-                            if let Some(error) = session_budget_error(full_native, began.elapsed(), rx_count) {
+                            if let Some(error) =
+                                session_budget_error(full_native, began.elapsed(), rx_count)
+                            {
                                 return Err(error.into());
                             }
                             let controller = if raw.protocol == 5 { 0 } else { 2 };
@@ -383,10 +391,22 @@ mod key_status_tests {
     use super::*;
     #[test]
     fn interactive_session_survives_old_deadline_and_capture_budget() {
-        assert_eq!(session_budget_error(false, Duration::from_secs(300), 400000), None);
-        assert_eq!(session_budget_error(false, Duration::from_secs(301), 0), Some("Chipsoft native session expired"));
-        assert_eq!(session_budget_error(false, Duration::ZERO, 400001), Some("Chipsoft receive budget exceeded"));
-        assert_eq!(session_budget_error(true, Duration::from_secs(3600), 400001), None);
+        assert_eq!(
+            session_budget_error(false, Duration::from_secs(300), 400000),
+            None
+        );
+        assert_eq!(
+            session_budget_error(false, Duration::from_secs(301), 0),
+            Some("Chipsoft native session expired")
+        );
+        assert_eq!(
+            session_budget_error(false, Duration::ZERO, 400001),
+            Some("Chipsoft receive budget exceeded")
+        );
+        assert_eq!(
+            session_budget_error(true, Duration::from_secs(3600), 400001),
+            None
+        );
     }
     use crate::candi_cpu::CanElectricalState;
     fn request() -> CanTransmission {
@@ -455,7 +475,7 @@ mod key_status_tests {
     #[test]
     fn key_status_requires_explicit_mode_exact_request_and_bounded_retries() {
         let tx = request();
-        assert!(!crate::nano_native::diagnostic_allowed(2, &tx));
+        assert!(!crate::adapters::common::policy::diagnostic_allowed(2, &tx));
         assert!(!KeyStatusGate::default().allowed(2, &tx));
         let mut gate = KeyStatusGate {
             enabled: true,

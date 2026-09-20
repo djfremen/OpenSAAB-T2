@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.opensaab.usb;
+import static com.opensaab.usb.UsbBridgeCodec.*;
 
 import android.app.*;
 import android.content.*;
@@ -75,7 +76,7 @@ public class NanoProbeActivity extends Activity {
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(i.getAction()) && selected!=null && selected.equals(d)) {
                 permissionPending=false;connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);log("Adapter disconnected."); cancel();
             } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(i.getAction()) && foreground && !running.get()) {
-                if(d!=null && d.getVendorId()==0x1a86 && d.getProductId()==0x55d3)log("Nano connected. Choose a test to start; attachment never restarts a previous test.");
+                if(d!=null && NanoProfile.PROFILE.matches(d.getVendorId(),d.getProductId()))log("Nano connected. Choose a test to start; attachment never restarts a previous test.");
             }
         }
     };
@@ -161,7 +162,7 @@ public class NanoProbeActivity extends Activity {
         String chosenPath=getIntent().getStringExtra("usb_device_name");
         for (UsbDevice d:manager.getDeviceList().values()) {
             if(chosenPath!=null && !chosenPath.equals(d.getDeviceName()))continue;
-            if (d.getVendorId()==0x1a86 && d.getProductId()==0x55d3) {
+            if (NanoProfile.PROFILE.matches(d.getVendorId(),d.getProductId())) {
                 if (selected!=null) { selected=null; requestGate.cancel();connectionFailure(ConnectionAttempt.Reason.MULTIPLE_ADAPTERS);log("Multiple Nano candidates; select one physically."); return; }
                 selected=d;
             }
@@ -193,23 +194,6 @@ public class NanoProbeActivity extends Activity {
         cancelled=false;
         byte[] random=new byte[16];new SecureRandom().nextBytes(random);token=hex(random,random.length);
         new Thread(()->probe(device,requestId),"nano-usb-probe").start();
-    }
-    static String hex(byte[] b,int size) {
-        // USB capture calls this for every packet: avoid a Formatter and its
-        // temporary allocations for each individual byte.
-        final String digits="0123456789ABCDEF";
-        char[] text=new char[size*2];
-        for(int i=0;i<size;i++){int v=b[i]&255;text[i*2]=digits.charAt(v>>>4);text[i*2+1]=digits.charAt(v&15);}
-        return new String(text);
-    }
-    static byte[] unhex(String s) throws IOException {
-        if ((s.length()&1)!=0 || s.length()>256 || !s.matches("[0-9A-F]+")) throw new IOException("Invalid TX encoding");
-        byte[] b=new byte[s.length()/2];for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);return b;
-    }
-    static String readLine(InputStream in) throws IOException {
-        ByteArrayOutputStream b=new ByteArrayOutputStream(); int c;
-        while((c=in.read())!=-1) { if(c=='\n')return b.toString("US-ASCII"); if(c<32 || c>126 || b.size()>=260)throw new IOException("Invalid command line");b.write(c); }
-        throw new EOFException("Controller disconnected");
     }
     void control(UsbDeviceConnection c,int request,int value,int index) throws IOException {
         int rc=c.controlTransfer(0x40,request,value,index,null,0,500);
@@ -310,7 +294,7 @@ public class NanoProbeActivity extends Activity {
             progress.stage(ConnectionAttempt.Stage.TRANSPORT_START);
             server=new ServerSocket();server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"),35673),1);server.setSoTimeout(15000);
             log("USB ready; starting Rust "+(nativeFirmware()?"original firmware":receiveTest?"channel receive test": "adapter test")+" on this phone.");
-            String executable=getApplicationInfo().nativeLibraryDir+"/libnano_probe.so";
+            String executable=getApplicationInfo().nativeLibraryDir+"/"+NanoProfile.PROFILE.probeExecutable;
             ProcessBuilder builder=hsVin?new ProcessBuilder(executable,token,resultFile.getAbsolutePath(),"--hs-vin-check"):receiveTest?new ProcessBuilder(executable,token,resultFile.getAbsolutePath(),"--receive-test"):channelTest?new ProcessBuilder(executable,token,resultFile.getAbsolutePath(),channelTestSw?"--channel-test-sw":"--channel-test"):new ProcessBuilder(executable,token,resultFile.getAbsolutePath());
             if(dlcVoltage && !nativeFirmware())builder=new ProcessBuilder(executable,token,resultFile.getAbsolutePath(),"--voltage-check");
             if(nativeFirmware()){

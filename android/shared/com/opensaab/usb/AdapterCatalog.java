@@ -5,13 +5,16 @@ package com.opensaab.usb;
 public final class AdapterCatalog {
     public static final class Match {
         public final String family,label,transport,readiness,evidence;
-        Match(String f,String l,String t,String r,String e){family=f;label=l;transport=t;readiness=r;evidence=e;}
+        public final AdapterProfile profile;
+        public AdapterProfile.Backend backend(){return profile==null?AdapterProfile.Backend.NONE:profile.backend;}
+        Match(String f,String l,String t,String r,String e){this(f,l,t,r,e,null);}
+        Match(String f,String l,String t,String r,String e,AdapterProfile p){family=f;label=l;transport=t;readiness=r;evidence=e;profile=p;}
     }
     public static Match identify(int vendor,int product){
-        if(vendor==0x1a86 && product==0x55d3)return new Match("nano_candidate","VCX Nano candidate","CH343 serial USB",
-            "Nano backend available; verify adapter identity before use","Captured Nano USB identity; shared USB chip IDs are not firmware identification");
-        if(vendor==0x0483 && product==0x5740)return new Match("chipsoft_candidate","Chipsoft Pro candidate","USB CDC serial",
-            "Android identity, raw receive and original firmware read backend available; verify identity before use","Chipsoft capture matches; this STM USB identity is also used by unrelated devices");
+        if(NanoProfile.PROFILE.matches(vendor,product))return new Match("nano_candidate","VCX Nano candidate","CH343 serial USB",
+            "Nano backend available; verify adapter identity before use","Captured Nano USB identity; shared USB chip IDs are not firmware identification",NanoProfile.PROFILE);
+        if(ChipsoftProfile.PROFILE.matches(vendor,product))return new Match("chipsoft_candidate","Chipsoft Pro candidate","USB CDC serial",
+            "Android identity, raw receive and original firmware read backend available; verify identity before use","Chipsoft capture matches; this STM USB identity is also used by unrelated devices",ChipsoftProfile.PROFILE);
         // Active entries only in Bosch MDI/MDI2 boschvci_v3.inf. Low-nibble-zero
         // IDs are commented out in the 0CA0 12xx/13xx/14xx ranges.
         if((vendor==0x0ca0 && product>=0x1201 && product<=0x14ff && (product&15)!=0)
@@ -28,6 +31,6 @@ public final class AdapterCatalog {
             "No backend selected","No matching adapter profile; vendor/product names are informational only");
     }
     public static boolean adapterCandidate(Match match){return match.family.endsWith("_candidate") && !match.family.equals("bosch_eps_candidate");}
-    public static boolean supported(Match match){return match.family.equals("chipsoft_candidate")||match.family.equals("nano_candidate");}
+    public static boolean supported(Match match){return match.backend()!=AdapterProfile.Backend.NONE;}
     private AdapterCatalog(){}
 }

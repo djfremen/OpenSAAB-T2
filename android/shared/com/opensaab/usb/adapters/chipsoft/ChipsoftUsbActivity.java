@@ -226,7 +226,7 @@ public final class ChipsoftUsbActivity extends Activity {
         if(lcdPump!=null){lcdPump.setDirectory(null);nativeLcd.setImageDrawable(null);}
         if(vinSummary!=null)vinSummary.setText("VIN: waiting for adapter");
         String chosenPath=getIntent().getStringExtra("usb_device_name");
-        for(UsbDevice d:manager.getDeviceList().values())if((chosenPath==null || chosenPath.equals(d.getDeviceName())) && d.getVendorId()==0x0483 && d.getProductId()==0x5740){if(selected!=null){selected=null;connectionFailure(ConnectionAttempt.Reason.MULTIPLE_ADAPTERS);log("Multiple candidates; connect one Chipsoft.");return;}selected=d;}
+        for(UsbDevice d:manager.getDeviceList().values())if((chosenPath==null || chosenPath.equals(d.getDeviceName())) && ChipsoftProfile.PROFILE.matches(d.getVendorId(),d.getProductId())){if(selected!=null){selected=null;connectionFailure(ConnectionAttempt.Reason.MULTIPLE_ADAPTERS);log("Multiple candidates; connect one Chipsoft.");return;}selected=d;}
         if(selected==null){connectionFailure(ConnectionAttempt.Reason.NO_ADAPTER);log("Chipsoft not detected; no session opened.");return;}
         connectionAttempt.device(selected.getVendorId(),selected.getProductId());connectionAttempt.stage(ConnectionAttempt.Stage.PERMISSION);
         long epoch=requests.begin();if(manager.hasPermission(selected))start(selected,epoch);
@@ -280,7 +280,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 progress.stage(ConnectionAttempt.Stage.TRANSPORT_START);
                 server=new ServerSocket();server.bind(new InetSocketAddress("127.0.0.1",35674),1);server.setSoTimeout(5000);
                 String token=java.util.UUID.randomUUID().toString().replace("-","");
-                ProcessBuilder builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libchipsoft_probe.so",token,new File(run,"result.json").getPath());if(receiveTest)builder.command().add(vinCheck?"--vin-check":"--receive-test");
+                ProcessBuilder builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/"+ChipsoftProfile.PROFILE.probeExecutable,token,new File(run,"result.json").getPath());if(receiveTest)builder.command().add(vinCheck?"--vin-check":"--receive-test");
                 if(nativeFirmware){
                     if(identity==null)throw new IOException("Read a fresh vehicle VIN before starting firmware");
                     synchronized(identityLock){
@@ -299,12 +299,12 @@ public final class ChipsoftUsbActivity extends Activity {
                 DemandStartup.configure(this,builder);
                 child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();
                 client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
-                if(!NanoProbeActivity.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
+                if(!UsbBridgeCodec.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
                 long until=fullNative?Long.MAX_VALUE:SystemClock.elapsedRealtime()+(nativeFirmware?330000:receiveTest?45000:8000);boolean sent=false;long received=0,transmits=0,diagnosticTransmits=0;
                 while(!cancelled && SystemClock.elapsedRealtime()<until){
-                    String cmd=NanoProbeActivity.readLine(in);if(cmd.equals("QUIT")){quit=true;break;}
+                    String cmd=UsbBridgeCodec.readLine(in);if(cmd.equals("QUIT")){quit=true;break;}
                     if(cmd.startsWith("TX ")){
-                        byte[] bytes=NanoProbeActivity.unhex(cmd.substring(3));
+                        byte[] bytes=UsbBridgeCodec.unhex(cmd.substring(3));
                         if(++transmits>(nativeFirmware?250000:5000) && !fullNative)throw new IOException("USB command budget exhausted (includes receive polling)");
                         if(bytes.length>1 && bytes[0]==15 && bytes[1]==0 && ++diagnosticTransmits>5000 && !fullNative)throw new IOException("Diagnostic transmission budget exhausted");
                         if(!(fullNative?ChipsoftCommandGate.fullNative(bytes):vinCheck?ChipsoftCommandGate.vinProbe(bytes):audible?ChipsoftCommandGate.audible(bytes):symbolOnly?ChipsoftCommandGate.symbolOnly(bytes):seeds?ChipsoftCommandGate.seeds(bytes):keyStatus?ChipsoftCommandGate.keyStatus(bytes):nativeFirmware?ChipsoftCommandGate.nativeRead(bytes):receiveTest?ChipsoftCommandGate.receive(bytes):cmd.equals("TX 0100000000000000")&&!sent))throw new IOException("Chipsoft command gate rejected request");
@@ -320,7 +320,7 @@ public final class ChipsoftUsbActivity extends Activity {
                         try{
                             UsbRequest done=conn.requestWait(20);if(done!=read)throw new IOException("USB request failed/detached");queued=false;
                             int n=buffer.position();byte[] bytes=new byte[n];buffer.flip();buffer.get(bytes);received+=n;if(received>(nativeFirmware?64*1024*1024:receiveTest?4*1024*1024:4096) && !fullNative)throw new IOException("USB receive byte budget exhausted");
-                            String hex=NanoProbeActivity.hex(bytes,n);capture.write(SystemClock.elapsedRealtime()+" RX "+hex+"\n");capture.flush();if(!receiveTest)log("USB_RX "+hex);out.println(n==0?"EMPTY":"RX "+hex);
+                            String hex=UsbBridgeCodec.hex(bytes,n);capture.write(SystemClock.elapsedRealtime()+" RX "+hex+"\n");capture.flush();if(!receiveTest)log("USB_RX "+hex);out.println(n==0?"EMPTY":"RX "+hex);
                         }catch(java.util.concurrent.TimeoutException e){out.println("EMPTY");}
                     }else throw new IOException("Identity-only command gate rejected request");
                     if(out.checkError())throw new IOException("Controller disconnected");
@@ -331,7 +331,7 @@ public final class ChipsoftUsbActivity extends Activity {
         finally{
             if(conn!=null){
                 if(read!=null && queued){try{if(!read.cancel())clean=false;UsbRequest done=conn.requestWait(300);if(done!=read)clean=false;}catch(Exception e){clean=false;}}
-                if(receiveTest && !quit && tx!=null){clean=false;for(String hex:new String[]{"050004000000880008800000","050004000000050005000000","2000000000000000"})try{byte[] b=NanoProbeActivity.unhex(hex);conn.bulkTransfer(tx,b,b.length,200);}catch(Exception ignored){}log("Emergency channel close sent; replies unverified");}
+                if(receiveTest && !quit && tx!=null){clean=false;for(String hex:new String[]{"050004000000880008800000","050004000000050005000000","2000000000000000"})try{byte[] b=UsbBridgeCodec.unhex(hex);conn.bulkTransfer(tx,b,b.length,200);}catch(Exception ignored){}log("Emergency channel close sent; replies unverified");}
                 if(dataClaim)clean&=conn.releaseInterface(data);if(ctlClaim)clean&=conn.releaseInterface(ctl);conn.close();if(read!=null)read.close();
             }
             if(out!=null && quit)out.println(clean?"CLOSED":"ERROR cleanup");
