@@ -22,7 +22,8 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
     public synchronized void input(){if(directory!=null)state.input(SystemClock.uptimeMillis());}
     public synchronized void frame(){state.frame();}
     public synchronized void expectedStop(){directory=null;generation++;}
-    public synchronized void ended(){if(directory==null)return;incident("unexpected_emulator_exit");directory=null;}
+    public synchronized void ended(){ended(null);}
+    public synchronized void ended(String explanation){if(directory==null)return;incident(explanation==null?"unexpected_emulator_exit":"vehicle_network_failure",explanation);directory=null;}
     private synchronized void tick(){
         if(closed||directory==null||!foreground)return;
         long now=SystemClock.uptimeMillis();
@@ -31,7 +32,8 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
         String reason=state.reason(now);if(reason!=null)incident(reason);
         if(!uiPending){uiPending=true;ui.post(()->{synchronized(this){uiPending=false;state.ui(SystemClock.uptimeMillis());}});}
     }
-    private void incident(String reason){
+    private void incident(String reason){incident(reason,null);}
+    private void incident(String reason,String explanation){
         if(state.alerted||closed)return;state.alerted=true;
         long now=SystemClock.uptimeMillis(),epoch=generation;
         try{JSONObject event=new JSONObject().put("utc",java.time.Instant.now().toString()).put("reason",reason)
@@ -41,10 +43,10 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
         }catch(Exception ignored){}
         ui.post(()->{synchronized(this){if(closed||!foreground||epoch!=generation||activity.isFinishing()||activity.isDestroyed())return;}
             activity.getSharedPreferences("health-prompts",0).edit().putLong("health_offered",new File(activity.getFilesDir(),"last-emulator-health.json").lastModified()).apply();
-            dialog=new AlertDialog.Builder(activity).setTitle(reason.equals("unexpected_emulator_exit")?"Emulation stopped unexpectedly":"Emulation may be unresponsive")
-                .setMessage("Would you like to send a report to OpenSAAB? A slow operation can also cause this warning. Nothing has been uploaded or restarted.\n\nYou can review the report before sending it. Choosing Send report stops this session first.")
+            dialog=new AlertDialog.Builder(activity).setTitle(explanation!=null?"Vehicle network step failed":reason.equals("unexpected_emulator_exit")?"Emulation stopped unexpectedly":"Emulation may be unresponsive")
+                .setMessage((explanation==null?"":explanation+"\n\n")+"Would you like to send a report to OpenSAAB? A slow operation can also cause this warning. Nothing has been uploaded or restarted.\n\nYou can review the report before sending it. Choosing Send report stops this session first.")
                 .setPositiveButton("Send report to OpenSAAB",(d,w)->{expectedStop();stop.run();activity.startActivity(new Intent(activity,SupportReportActivity.class).putExtra("health_report",true));})
-                .setNegativeButton("Keep waiting",(d,w)->{}).show();
+                .setNegativeButton(reason.equals("unexpected_emulator_exit")||explanation!=null?"Close":"Keep waiting",(d,w)->{}).show();
         });
     }
     public synchronized void close(){closed=true;directory=null;generation++;worker.shutdownNow();activity.getApplication().unregisterActivityLifecycleCallbacks(this);if(dialog!=null)dialog.dismiss();}

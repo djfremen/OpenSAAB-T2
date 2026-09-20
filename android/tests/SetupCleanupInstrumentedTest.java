@@ -17,11 +17,9 @@ public final class SetupCleanupInstrumentedTest extends Instrumentation {
   c.getSharedPreferences("setup-completion",0).edit().clear().commit();
   activity=(MainActivity)startActivitySync(new Intent(c,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));final MainActivity a=activity;
   long end=SystemClock.elapsedRealtime()+20000;
-  while(field(a,"cleanupDialog")==null&&SystemClock.elapsedRealtime()<end)SystemClock.sleep(100);
-  check(field(a,"cleanupDialog")!=null,"Completed installation should offer cleanup");
-  runOnMainSync(()->{try{((AlertDialog)field(a,"cleanupDialog")).getButton(AlertDialog.BUTTON_NEGATIVE).performClick();}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();
-  runOnMainSync(()->{try{Method update=MainActivity.class.getDeclaredMethod("update");update.setAccessible(true);update.invoke(a);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();
-  check(field(a,"cleanupDialog")==null,"Keeping Setup must not nag again");
+  while(field(a,"selected")==null&&SystemClock.elapsedRealtime()<end)SystemClock.sleep(100);
+  check(field(a,"selected")!=null,"Release catalog loaded");
+  SystemClock.sleep(300);check(field(a,"cleanupDialog")==null,"Cleanup must never block first use");
   check(((Button)field(a,"removeSetup")).getVisibility()==View.VISIBLE,"Later removal remains available");
   IntentFilter filter=new IntentFilter(Intent.ACTION_UNINSTALL_PACKAGE);filter.addDataScheme("package");
   monitor=addMonitor(filter,new ActivityResult(Activity.RESULT_CANCELED,null),true);
@@ -29,7 +27,7 @@ public final class SetupCleanupInstrumentedTest extends Instrumentation {
   check(monitor.getHits()==1,"Expected user-confirmed system removal flow");
   check(c.getPackageManager().getPackageInfo("com.opensaab.tech2",PackageManager.GET_SIGNATURES).versionCode==installed.versionCode,"Emulator must remain installed");
   check(c.getPackageManager().getPackageInfo("com.opensaab.checker",0)!=null,"Cancelled removal must retain Setup");
-  result.putString("stream","PASS: absence/signature/launch gates, self-only uninstall target, automatic completion offer, keep/no-repeat, later removal, cancellation and emulator preservation");
+  result.putString("stream","PASS: absence/signature/launch gates, self-only uninstall target, no automatic cleanup prompt, later removal, cancellation and emulator preservation");
  }catch(Throwable e){code=Activity.RESULT_CANCELED;result.putString("stream","FAIL: "+e);}
  finally{if(monitor!=null)removeMonitor(monitor);if(activity!=null){MainActivity a=activity;runOnMainSync(a::finish);}}
  finish(code,result);

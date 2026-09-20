@@ -6,12 +6,13 @@ import java.util.regex.*;
 
 /** One explicit shortcut: select recognized menus, then leave task prompts to the driver. */
 public final class FirmwareMenuNavigator {
-    public enum Target { SECURITY("Get Security Access"), READ_DTC("Read DTC"), CLEAR_DTC("Clear DTC"), ENGINE_DATA("Engine Data");
+    public enum Target { SECURITY("Get Security Access"), READ_DTC("Read DTC"), CLEAR_DTC("Clear DTC"), ENGINE_DATA("Engine Data"), ECU_INFO("ECU information");
         final String label;Target(String label){this.label=label;}
         public static Target fromShortcut(String value){
             if("native_dtc".equals(value))return READ_DTC;
             if("native_clear_dtc".equals(value))return CLEAR_DTC;
-            if("native_engine_data".equals(value))return ENGINE_DATA;return null;
+            if("native_engine_data".equals(value))return ENGINE_DATA;
+            if("native_ecu_info".equals(value))return ECU_INFO;return null;
         }
     }
     private final Target target;
@@ -35,6 +36,7 @@ public final class FirmwareMenuNavigator {
         platform=p.contains("9440")||p.equals("9-3 sport sedan")||p.equals("saab 9-3 sport")?"9440":"";
         if(target==null||year<2003||year>2012||platform.isEmpty())cancel();
     }
+    private boolean engineTarget(){return target==Target.ENGINE_DATA||target==Target.ECU_INFO;}
     public boolean active(){return stage!=Stage.DONE;}
     public void cancel(){manual=true;stage=Stage.DONE;}
     public String hint(){String label=target==null?"your task":target.label;
@@ -59,9 +61,9 @@ public final class FirmwareMenuNavigator {
             else if(text.contains("Model Year"))stage=Stage.YEAR;
             else if(text.contains("Vehicle Type"))stage=Stage.PLATFORM;
             else if(text.contains("Diagnostics")&&!text.contains("Checking")&&function(text,"All")!=null)stage=Stage.DIAGNOSTICS;
-            else if(target!=Target.ENGINE_DATA&&text.contains("ECU Information")&&function(text,"Get Security Access")!=null)stage=Stage.ALL;
+            else if(!engineTarget()&&text.contains("ECU Information")&&function(text,"Get Security Access")!=null)stage=Stage.ALL;
             else if((target==Target.READ_DTC||target==Target.CLEAR_DTC)&&function(text,"Read DTC")!=null&&function(text,"Clear DTC")!=null)stage=Stage.DTC;
-            else if(target==Target.ENGINE_DATA&&text.contains("Customer Functions")&&last(text).equals("Engine Control"))stage=Stage.ENGINE;
+            else if(engineTarget()&&text.contains("Customer Functions")&&last(text).equals("Engine Control"))stage=Stage.ENGINE;
             else {cancel();return null;}
         }
         proposed=stage;
@@ -88,7 +90,7 @@ public final class FirmwareMenuNavigator {
                 }
                 break;
             case DIAGNOSTICS:
-                if(text.contains("Diagnostics")&&!text.contains("Checking")){Integer k=function(text,target==Target.ENGINE_DATA?"Engine":"All");if(k!=null){proposed=target==Target.ENGINE_DATA?Stage.ENGINE:Stage.ALL;return k;}}
+                if(text.contains("Diagnostics")&&!text.contains("Checking")){Integer k=function(text,engineTarget()?"Engine":"All");if(k!=null){proposed=engineTarget()?Stage.ENGINE:Stage.ALL;return k;}}
                 break;
             case ALL:
                 if(text.contains("ECU Information")){Integer k=function(text,target==Target.SECURITY?"Get Security Access":"Diagnostic Trouble Codes (DTC)");if(k!=null){proposed=target==Target.SECURITY?Stage.DONE:Stage.DTC;return k;}}
@@ -100,6 +102,11 @@ public final class FirmwareMenuNavigator {
                 if(text.contains("Customer Functions")&&last(text).equals("Engine Control")){proposed=Stage.ENGINE_MENU;return 0x10;}
                 break;
             case ENGINE_MENU:
+                if(text.contains("Checking")||text.contains("Working")||text.contains("Turn key"))break;
+                if(target==Target.ECU_INFO){
+                    if(text.contains("Engine")){Integer k=function(text,"ECU Information");if(k!=null){proposed=Stage.DONE;return k;}}
+                    break;
+                }
                 if(text.contains("Engine Data Display")){stage=Stage.DONE;return null;}
                 if(text.contains("Engine")){Integer k=function(text,"Data Display");if(k==null)k=function(text,"Engine Data");
                     if(k!=null){proposed=Stage.DONE;return k;}}

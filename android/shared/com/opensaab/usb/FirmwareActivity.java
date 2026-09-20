@@ -21,7 +21,7 @@ public final class FirmwareActivity extends Activity {
     private TextView status,current,details,heading,subtitle,stage,supportStatus;
     private LinearLayout welcomePanel,choosePanel,supportPanel,readyPanel,transferPanel,advancedPanel;
     private Button next,download,more,retry;
-    private boolean guided,welcome,chooseRequested,failed,bundledSupport;
+    private boolean guided,welcome,chooseRequested,failed,bundledSupport,continueReady,resumed;
     private Callable<String> retryWork;
     private Spinner choices;
     private final List<Button> actions=new ArrayList<>();
@@ -35,8 +35,8 @@ public final class FirmwareActivity extends Activity {
         super.onCreate(state);com.opensaab.usb.BackNavigation.install(this,this::leave);store=new FirmwareStore(getFilesDir());
         try{bundledSupport=BundledSupport.available(getAssets());}catch(IOException ignored){}
         guided=!store.missing().isEmpty();
-        welcome=guided&&!getSharedPreferences("firmware_library",MODE_PRIVATE).getBoolean("setup_started",false);
-        if(state!=null){welcome=state.getBoolean("welcome",welcome);chooseRequested=state.getBoolean("choose_requested",false);}
+        welcome=false;
+        if(state!=null){guided=state.getBoolean("guided",guided);continueReady=state.getBoolean("continue_ready",false);chooseRequested=state.getBoolean("choose_requested",false);}
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0d1620);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);scroll.addView(root);
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(dp(20),i.getSystemWindowInsetTop()+dp(20),dp(20),i.getSystemWindowInsetBottom()+dp(16));return i;});
@@ -44,18 +44,7 @@ public final class FirmwareActivity extends Activity {
         heading=label(root,"Welcome to OpenSAAB",28);subtitle=label(root,"Let’s get your diagnostic software ready.",16);
         current=label(root,"Checking your setup…",14);
 
-        welcomePanel=panel(root);
-        label(welcomePanel,"A little setup, then you’re ready",20);
-        label(welcomePanel,CompatibilityCheck.verdict(Build.VERSION.SDK_INT,Build.SUPPORTED_ABIS,new StatFs(getFilesDir().getAbsolutePath()).getAvailableBytes(),AppBuildProfile.abi(this)),14);
-        button(welcomePanel,"Check device compatibility",()->DeviceCompatibility.show(this));
-        label(welcomePanel,"1. Choose your Saab software and language. English for North America is selected to get you started.",16);
-        label(welcomePanel,"2. Connect to the internet to download it. We’ll check the download and unpack it for your first run.",16);
-        label(welcomePanel,bundledSupport?"3. This development build includes the communication firmware and prepares it automatically.":"3. Import the three communication firmware files from your existing Tech2Win installation. They are not included in this app.",16);
-        if(!bundledSupport)label(welcomePanel,"Tech2Wiki provides the Saab software ZIPs. A download source for the three support files has not been verified; setup will tell you what is still missing.",14);
-        label(welcomePanel,"You can set this up without connecting to a vehicle. Keep about 140 MB free for installation and backups.",14);
-        label(welcomePanel,"After setup, your installed software, USB diagnostics and saved reports can be used offline. Security access requires an internet connection to the OpenSAAB security-access API; it cannot be processed offline. Downloads, online vehicle details and sending reports also need internet. You can import a supported Saab image from a file in More options.",14);
-        button(welcomePanel,"Get started",()->{welcome=false;getSharedPreferences("firmware_library",MODE_PRIVATE).edit().putBoolean("setup_started",true).apply();render();});
-
+        welcomePanel=panel(root); // Kept hidden; first run starts with the actual software choice.
         choosePanel=panel(root);label(choosePanel,"Choose your software",20);
         label(choosePanel,"Version and language",14);
         choices=new Spinner(this);ArrayAdapter<FirmwareCatalog.Entry> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,FirmwareCatalog.ENTRIES);choices.setAdapter(adapter);choices.setMinimumHeight(dp(56));choices.setContentDescription("Software version and language");choosePanel.addView(choices);
@@ -65,7 +54,7 @@ public final class FirmwareActivity extends Activity {
             if(v instanceof TextView){((TextView)v).setTextColor(0xffeff5fa);((TextView)v).setTextSize(16);}
             details.setText(String.format(Locale.ROOT,"About %.1f MB to download from Tech2Wiki. Internet is needed for this step.\n\nWe’ll unpack the ZIP for you. The installed software uses 32 MB; you won’t need to download it each time you open the app.",e.downloadBytes/1048576.0)+(i==0?"\n\nRecommended starting choice: English · North American Operations (NAO).":"")+(FirmwareCatalog.runnable(e)?"":"\n\nThis version cannot run in this app yet. You can save it for later; it will not replace your installed software."));
         }});
-        download=button(choosePanel,"Download and set up",()->{FirmwareCatalog.Entry e=(FirmwareCatalog.Entry)choices.getSelectedItem();job(()->downloadAndUse(e),true);});
+        download=button(choosePanel,"Download and continue",()->{FirmwareCatalog.Entry e=(FirmwareCatalog.Entry)choices.getSelectedItem();job(()->downloadAndUse(e),true);});
 
         transferPanel=panel(root);stage=label(transferPanel,"Getting ready…",20);stage.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);transferPanel.addView(progress);
@@ -97,6 +86,9 @@ public final class FirmwareActivity extends Activity {
         next=new Button(this);next.setAllCaps(false);next.setText("Set up later");next.setOnClickListener(v->leave());root.addView(next);
         setContentView(scroll);render();job(()->{store.recover();return "";},false);
     }
+    @Override protected void onResume(){super.onResume();resumed=true;continueToApp();}
+    @Override protected void onPause(){resumed=false;super.onPause();}
+    private void continueToApp(){if(resumed&&continueReady&&!closed&&!busy&&store.missing().isEmpty()){setResult(RESULT_OK);finish();}}
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private LinearLayout panel(LinearLayout root){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(dp(16),dp(12),dp(16),dp(12));android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(0xff192837);bg.setCornerRadius(dp(16));p.setBackground(bg);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(18);root.addView(p,lp);return p;}
     private TextView label(LinearLayout root,String text,int size){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(0xffdce9f2);v.setPadding(0,dp(6),0,dp(6));v.setLineSpacing(dp(3),1);root.addView(v);return v;}
@@ -110,7 +102,7 @@ public final class FirmwareActivity extends Activity {
         subtitle.setText(welcome?"Let’s get your diagnostic software ready.":ready?"Installed on your phone and ready to use.":choose?"Download once. Get ready to connect.":"Add the communication firmware to continue");
         try{current.setText(cardReady?"Installed: "+store.active().optString("label"):"No diagnostic software installed yet");}catch(Exception e){current.setText("Your setup needs attention. Open the options below to restore a backup.");}
         String supportMissing=store.missingSupport();supportStatus.setText("Still needed: "+supportMissing);
-        show(welcomePanel,welcome&&!busy);show(choosePanel,choose&&!busy);show(supportPanel,!welcome&&!supportMissing.isEmpty()&&!busy);show(readyPanel,!welcome&&ready&&!busy);
+        show(welcomePanel,welcome&&!busy);show(choosePanel,choose&&!busy);show(supportPanel,!welcome&&!supportMissing.isEmpty()&&!busy&&(!bundledSupport||cardReady));show(readyPanel,!welcome&&ready&&!busy);
         for(Button b:actions)b.setEnabled(!busy);choices.setEnabled(!busy);
         more.setVisibility(welcome||busy?android.view.View.GONE:android.view.View.VISIBLE);if(welcome||busy){advancedPanel.setVisibility(android.view.View.GONE);more.setText("More options");}
         next.setText(busy?"Leave setup":ready?"Back":"Set up later");
@@ -127,7 +119,7 @@ public final class FirmwareActivity extends Activity {
     private void leave(){if(!busy){finish();return;}new AlertDialog.Builder(this).setTitle("Leave setup?").setMessage("The current transfer will stop. Completed steps are saved, and you can return to setup later.").setPositiveButton("Leave setup",(d,w)->finish()).setNegativeButton("Keep setting up",null).show();}
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed(){leave();}
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("welcome",welcome);out.putBoolean("choose_requested",chooseRequested);}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("guided",guided);out.putBoolean("continue_ready",continueReady);out.putBoolean("choose_requested",chooseRequested);}
     private void job(Callable<String> work){job(work,true);}
     private void job(Callable<String> work,boolean visible){
         if(busy||closed)return;busy=true;cancelled=false;failed=false;retryWork=work;render();
@@ -150,6 +142,7 @@ public final class FirmwareActivity extends Activity {
             final String done=result;final boolean problem=error;
             runOnUiThread(()->{busy=false;if(closed)return;failed=problem;if(!problem&&visible){welcome=false;chooseRequested=false;}
                 render();show(transferPanel,problem||!done.isEmpty());stage.setText(problem?(cancelled?"Setup paused":"Setup needs attention"):"Step complete");status.setText(done);progress.setIndeterminate(false);progress.setProgress(problem?0:100);
+                if(!problem&&!cancelled&&visible&&guided&&store.missing().isEmpty()){continueReady=true;continueToApp();}
             });
         });
     }

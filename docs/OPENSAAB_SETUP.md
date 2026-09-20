@@ -29,3 +29,17 @@ An APK signed by a different key cannot update the installed package. Setup dete
 ## Optional Setup cleanup (0.3.3)
 
 After confirming a release-signed, launchable emulator at the selected version or newer, Setup offers Remove Setup / Keep Setup once per emulator package. No prompt is shown for absent apps, signing conflicts, incomplete updates or active downloads. Keeping/cancelling does not repeatedly nag; a Remove Setup button remains available, including offline for an already verified installed app. Android confirms self-uninstallation, targeting only `com.opensaab.checker`. The emulator and its private firmware/reports/settings are separate and untouched. The main app has its own Check for updates. Opening it closes Setup’s task in Recents. The browser’s original downloaded Setup APK may still remain in Downloads; Setup does not delete another app’s files.
+
+## Continuous onboarding (0.3.4)
+
+The same flow serves ARM64 and ARM32. Install OpenSAAB downloads and verifies the selected release, resumes once after returning from Android source permission, and opens only the recognized signed package at the selected version or newer. A persisted release descriptor binds continuation to that package, hash and version. Permission refusal and installation cancellation leave a retry state; they do not loop dialogs. Returning from a process restart rechecks permission and installed identity. Required Android confirmations remain. Setup removes its own verified APK after successful handoff; browser downloads remain under browser/user control.
+
+Cleanup never interrupts first use. Once diagnostic firmware is ready, the main app offers Remove installer in its app menu, with a pinned Setup signer and a fixed package-only uninstall intent. Android confirms removal. The Setup app still has a manual cleanup action.
+
+First-run firmware preparation starts with software/language selection, then Download and continue. A successful, verified first-run download or import returns to the main connection screen automatically. Advanced version changes retain the normal completion view and backups. Errors and cancellation do not hand off.
+
+The normal launcher always offers adapter connection, including optimized ARM32. A single supported adapter skips the picker; multiple candidates keep selection; offline emulation remains an explicit app-menu option. ARM32's accelerated native boot and deferred CANdi configuration remain architecture-specific. No native ARM64 behavior changes.
+
+Chipsoft's key-ON confirmation authorizes a fresh VIN read followed by firmware startup. Optional online engine/color lookup is unchecked by default, discloses the VIN destination, and runs after the local VIN result without holding the firmware startup path. Session generations reject stale lookup results. ECU information uses exact recognized original Engine/Engine Control menu labels for a known 9440 vehicle; unavailable identity or unfamiliar screens leave manual navigation available. The shortcut does not bypass vehicle-network checks.
+
+The observed Chipsoft 001D rejection is explained as a single-wire wake failure only when the most recent CAN TX intent in the session trace matches that wake request. VIN success does not imply ECU-information/DTC success, and the status is not represented as a confirmed CAN transmission.

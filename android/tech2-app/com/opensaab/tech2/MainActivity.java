@@ -67,7 +67,7 @@ public final class MainActivity extends Activity {
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
         lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{health.frame();lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
-        start=new Button(this);start.setText(com.opensaab.usb.DemandStartup.enabled(this)?"Start emulator":"Start · select adapter");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->{if(com.opensaab.usb.DemandStartup.enabled(this))startSession();else selectAdapter("native_dtc",true);});workspace.addLaunch(start);
+        start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
@@ -126,6 +126,8 @@ public final class MainActivity extends Activity {
     private void showAppMenu(){
         com.opensaab.usb.SessionSheet.Menu menu=new com.opensaab.usb.SessionSheet.Menu(this);
         if(running)menu.add("Stop emulation",()->stopSession("Stopped by operator"));
+        if(com.opensaab.usb.SetupCleanup.available(this))menu.add("Remove installer",()->{if(idleTool())com.opensaab.usb.SetupCleanup.remove(this);});
+        menu.add("Run without an adapter",()->{if(idleTool())startSession();});
         menu.add("Firmware selection",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));})
             .add("Adapter & advanced tools",()->com.opensaab.usb.AdvancedFeatures.show(this,()->running))
             .add("Report issue",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.SupportReportActivity.class));})
@@ -139,6 +141,17 @@ public final class MainActivity extends Activity {
         Toast.makeText(this,"Stop the current session before opening this tool",Toast.LENGTH_LONG).show();return false;
     }
     private void key(int code) { enqueue(String.format(Locale.ROOT,"0x%02x",code)); }
+    private void refreshAdapterLabel(){
+        if(start==null||running)return;
+        android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
+        List<android.hardware.usb.UsbDevice> found=new ArrayList<>();
+        for(android.hardware.usb.UsbDevice d:usb.getDeviceList().values())if(com.opensaab.usb.AdapterCatalog.adapterCandidate(com.opensaab.usb.AdapterCatalog.identify(d.getVendorId(),d.getProductId())))found.add(d);
+        String label="Connect and start";
+        if(found.size()==1){String family=com.opensaab.usb.AdapterCatalog.identify(found.get(0).getVendorId(),found.get(0).getProductId()).family;
+            if(family.equals("chipsoft_candidate"))label="Chipsoft detected · Connect and start";
+            else if(family.equals("nano_candidate"))label="VCX Nano detected · Connect and start";}
+        start.setText(label);
+    }
     private void selectAdapter(String mode,boolean allowEmulation) {
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
@@ -156,6 +169,9 @@ public final class MainActivity extends Activity {
             devices.add(device);
             String label=match.family.equals("nano_candidate")?"VCX Nano":match.family.equals("chipsoft_candidate")?"Chipsoft Pro":match.label+" — not supported yet";
             labels.add(label+"\nUSB "+device.getDeviceName());
+        }
+        if(devices.size()==1&&com.opensaab.usb.AdapterCatalog.supported(com.opensaab.usb.AdapterCatalog.identify(devices.get(0).getVendorId(),devices.get(0).getProductId()))){
+            connectAdapter(devices.get(0),mode,!allowEmulation);return;
         }
         android.app.AlertDialog.Builder picker=new android.app.AlertDialog.Builder(this).setTitle("Select adapter");
         if(devices.isEmpty()){
@@ -277,7 +293,7 @@ public final class MainActivity extends Activity {
             health.ended();
             if(firmwareLease!=null)firmwareLease.close();
             final String message=end;
-            ui.post(()->{running=false;start.setText("Start");start.setEnabled(true);status.setText(message);append(message);});
+            ui.post(()->{running=false;start.setText("Connect and start");start.setEnabled(true);status.setText(message);append(message);});
         }
     }
     private void readLogs(java.lang.Process child) {
@@ -314,7 +330,7 @@ public final class MainActivity extends Activity {
     private void stopSession(String reason) { if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
     @Override protected void onStart() { super.onStart();foreground=true;ui.removeCallbacks(consoleRefresh);ui.post(consoleRefresh);
         ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
-        if(com.opensaab.usb.DemandStartup.enabled(this) && !autoStarted && new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty())ui.post(this::startSession);
+        refreshAdapterLabel();
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — select an adapter to start");}
     }
     @Override protected void onStop() { foreground=false;ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }

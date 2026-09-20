@@ -21,6 +21,8 @@ public final class ChipsoftUsbActivity extends Activity {
     volatile VehicleIdentity vehicle;
     volatile long vehicleGeneration;
     Runnable pendingVehicleStart;
+    boolean onlineDetails;
+    final Object identityLock=new Object();
     AlertDialog vehicleStartPrompt;
     NativeLcdPump lcdPump;
     EmulatorHealthMonitor health;
@@ -68,7 +70,7 @@ public final class ChipsoftUsbActivity extends Activity {
         if(vinCheck || nativeFirmware){vinSummary=new TextView(this);vinSummary.setTextSize(14);vinSummary.setTextIsSelectable(true);vinSummary.setText("VIN: connect to identify vehicle");root.addView(vinSummary);}
         if(nativeFirmware){ignitionStatus=new IgnitionStatusView(this);root.addView(ignitionStatus);}
         LinearLayout actions=new LinearLayout(this);root.addView(actions,new LinearLayout.LayoutParams(-1,SessionStyle.dp(this,56)));
-        Button identify=new Button(this);identify.setText(vinCheck?"Read vehicle VIN":nativeFirmware?"Start firmware":receiveTest?"Receive P-bus / I-bus · 8 seconds":"Identify connected Chipsoft");identify.setOnClickListener(v->requestVehicleStart());actions.addView(identify,new LinearLayout.LayoutParams(0,-2,1));
+        Button identify=new Button(this);identify.setText(vinCheck?"Read vehicle VIN":nativeFirmware?"Connect and start":receiveTest?"Receive P-bus / I-bus · 8 seconds":"Identify connected Chipsoft");identify.setOnClickListener(v->requestVehicleStart());actions.addView(identify,new LinearLayout.LayoutParams(0,-2,1));
         Button stop=new Button(this);stop.setText("Stop USB");stop.setOnClickListener(v->stop());actions.addView(stop,new LinearLayout.LayoutParams(0,-2,1));
         Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->{stop();finish();});actions.addView(back,new LinearLayout.LayoutParams(0,-2,1));
         SessionStyle.row(actions);SessionStyle.button(identify,true);
@@ -128,6 +130,8 @@ public final class ChipsoftUsbActivity extends Activity {
     public Dialog showActions(){
         return new SessionSheet.Menu(this)
             .add(securityAccess!=null&&securityAccess.readyToProcess()?"Process security data":"Get security access",()->runShortcut(FirmwareMenuNavigator.Target.SECURITY))
+            .add("ECU information",()->runShortcut(FirmwareMenuNavigator.Target.ECU_INFO))
+            .add("Original menus",()->{if(menuShortcut!=null)menuShortcut.cancel();})
             .add("Read DTC",()->runShortcut(FirmwareMenuNavigator.Target.READ_DTC))
             .add("Clear DTC",()->SessionSheet.confirmClear(this,()->runShortcut(FirmwareMenuNavigator.Target.CLEAR_DTC)))
             .add("Engine Data",()->runShortcut(FirmwareMenuNavigator.Target.ENGINE_DATA))
@@ -203,10 +207,16 @@ public final class ChipsoftUsbActivity extends Activity {
     void requestVehicleStart(){
         if(running.get()||pending||(vehicleStartPrompt!=null&&vehicleStartPrompt.isShowing()))return;
         if(!vinCheck&&!nativeFirmware){discover();return;}
-        vehicleStartPrompt=new AlertDialog.Builder(this).setTitle("Turn the key to ON")
-            .setMessage("Before continuing, connect the adapter and turn the ignition key to ON (dashboard lights on; engine does not need to run). ACC/accessory is not enough.\n\nOpenSAAB will read a fresh VIN, then look up the vehicle's engine and color before you start the firmware. Your VIN is sent to OpenSAAB and its vehicle-data provider to retrieve these details. Vehicle details need internet; firmware diagnostics can work offline after setup.")
-            .setNegativeButton("Cancel",null).setPositiveButton("Key is ON · Read VIN",(d,w)->discover()).show();
+        LinearLayout prompt=new LinearLayout(this);prompt.setOrientation(LinearLayout.VERTICAL);int pad=SessionStyle.dp(this,20);prompt.setPadding(pad,pad,pad,0);
+        TextView instructions=new TextView(this);instructions.setText("Connect the adapter and turn the ignition key to ON (dashboard lights on; engine does not need to run). ACC/accessory is not enough. A fresh VIN will be read before firmware starts.");prompt.addView(instructions);
+        CheckBox details=new CheckBox(this);details.setText("Look up engine and color online (optional)");details.setChecked(getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("online_vehicle_details",false));prompt.addView(details);
+        TextView disclosure=new TextView(this);disclosure.setText("If selected, your VIN is sent to OpenSAAB and its vehicle-data provider. Details load in the background; diagnostics do not wait for internet.");prompt.addView(disclosure);
+        vehicleStartPrompt=new AlertDialog.Builder(this).setTitle("Turn the key to ON").setView(prompt)
+            .setNegativeButton("Cancel",null).setPositiveButton(nativeFirmware?"Key is ON · Connect and start":"Key is ON · Read VIN",(d,w)->{
+                onlineDetails=details.isChecked();getSharedPreferences("adapter_settings",MODE_PRIVATE).edit().putBoolean("online_vehicle_details",onlineDetails).apply();discover();
+            }).show();
     }
+
     void discover(){
         if(FirmwareGate.busy()){log("Finish firmware installation first");return;}
         if(nativeFirmware){String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty()){log("Firmware setup needed: "+missing);startActivity(new Intent(this,FirmwareActivity.class));return;}}
@@ -273,7 +283,11 @@ public final class ChipsoftUsbActivity extends Activity {
                 ProcessBuilder builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libchipsoft_probe.so",token,new File(run,"result.json").getPath());if(receiveTest)builder.command().add(vinCheck?"--vin-check":"--receive-test");
                 if(nativeFirmware){
                     if(identity==null)throw new IOException("Read a fresh vehicle VIN before starting firmware");
-                    VehicleSession.save(new File(run,VehicleSession.FILE),identity);
+                    synchronized(identityLock){
+                        VehicleIdentity latest=vehicle;
+                        VehicleSession.save(new File(run,VehicleSession.FILE),latest!=null&&latest.vin.equals(identity.vin)&&latest.observedUtc.equals(identity.observedUtc)?latest:identity);
+                        nativeDirectory=run;
+                    }
                     nativeDirectory=run;health.begin(run);lcdPump.setDirectory(run);File f=new File(getFilesDir(),"firmware");
                     for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(f,name).isFile())throw new IOException("Missing original firmware: "+name);
                     builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so","--test-harness","--harness-target",symbolOnly?"dtc-link-1367":"native-manual","--candi-native-link","--candi-chipsoft-usb-token",token,"--candi-firmware",new File(f,"candi.bin").getPath(),"--boot",new File(f,"eprom.bin").getPath(),"--opsys",new File(f,"opsys.dwn").getPath(),"--max-insns","50000000000","--output-dir",run.getPath(),new File(f,(symbolOnly || audible)?"card-authorized.bin":"card.bin").getPath());if(symbolOnly)builder.command().add("--candi-chipsoft-symbol-only");if(seeds)builder.command().add("--candi-chipsoft-seeds");if(audible)builder.command().add("--candi-chipsoft-audible");
@@ -330,13 +344,11 @@ public final class ChipsoftUsbActivity extends Activity {
             closeSockets();if(firmwareLease!=null)firmwareLease.close();
             log("USB_CLOSED cleanup_ok="+clean+" session="+run.getName());
             if(vinCheck && identified!=null && !cancelled && generation==vehicleGeneration){
-                final VehicleIdentity found=identified;
-                runOnUiThread(()->{if(generation==vehicleGeneration && !cancelled){vinSummary.setText("VIN: "+found.vin+"\nLoading OpenSAAB vehicle details…");status.setText("Vehicle identified · looking up vehicle data");}});
-                identified=VehicleSession.lookup(found,()->cancelled || generation!=vehicleGeneration);
-                try{if(!cancelled && generation==vehicleGeneration){VehicleSession.save(new File(run,VehicleSession.FILE),identified);VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),identified);}}
+                if(!onlineDetails)identified=VehicleSession.unavailable(identified,"not_requested");
+                try{synchronized(identityLock){if(!cancelled&&generation==vehicleGeneration){VehicleSession.save(new File(run,VehicleSession.FILE),identified);VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),identified);}}}
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
-            if(nativeFirmware&&!vinCheck&&health!=null)health.ended();
+            if(nativeFirmware&&!vinCheck&&health!=null)health.ended(TransportFailure.from(run));
             running.set(false);
             final VehicleIdentity ready=identified;
             if(vinCheck)runOnUiThread(()->{
@@ -349,29 +361,36 @@ public final class ChipsoftUsbActivity extends Activity {
                         .setPositiveButton("Retry",(dialog,which)->discover()).setNegativeButton("Back",(dialog,which)->{stop();finish();}).show();return;
                 }
                 vehicle=ready;showVehicle(false);
-                if(identifyFirst){pendingVehicleStart=()->confirmIdentified(d,ready,generation);if(foreground){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}}
+                if(identifyFirst){pendingVehicleStart=()->startIdentified(d,ready,generation);if(foreground){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}}
+                if(onlineDetails)enrichVehicle(ready,run,generation);
             });
         }
     }
     void showVehicle(boolean disconnected){
         if(vinSummary==null || vehicle==null)return;
         vinSummary.setText((disconnected?"Last vehicle VIN: ":"VIN: ")+vehicle.vin+"\n"+vehicle.description()
-            +("available".equals(vehicle.lookupStatus)?"":"\nVehicle details unavailable online · VIN saved"));
+            +("available".equals(vehicle.lookupStatus)?"":"pending".equals(vehicle.lookupStatus)?"\nOnline details loading · diagnostics can continue":"not_requested".equals(vehicle.lookupStatus)?"\nOnline details off · VIN saved":"\nOnline details unavailable · VIN saved"));
     }
-    void confirmIdentified(UsbDevice d,VehicleIdentity identity,long generation){
-        if(cancelled||generation!=vehicleGeneration||!foreground||isFinishing())return;
-        String details="VIN: "+identity.vin+"\nVehicle: "+identity.modelYear+" · "+identity.platform+
-            "\nEngine: "+(identity.engine.isEmpty()?"Unavailable":identity.engine)+
-            "\nColor: "+(identity.color.isEmpty()?"Unavailable":identity.color);
-        if(!"available".equals(identity.lookupStatus))details+="\n\nOnline vehicle details could not be loaded. The VIN was read from this vehicle. You can continue with the VIN only, or cancel and retry with internet.";
-        details+="\n\nKeep the key ON to start. After firmware starts, follow its key-position instructions.";
-        vehicleStartPrompt=new AlertDialog.Builder(this).setTitle("Vehicle identified").setMessage(details)
-            .setNegativeButton("Cancel",null).setPositiveButton("Start firmware",(dialog,which)->startIdentified(d,identity,generation)).show();
+    void enrichVehicle(VehicleIdentity fresh,File vinRun,long generation){
+        new Thread(()->{
+            VehicleIdentity enriched=VehicleSession.lookup(fresh,()->cancelled||generation!=vehicleGeneration);
+            synchronized(identityLock){
+                if(cancelled||generation!=vehicleGeneration)return;
+                vehicle=enriched;
+                try{
+                    VehicleSession.save(new File(vinRun,VehicleSession.FILE),enriched);
+                    VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),enriched);
+                    File nativeRun=nativeDirectory;
+                    if(nativeRun!=null)VehicleSession.save(new File(nativeRun,VehicleSession.FILE),enriched);
+                }catch(Exception e){android.util.Log.w("OpenSaabChipsoft","Could not save optional vehicle details",e);}
+            }
+            runOnUiThread(()->{if(!cancelled&&generation==vehicleGeneration&&!isDestroyed()){showVehicle(false);updateWorkspace();}});
+        },"vehicle-details").start();
     }
     void startIdentified(UsbDevice d,VehicleIdentity identity,long generation){
         if(cancelled || generation!=vehicleGeneration || !foreground || isFinishing())return;
         UsbDevice attached=manager.getDeviceList().get(d.getDeviceName());
-        if(attached==null || attached.getDeviceId()!=d.getDeviceId() || !manager.hasPermission(attached)){
+        if(attached==null || attached.getDeviceId()!=d.getDeviceId() || attached.getVendorId()!=d.getVendorId() || attached.getProductId()!=d.getProductId() || !manager.hasPermission(attached)){
             connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);stop();status.setText("Adapter changed · reconnect to identify vehicle");return;
         }
         if(!running.compareAndSet(false,true))return;

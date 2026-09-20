@@ -16,7 +16,15 @@ public final class FirmwareMenuNavigatorTest {
     }
     public static void main(String[] args){
         for(int year:new int[]{2004,2008})for(FirmwareMenuNavigator.Target target:new FirmwareMenuNavigator.Target[]{FirmwareMenuNavigator.Target.READ_DTC,FirmwareMenuNavigator.Target.CLEAR_DTC}){
-            FirmwareMenuNavigator n=nav(target,year);vehicle(n,year);
+            FirmwareMenuNavigator ecu=nav(FirmwareMenuNavigator.Target.ECU_INFO,2004);vehicle(ecu,2004);
+        key(ecu,"Diagnostics\nF0: Engine\nF4: All",0x18);
+        key(ecu,"Customer Functions\nEngine Control",0x10);
+        none(ecu,"Checking Key Position\nEngine Control\nF1: ECU Information");
+        none(ecu,"Engine Control\nF0: Diagnostic Trouble Codes\nF2: Data Display");
+        key(ecu,"Engine Control\nF0: Diagnostic Trouble Codes\nF1: ECU Information",0x04);
+        none(ecu,"ECU Information\nPress ENTER to continue");
+        if(ecu.active())throw new AssertionError("ECU shortcut should leave resulting prompts to user");
+        FirmwareMenuNavigator n=nav(target,year);vehicle(n,year);
             none(n,"Diagnostics\nChecking Key Position\nF4: All");
             key(n,"Diagnostics\nF0: Engine\nF4: All",0x03);
             key(n,"All\nF0: Diagnostic Trouble Codes (DTC)\nF1: ECU Information",0x18);

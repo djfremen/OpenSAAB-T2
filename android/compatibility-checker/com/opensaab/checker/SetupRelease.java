@@ -44,6 +44,10 @@ public final class SetupRelease {
             if (installed.versionCode > code) throw new IOException("A newer version is already installed; it will not be downgraded");
         } catch (PackageManager.NameNotFoundException absent) { }
     }
+    org.json.JSONObject json(){
+        try{return new org.json.JSONObject().put("abi",abi).put("package",packageName).put("version",version).put("version_code",code).put("url",url).put("sha256",sha).put("bytes",bytes);}
+        catch(org.json.JSONException impossible){throw new IllegalStateException(impossible);}
+    }
     public String title(){return (abi.equals("armeabi-v7a")?"32-bit ARM · experimental":"64-bit ARM · preview")+" · "+version;}
     public static String preferred(int api,String[] abis,boolean installed32,boolean installed64){
         if(api<26)return "";
@@ -69,7 +73,7 @@ public final class SetupRelease {
         for(int i=0;i<5;i++){
             String host=u.getHost();boolean allowed=asset?(host.equals("github.com")||host.equals("release-assets.githubusercontent.com")||host.equals("objects.githubusercontent.com")):host.equals("www.opensaab.com");
             if(!"https".equals(u.getProtocol())||!allowed||u.getUserInfo()!=null||(u.getPort()!=-1&&u.getPort()!=443))throw new IOException("Untrusted download destination");
-            HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);c.setRequestProperty("User-Agent","OpenSAAB-Setup/0.3.2");
+            HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setInstanceFollowRedirects(false);c.setRequestProperty("User-Agent","OpenSAAB-Setup/0.3.4");
             int code;try{code=c.getResponseCode();}catch(Exception e){c.disconnect();throw e;}
             if(code==200)return c;
             String location=c.getHeaderField("Location");c.disconnect();

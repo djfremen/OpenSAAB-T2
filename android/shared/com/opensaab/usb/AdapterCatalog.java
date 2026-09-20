@@ -28,5 +28,6 @@ public final class AdapterCatalog {
             "No backend selected","No matching adapter profile; vendor/product names are informational only");
     }
     public static boolean adapterCandidate(Match match){return match.family.endsWith("_candidate") && !match.family.equals("bosch_eps_candidate");}
+    public static boolean supported(Match match){return match.family.equals("chipsoft_candidate")||match.family.equals("nano_candidate");}
     private AdapterCatalog(){}
 }

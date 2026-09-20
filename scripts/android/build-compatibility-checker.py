@@ -39,7 +39,7 @@ run(bt/'aapt', 'package', '-f', '-M', source/'AndroidManifest.xml', '-S', repo/'
 with zipfile.ZipFile(unsigned, 'a') as archive:
     archive.write(build/'classes.dex', 'classes.dex')
     archive.write(repo/'LICENSE', 'assets/legal/LICENSE')
-    archive.writestr('assets/build.json', json.dumps({'source_commit':commit, 'source_repository':'https://github.com/djfremen/OpenSAAB-T2', 'product':'OpenSAAB Setup', 'version':'0.3.3'}))
+    archive.writestr('assets/build.json', json.dumps({'source_commit':commit, 'source_repository':'https://github.com/djfremen/OpenSAAB-T2', 'product':'OpenSAAB Setup', 'version':'0.3.4'}))
 aligned = build/'aligned.apk'
 apk = build/'OpenSAAB-Setup.apk'
 run(bt/'zipalign', '-f', '4', unsigned, aligned)

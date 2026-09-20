@@ -10,6 +10,8 @@ jdk=Path(os.environ.get('JAVA_HOME','/Applications/Android Studio.app/Contents/j
 with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/javac'),'-d',output,
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/TransportFailure.java'),
+        str(repo/'android/tests/TransportFailureTest.java'),
         str(repo/'android/shared/com/opensaab/usb/EmulatorArchitecture.java'),
         str(repo/'android/tests/EmulatorArchitectureTest.java'),
         str(repo/'android/shared/com/opensaab/usb/CompatibilityCheck.java'),
@@ -71,3 +73,5 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareMenuNavigatorTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SsaStateTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.TransportFailureTest'],check=True)

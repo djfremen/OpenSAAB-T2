@@ -45,7 +45,10 @@ public final class FirmwareMenuController extends TextView {
             final String text=screen;
             activity.runOnUiThread(()->{
                 polling.set(false);if(expected!=generation||!active()||!running.getAsBoolean()||session.get()!=run)return;
-                if(observed!=run){observed=run;navigator=new FirmwareMenuNavigator(vehicle,target,joinCurrentMenu);}
+                if(observed!=run){
+                    if(vehicle!=null&&"pending".equals(vehicle.lookupStatus)){setText("Waiting for optional vehicle details for this shortcut · original menus are available");return;}
+                    observed=run;navigator=new FirmwareMenuNavigator(vehicle,target,joinCurrentMenu);
+                }
                 long now=SystemClock.elapsedRealtime();Integer key=navigator.next(text,now);
                 if(key!=null&&send.test(key))navigator.sent(now);
                 setText(navigator.hint());
