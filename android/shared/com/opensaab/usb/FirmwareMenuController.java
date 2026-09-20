@@ -38,6 +38,9 @@ public final class FirmwareMenuController extends TextView {
     public void refresh(){
         File run=session.get();
         if(!active()||!running.getAsBoolean()||run==null||!polling.compareAndSet(false,true))return;
+        if(!new FirmwareStore(activity.getFilesDir()).englishNavigation()){
+            polling.set(false);cancelled=true;setVisibility(VISIBLE);setText("Use the firmware controls for this language. Automatic menu shortcuts currently support English.");return;
+        }
         final long expected=generation;
         try{worker.execute(()->{
             String screen="";VehicleIdentity vehicle=VehicleSession.read(new File(run,VehicleSession.FILE));

@@ -15,7 +15,7 @@ public final class FirmwareDownloadInstrumentedTest extends Instrumentation {
     void main(Runnable action){Throwable[] e={null};runOnMainSync(()->{try{action.run();}catch(Throwable x){e[0]=x;}});if(e[0]!=null)throw new AssertionError(e[0]);}
     Button find(View v,String text){if(v instanceof Button&&((Button)v).getText().toString().equals(text))return (Button)v;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){Button b=find(g.getChildAt(i),text);if(b!=null)return b;}}return null;}
     boolean text(View v,String match){if(v instanceof TextView&&v.isShown()&&((TextView)v).getText().toString().contains(match))return true;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++)if(text(g.getChildAt(i),match))return true;}return false;}
-    Spinner spinner(View v){if(v instanceof Spinner)return (Spinner)v;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){Spinner s=spinner(g.getChildAt(i));if(s!=null)return s;}}return null;}
+    Spinner spinner(View v){if(v instanceof Spinner && "Software version and language".contentEquals(v.getContentDescription()))return (Spinner)v;if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){Spinner s=spinner(g.getChildAt(i));if(s!=null)return s;}}return null;}
     void click(Activity a,String label){main(()->{Button b=find(a.getWindow().getDecorView(),label);check(b!=null&&b.isShown()&&b.isEnabled(),"Action unavailable: "+label);b.performClick();});waitForIdleSync();}
     void waitReady(Activity a){long end=SystemClock.elapsedRealtime()+60000;while(SystemClock.elapsedRealtime()<end){boolean[] ready={false};main(()->{Button b=find(a.getWindow().getDecorView(),"Download and continue");ready[0]=b!=null&&b.isEnabled();});if(ready[0])return;SystemClock.sleep(100);}throw new AssertionError("Setup did not finish within 60 seconds");}
     void visible(Activity a,String expected){main(()->check(text(a.getWindow().getDecorView(),expected),"Missing visible explanation: "+expected));}
@@ -68,7 +68,7 @@ public final class FirmwareDownloadInstrumentedTest extends Instrumentation {
             FirmwareFiles.requireSha(new File(store.firmware,"card.bin"),FirmwareCatalog.ENTRIES[1].imageSha);
             File[] backups=new File(store.library,"backups").listFiles();check(backups!=null&&backups.length==1,"Version switch lost backup");FirmwareFiles.requireSha(new File(backups[0],"card.bin"),FirmwareCatalog.ENTRIES[0].imageSha);
             click(a,"More options");click(a,"Choose a different version");
-            main(()->{spinner(resumed.getWindow().getDecorView()).setSelection(2);find(resumed.getWindow().getDecorView(),"Download and continue").performClick();find(resumed.getWindow().getDecorView(),"Cancel setup").performClick();});waitReady(a);visible(a,"Setup paused");
+            main(()->{spinner(resumed.getWindow().getDecorView()).setSelection(0);find(resumed.getWindow().getDecorView(),"Download and continue").performClick();find(resumed.getWindow().getDecorView(),"Cancel setup").performClick();});waitReady(a);visible(a,"Setup paused");
             FirmwareFiles.requireSha(new File(store.firmware,"card.bin"),FirmwareCatalog.ENTRIES[1].imageSha);
             check(store.missing().isEmpty(),"Cancellation changed a ready installation");click(a,"Continue to OpenSAAB");
             // A subsequent regular launch must stay on home, without launching an adapter.

@@ -5,3 +5,4 @@ pub mod probe;
 pub mod protocol;
 #[cfg(target_os = "macos")]
 pub mod serial;
+pub mod dtc;

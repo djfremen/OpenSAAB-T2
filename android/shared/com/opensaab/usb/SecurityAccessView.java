@@ -92,7 +92,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 polling.set(false);if(closed||busy||session.get()!=run)return;
                 if(observed!=run){if(manualCollection)collection=false;observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
                     navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
-                    if(manualNavigation&&navigator!=null)navigator.cancel();}
+                    if(navigator!=null&&(manualNavigation||!new FirmwareStore(activity.getFilesDir()).englishNavigation()))navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
                 cardState=currentState;
                 String age=receipt==null?"Age unknown":receipt.freshness(cardMatches,java.time.Instant.now());

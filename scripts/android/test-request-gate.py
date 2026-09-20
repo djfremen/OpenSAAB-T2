@@ -11,6 +11,8 @@ jdk=Path(os.environ.get('JAVA_HOME','/Applications/Android Studio.app/Contents/j
 with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/javac'),'-d',output,
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/FirmwareCatalog.java'),
+        str(repo/'android/tests/FirmwareCatalogTest.java'),
         str(repo/'android/shared/com/opensaab/usb/AdapterProfile.java'),
         str(repo/'android/shared/com/opensaab/usb/UsbBridgeCodec.java'),
         str(repo/'android/tests/UsbBridgeCodecTest.java'),
@@ -59,6 +61,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareCatalogTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.EmulatorArchitectureTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.CompatibilityCheckTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ReleaseVersionTest'],check=True)

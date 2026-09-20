@@ -196,7 +196,7 @@ public final class MainActivity extends Activity {
         }
         com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(current.getVendorId(),current.getProductId());
         android.content.Intent launch;
-        if(mode.equals("dtc_read")){
+        if(mode.equals("dtc_read") || (!shortcut && mode.equals("native_dtc") && match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO)){
             if(match.backend()!=com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){android.widget.Toast.makeText(this,"Direct HS-CAN engine-code reading currently requires Chipsoft",android.widget.Toast.LENGTH_LONG).show();return;}
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("dtc_read",true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){

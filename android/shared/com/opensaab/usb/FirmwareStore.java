@@ -28,6 +28,9 @@ public final class FirmwareStore {
         File f=new File(firmware,"active.json");
         return f.isFile()?json(f):new JSONObject().put("id","existing").put("label",new File(firmware,"card.bin").exists()?"Existing card (preserved)":"No card installed");
     }
+    public boolean englishNavigation(){
+        try{JSONObject a=active();return "en".equals(FirmwareCatalog.languageFor(a.optString("id"),a.optString("sha256_at_activation")));}catch(Exception e){return false;}
+    }
     public void saveOriginal(File image,String id,String label,String sha,BooleanSupplier cancel)throws Exception{
         FirmwareFiles.validate("card.bin",image);FirmwareFiles.requireSha(image,sha);
         File dest=original(id);
@@ -50,7 +53,7 @@ public final class FirmwareStore {
         File next=new File(firmware,"card.next");
         try{
             FirmwareFiles.atomicCopy(image,next,cancel);FirmwareFiles.requireSha(next,expectedSha);FirmwareFiles.check(cancel);
-            JSONObject nextInfo=new JSONObject().put("id",id).put("label",label).put("sha256_at_activation",expectedSha).put("activated_utc",java.time.Instant.now().toString());
+            JSONObject nextInfo=new JSONObject().put("id",id).put("label",label).put("sha256_at_activation",expectedSha).put("activated_utc",java.time.Instant.now().toString()).put("language",FirmwareCatalog.languageFor(id,expectedSha));
             writeJson(new File(firmware,"card-change.json"),new JSONObject().put("before_sha256",before).put("after_sha256",expectedSha).put("active",nextInfo));
             // Commit is deliberately non-cancellable. Recovery finishes metadata after a process loss.
             Files.move(next.toPath(),card.toPath(),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);

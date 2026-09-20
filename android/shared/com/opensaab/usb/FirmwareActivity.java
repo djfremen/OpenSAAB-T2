@@ -23,7 +23,8 @@ public final class FirmwareActivity extends Activity {
     private Button next,download,more,retry;
     private boolean guided,welcome,chooseRequested,failed,bundledSupport,continueReady,resumed;
     private Callable<String> retryWork;
-    private Spinner choices;
+    private Spinner choices,languages;
+    private String selectedLanguage="en",selectedEntry="";
     private final List<Button> actions=new ArrayList<>();
     private Button cancel;
     private ProgressBar progress;
@@ -37,6 +38,8 @@ public final class FirmwareActivity extends Activity {
         guided=!store.missing().isEmpty();
         welcome=false;
         if(state!=null){guided=state.getBoolean("guided",guided);continueReady=state.getBoolean("continue_ready",false);chooseRequested=state.getBoolean("choose_requested",false);}
+        try{JSONObject active=store.active();FirmwareCatalog.Entry entry=FirmwareCatalog.byId(active.optString("id"));if(entry!=null){selectedLanguage=entry.language;selectedEntry=entry.id;}}catch(Exception ignored){}
+        if(state!=null){selectedLanguage=state.getString("selected_language",selectedLanguage);selectedEntry=state.getString("selected_entry",selectedEntry);}
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xff0d1620);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);scroll.addView(root);
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(dp(20),i.getSystemWindowInsetTop()+dp(20),dp(20),i.getSystemWindowInsetBottom()+dp(16));return i;});
@@ -46,13 +49,18 @@ public final class FirmwareActivity extends Activity {
 
         welcomePanel=panel(root); // Kept hidden; first run starts with the actual software choice.
         choosePanel=panel(root);
-        label(choosePanel,"Version and language",14);
-        choices=new Spinner(this);ArrayAdapter<FirmwareCatalog.Entry> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,FirmwareCatalog.ENTRIES);choices.setAdapter(adapter);choices.setMinimumHeight(dp(56));choices.setContentDescription("Software version and language");choosePanel.addView(choices);
-        String remembered=getSharedPreferences("firmware_library",MODE_PRIVATE).getString("selected_id",FirmwareCatalog.ENTRIES[0].id);for(int i=0;i<FirmwareCatalog.ENTRIES.length;i++)if(FirmwareCatalog.ENTRIES[i].id.equals(remembered))choices.setSelection(i);
+        label(choosePanel,"Diagnostic language",14);
+        languages=new Spinner(this);languages.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,FirmwareCatalog.LANGUAGE_NAMES));languages.setMinimumHeight(dp(56));languages.setContentDescription("Diagnostic language");choosePanel.addView(languages);
+        label(choosePanel,"Software version",14);
+        choices=new Spinner(this);choices.setMinimumHeight(dp(56));choices.setContentDescription("Software version and language");choosePanel.addView(choices);
+        setLanguage(selectedLanguage,selectedEntry);
+        languages.setSelection(FirmwareCatalog.languageIndex(selectedLanguage));
+        languages.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> parent){}public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View v,int position,long id){String code=FirmwareCatalog.LANGUAGE_CODES[position];if(!code.equals(selectedLanguage))setLanguage(code,"");}});
         details=label(choosePanel,"",15);choices.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int i,long id){
-            FirmwareCatalog.Entry e=FirmwareCatalog.ENTRIES[i];getSharedPreferences("firmware_library",MODE_PRIVATE).edit().putString("selected_id",e.id).apply();
+            FirmwareCatalog.Entry e=(FirmwareCatalog.Entry)p.getItemAtPosition(i);getSharedPreferences("firmware_library",MODE_PRIVATE).edit().putString("selected_id",e.id).apply();
             if(v instanceof TextView){((TextView)v).setTextColor(0xffeff5fa);((TextView)v).setTextSize(16);}
-            details.setText(String.format(Locale.ROOT,"About %.1f MB from Tech2Wiki. Internet is needed for this download.\nWe’ll check and prepare it here, then continue to Connect.",e.downloadBytes/1048576.0)+(FirmwareCatalog.runnable(e)?"":"\nThis version cannot run yet. Downloading keeps your installed software."));
+            selectedEntry=e.id;
+            details.setText("The original diagnostic menus use this language. OpenSAAB app controls remain in English.\n"+String.format(Locale.ROOT,"About %.1f MB from Tech2Wiki. Internet is needed for this download.\nWe’ll check and prepare it here, then continue to Connect.",e.downloadBytes/1048576.0)+(FirmwareCatalog.runnable(e)?"":"\nThis version cannot run yet. Downloading keeps your installed software."));
         }});
         download=button(choosePanel,"Download and continue",()->{FirmwareCatalog.Entry e=(FirmwareCatalog.Entry)choices.getSelectedItem();job(()->downloadAndUse(e),true);});
 
@@ -89,6 +97,13 @@ public final class FirmwareActivity extends Activity {
     @Override protected void onResume(){super.onResume();resumed=true;continueToApp();}
     @Override protected void onPause(){resumed=false;super.onPause();}
     private void continueToApp(){if(resumed&&continueReady&&!closed&&!busy&&store.missing().isEmpty()){setResult(RESULT_OK);finish();}}
+    private void setLanguage(String code,String entryId){
+        selectedLanguage=FirmwareCatalog.LANGUAGE_CODES[FirmwareCatalog.languageIndex(code)];
+        FirmwareCatalog.Entry[] entries=FirmwareCatalog.forLanguage(selectedLanguage);
+        choices.setAdapter(new ArrayAdapter<FirmwareCatalog.Entry>(this,android.R.layout.simple_spinner_dropdown_item,entries));
+        int position=0;for(int i=0;i<entries.length;i++)if(entries[i].id.equals(entryId))position=i;
+        choices.setSelection(position);selectedEntry=entries[position].id;
+    }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private LinearLayout panel(LinearLayout root){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(dp(16),dp(12),dp(16),dp(12));android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();bg.setColor(0xff192837);bg.setCornerRadius(dp(16));p.setBackground(bg);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.topMargin=dp(18);root.addView(p,lp);return p;}
     private TextView label(LinearLayout root,String text,int size){TextView v=new TextView(this);v.setText(text);v.setTextSize(size);v.setTextColor(0xffdce9f2);v.setPadding(0,dp(6),0,dp(6));v.setLineSpacing(dp(3),1);root.addView(v);return v;}
@@ -104,7 +119,7 @@ public final class FirmwareActivity extends Activity {
         show(current,cardReady);
         String supportMissing=store.missingSupport();supportStatus.setText("Still needed: "+supportMissing);
         show(welcomePanel,welcome&&!busy);show(choosePanel,choose&&!busy);show(supportPanel,!welcome&&!supportMissing.isEmpty()&&!busy&&(!bundledSupport||cardReady));show(readyPanel,!welcome&&ready&&!busy);
-        for(Button b:actions)b.setEnabled(!busy);choices.setEnabled(!busy);
+        for(Button b:actions)b.setEnabled(!busy);choices.setEnabled(!busy);languages.setEnabled(!busy);
         more.setVisibility(welcome||busy?android.view.View.GONE:android.view.View.VISIBLE);if(welcome||busy){advancedPanel.setVisibility(android.view.View.GONE);more.setText("More options");}
         next.setText(busy?"Leave setup":ready?"Back":"Set up later");
         show(cancel,busy);cancel.setEnabled(busy);show(retry,failed&&!busy&&retryWork!=null);
@@ -120,7 +135,7 @@ public final class FirmwareActivity extends Activity {
     private void leave(){if(!busy){finish();return;}new AlertDialog.Builder(this).setTitle("Leave setup?").setMessage("The current transfer will stop. Completed steps are saved, and you can return to setup later.").setPositiveButton("Leave setup",(d,w)->finish()).setNegativeButton("Keep setting up",null).show();}
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed(){leave();}
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("guided",guided);out.putBoolean("continue_ready",continueReady);out.putBoolean("choose_requested",chooseRequested);}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("guided",guided);out.putBoolean("continue_ready",continueReady);out.putBoolean("choose_requested",chooseRequested);out.putString("selected_language",selectedLanguage);out.putString("selected_entry",selectedEntry);}
     private void job(Callable<String> work){job(work,true);}
     private void job(Callable<String> work,boolean visible){
         if(busy||closed)return;busy=true;cancelled=false;failed=false;retryWork=work;render();

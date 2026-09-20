@@ -2,7 +2,7 @@
 //! Bounded T8 DTC read on Chipsoft HS-CAN only. No clearing or security access.
 use crate::{
     chipsoft_channel::{self as channel, Client},
-    nano_channel::UsbTransport,
+    adapters::common::usb::UsbTransport,
     t8_dtc::{Dtc, Report},
 };
 use std::time::{Duration, Instant};

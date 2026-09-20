@@ -40,6 +40,7 @@ public final class ChipsoftUsbActivity extends Activity {
     final AtomicBoolean running=new AtomicBoolean();
     boolean dtcRead;
     TextView engineCodes;
+    Button continueDiagnostics;
     boolean fullNative,keyStatus,audible,seeds,vinCheck,symbolOnly,nativeFirmware,receiveTest;volatile File nativeDirectory;ImageView nativeLcd;final Handler lcdHandler=new Handler(Looper.getMainLooper());volatile boolean cancelled; boolean pending,foreground;
     volatile ServerSocket server; volatile Socket client;
     final RequestGate requests=new RequestGate(); String permission;long permissionEpoch;
@@ -96,7 +97,15 @@ public final class ChipsoftUsbActivity extends Activity {
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);updateWorkspace();if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
         if(dtcRead){
-            status.setText("Trionic 8 engine codes · HS-CAN · read only");
+            status.setText("Startup check · VIN and Trionic 8 engine codes · HS-CAN");
+            continueDiagnostics=new Button(this);continueDiagnostics.setText("Continue to diagnostic menus");continueDiagnostics.setEnabled(false);
+            continueDiagnostics.setOnClickListener(v->{
+                if(running.get() || cancelled || vehicle==null)return;
+                boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);
+                Intent next=new Intent(this,ChipsoftUsbActivity.class).putExtra(restricted?"native_firmware":"full_native",true).putExtra("auto_start",true);
+                if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
+                startActivity(next);finish();
+            });root.addView(continueDiagnostics);
             Button saved=new Button(this);saved.setText("Saved DTC reports");saved.setOnClickListener(v->DtcReportView.showSavedReports(this));root.addView(saved);
         }
         ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);
@@ -231,6 +240,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void showConnectionReport(){runOnUiThread(()->{if(!isFinishing() && reportConnection!=null)reportConnection.setVisibility(android.view.View.VISIBLE);});}
     void requestVehicleStart(){
+        if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);
         if(running.get()||pending||(vehicleStartPrompt!=null&&vehicleStartPrompt.isShowing()))return;
         if(!vinCheck&&!nativeFirmware&&!dtcRead){discover();return;}
         LinearLayout prompt=new LinearLayout(this);prompt.setOrientation(LinearLayout.VERTICAL);int pad=SessionStyle.dp(this,20);prompt.setPadding(pad,pad,pad,0);
@@ -381,6 +391,7 @@ public final class ChipsoftUsbActivity extends Activity {
             if(nativeFirmware&&!vinCheck&&health!=null)health.ended(TransportFailure.from(run));
             running.set(false);
             if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
+            if(dtcRead && quit && clean && !cancelled && generation==vehicleGeneration)runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed() && continueDiagnostics!=null)continueDiagnostics.setEnabled(true);});
             final VehicleIdentity ready=identified;
             if(vinCheck)runOnUiThread(()->{
                 if(cancelled || generation!=vehicleGeneration || isFinishing() || isDestroyed())return;
@@ -470,7 +481,7 @@ public final class ChipsoftUsbActivity extends Activity {
         });}catch(java.util.concurrent.RejectedExecutionException stopped){keyPending.set(false);}
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
-    void stop(){if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
+    void stop(){if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
     protected void onResume(){super.onResume();foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){
