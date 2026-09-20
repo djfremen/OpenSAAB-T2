@@ -1,6 +1,6 @@
 # Shared Android onboarding: September 19, 2026
 
-The shorter Install → Prepare software → Connect flow is implemented for both ARM64 and ARM32. Signed builds are ready and installed on the test devices. **Public rollout is pending authentication; the website catalog has not been deployed.**
+The shorter Install → Prepare software → Connect flow is implemented for both ARM64 and ARM32. Signed builds are installed on the test devices and published as developer previews. **Public rollout completed September 19, 2026 (Pacific time): all three releases and the website catalog are live and verified.**
 
 ## User-visible workflow
 
@@ -53,12 +53,12 @@ Private test screenshots, logs and the new Chipsoft connection recording are sto
 
 Local branch: `codex/streamlined-onboarding`. Local release tags: `v0.1.0-preview.22`, `headunit-v0.1.0-headunit.17`, `setup-v0.3.4`.
 
-GitHub's expired publishing login now requires second-factor confirmation in the browser. Docker web authentication succeeded, but macOS Keychain rejected saving credentials. No release, image push, or Koyeb deployment completed. Do not describe these releases as public yet.
+The existing publishing logins were restored. The branch and tags were pushed, all three prereleases published, and both APK filenames in each release downloaded from their public URLs and checked against the signed build hashes.
 
-Once existing account access is restored:
+- [ARM64 preview.22](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.22)
+- [ARM32 headunit.17](https://github.com/djfremen/OpenSAAB-T2/releases/tag/headunit-v0.1.0-headunit.17)
+- [Setup 0.3.4](https://github.com/djfremen/OpenSAAB-T2/releases/tag/setup-v0.3.4)
 
-1. Push the branch and existing tags, publish the three prereleases with their exact signed assets and notes, and verify public APK hashes.
-2. Push the already-built website overlay only after verifying the Docker repository is private.
-3. Update only the existing Koyeb service image, preserving backend configuration, then verify health, the live catalog and direct Setup download.
+The Docker repository was confirmed private before pushing the website overlay. The existing Koyeb service was updated to image digest `sha256:e7041a452f4a3dbaf33b6bada55114247b199969e445a4a1df98f34c87824edd`, preserving its configuration. Deployment `b8cf9f7f-1247-4bec-a38a-315462b8c047` became healthy. Live `index.html`, `download.html`, `t2.css` and `releases.json` were verified byte-for-byte against the staged overlay. `/api/health` returned HTTP 200 with status `ok` and security service `password-required`.
 
-The four-file website overlay and a patch from the live baseline are preserved in the website repository under `runs/onboarding-20260919/`. Existing dirty website source files were not overwritten.
+The four-file website overlay and a patch from the live baseline are preserved in the website repository under `runs/onboarding-20260919/`. Existing dirty website source files were not overwritten. The external backup drive was not mounted; artifacts remain locally and on GitHub.
