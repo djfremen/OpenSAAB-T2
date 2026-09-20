@@ -104,6 +104,38 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+180);
         checkedMain(()->check(sent.isEmpty(),"Detached display emitted ENTER"));
     }
+    private void firstUseGuide(Activity activity){
+        android.content.SharedPreferences prefs=activity.getSharedPreferences("firmware-controls",0);
+        boolean existed=prefs.contains("guide-v1-dismissed"), old=prefs.getBoolean("guide-v1-dismissed",false);
+        final Tech2Controls[] panel={null};final View[] guide={null};
+        try{
+            checkedMain(()->{
+                prefs.edit().remove("guide-v1-dismissed").commit();sent.clear();
+                panel[0]=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+                activity.setContentView(panel[0]);
+                check(panel[0].findViewWithTag("tech2-first-use-guide")==null,"Guide appears before firmware");
+            });waitForIdleSync();
+            final int height=panel[0].findViewWithTag("tech2-gestures").getHeight();
+            checkedMain(()->{panel[0].showFirstUseGuide();panel[0].showFirstUseGuide();});waitForIdleSync();
+            checkedMain(()->{
+                guide[0]=panel[0].findViewWithTag("tech2-first-use-guide");check(guide[0]!=null,"First frame has no guide");
+                check(panel[0].findViewWithTag("tech2-gestures").getHeight()==height,"Guide resized firmware");
+                // Real touch dispatch through the sibling overlay, including a long press.
+                int x=guide[0].getLeft()+10,y=guide[0].getTop()+10;
+                View surface=(View)guide[0].getParent();touch(surface,0,x,y);
+            });
+            SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+180);
+            checkedMain(()->{
+                View surface=(View)guide[0].getParent();touch(surface,1,guide[0].getLeft()+10,guide[0].getTop()+10);
+                check(sent.isEmpty(),"Guide touch sent a firmware command");
+                panel[0].findViewWithTag("tech2-guide-dismiss").performClick();
+                panel[0].showFirstUseGuide();check(panel[0].findViewWithTag("tech2-first-use-guide")==null,"Dismissed guide reappeared");
+                Tech2Controls reopened=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+                reopened.showFirstUseGuide();check(reopened.findViewWithTag("tech2-first-use-guide")==null,"Dismissal lost after recreation");
+                check(sent.isEmpty(),"Guide dismissal sent a firmware command");
+            });
+        }finally{checkedMain(()->{android.content.SharedPreferences.Editor edit=prefs.edit();if(existed)edit.putBoolean("guide-v1-dismissed",old);else edit.remove("guide-v1-dismissed");edit.commit();});}
+    }
     public void onStart() {
         Bundle result=new Bundle();int status=-1;Activity activity=null;
         try {
@@ -137,10 +169,10 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                     if(shown instanceof ChipsoftUsbActivity)check(!((ChipsoftUsbActivity)shown).running.get(),"Unexpected Chipsoft session");
                     if(shown instanceof NanoProbeActivity)check(!((NanoProbeActivity)shown).running.get(),"Unexpected Nano session");
                 });
-                if(name.endsWith("MainActivity")){checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});gestures(activity);}
+                if(name.endsWith("MainActivity")){checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});firstUseGuide(activity);gestures(activity);}
                 checkedMain(shown::finish);activity=null;waitForIdleSync();
             }
-            result.putString("stream","PASS: 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; swipe direction and one-event limit; long-press ENTER; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
+            result.putString("stream","PASS: first-frame guide, persistent dismissal, unchanged LCD size, guide touches send no firmware keys; 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; swipe direction and one-event limit; long-press ENTER; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
         }catch(Throwable e){status=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(activity!=null){final Activity a=activity;runOnMainSync(a::finish);}finish(status,result);}
     }

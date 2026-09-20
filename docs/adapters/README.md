@@ -6,8 +6,8 @@ Each adapter owns its USB initialization, wire framing/opcodes, channel setup, r
 
 | Bucket | Rust | Android owner | Current coverage |
 | --- | --- | --- | --- |
-| Chipsoft Pro | `src/adapters/chipsoft/` | `android/shared/com/opensaab/usb/adapters/chipsoft/` | Direct CDC USB; captured identity and vehicle-read workflows; exact vehicle/bus limitations still apply |
-| VCX Nano | `src/adapters/vcx_nano/` | `android/shared/com/opensaab/usb/adapters/vcx_nano/` | CH343 USB initialization and Nano protocol; earlier successful tests, later channel-initialization regression remains unresolved |
+| Chipsoft Pro | `src/adapters/chipsoft/` | `android/adapters/chipsoft/com/opensaab/usb/` | Direct CDC USB; captured identity and vehicle-read workflows; exact vehicle/bus limitations still apply |
+| VCX Nano | `src/adapters/vcx_nano/` | `android/adapters/vcx_nano/com/opensaab/usb/` | CH343 USB initialization and Nano protocol; earlier successful tests, later channel-initialization regression remains unresolved |
 | Windows J2534 | `src/adapters/j2534/` | None | Shared Windows bridge dispatches the selected vendor's helper/driver; this is not an Android USB driver |
 | Common | `src/adapters/common/`, `src/can_adapter.rs` | `AdapterCatalog`, `AdapterProfile`, `UsbBridgeCodec` and other shared UI/session classes | Bounded byte transport, original-firmware request policy and CAN events; no vendor command fallback |
 | Bosch / ETAS / possible MDI | No Android backend | Inventory entries in `AdapterCatalog` | Detection only. No command implementation selected |

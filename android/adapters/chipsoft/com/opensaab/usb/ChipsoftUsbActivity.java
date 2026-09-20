@@ -90,7 +90,7 @@ public final class ChipsoftUsbActivity extends Activity {
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
             nativeLcd=new ImageView(this);
             health=new EmulatorHealthMonitor(this,this::stop);
-            lcdPump=new NativeLcdPump(frame->{health.frame();nativeLcd.setImageBitmap(frame);});
+            lcdPump=new NativeLcdPump(frame->{health.frame();nativeLcd.setImageBitmap(frame);if(controls!=null)controls.showFirstUseGuide();});
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);updateWorkspace();if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
         ScrollView scroll=new ScrollView(this);console=new TextView(this);console.setTextSize(13);console.setTypeface(android.graphics.Typeface.MONOSPACE);scroll.addView(console);

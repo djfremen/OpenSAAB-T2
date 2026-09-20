@@ -23,6 +23,8 @@ public final class Tech2Controls extends LinearLayout {
         {0x16, 0x02, 0x11}, {0x15, -1, -1}
     };
     private FirmwareGestureView display;
+    private FrameLayout screen;
+    private boolean guideChecked;
     android.app.Dialog keypadDialog,consoleDialog;
     private ScrollView consoleView;
     private Button actionButton;
@@ -44,7 +46,8 @@ public final class Tech2Controls extends LinearLayout {
         if (lcd instanceof ImageView) ((ImageView) lcd).setScaleType(ImageView.ScaleType.FIT_CENTER);
         lcd.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         display.addView(lcd, new FrameLayout.LayoutParams(-1, -1));
-        addView(display, new LayoutParams(-1, 0, 1));
+        screen=new FrameLayout(context);screen.addView(display,new FrameLayout.LayoutParams(-1,-1));
+        addView(screen, new LayoutParams(-1, 0, 1));
         for (int r = 0; r < LABELS.length; r++) {
             LinearLayout row = new LinearLayout(context);
             LayoutParams rowParams=new LayoutParams(-1,dp(48));rowParams.topMargin=dp(8);
@@ -86,6 +89,23 @@ public final class Tech2Controls extends LinearLayout {
         footer.addView(actionButton,new LayoutParams(0,-1,1));
         SessionStyle.row(footer);
         LayoutParams fp=new LayoutParams(-1,dp(48));fp.topMargin=dp(8);addView(footer,fp);
+    }
+    /** Called on the UI thread when firmware first produces a frame. No extra setup gate. */
+    public void showFirstUseGuide(){
+        if(guideChecked)return;
+        guideChecked=true;
+        android.content.SharedPreferences prefs=getContext().getSharedPreferences("firmware-controls",Context.MODE_PRIVATE);
+        if(prefs.getBoolean("guide-v1-dismissed",false))return;
+        LinearLayout guide=new LinearLayout(getContext());guide.setTag("tech2-first-use-guide");
+        guide.setGravity(android.view.Gravity.CENTER_VERTICAL);guide.setPadding(dp(12),dp(8),dp(8),dp(8));guide.setBackgroundColor(0xff203447);
+        // Sibling of the gesture surface: touching the guide must never send ENTER or a menu key.
+        guide.setClickable(true);
+        TextView text=new TextView(getContext());text.setText("Swipe ↑ / ↓ to move. Hold for ENTER. EXIT goes back. Keypad has all keys.");text.setTextSize(14);text.setTextColor(0xffedf4fa);
+        guide.addView(text,new LayoutParams(0,-2,1));
+        Button done=button("Got it",()->{display.cancelGesture();prefs.edit().putBoolean("guide-v1-dismissed",true).apply();screen.removeView(guide);});done.setTag("tech2-guide-dismiss");
+        guide.addView(done,new LayoutParams(dp(76),dp(48)));
+        FrameLayout.LayoutParams position=new FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM);
+        screen.addView(guide,position);
     }
     public void setActions(Runnable open){actions=open;actionButton.setText("Actions");actionButton.setContentDescription("Open diagnostic actions");actionButton.setOnClickListener(v->{display.cancelGesture();actions.run();});}
     public void showConsole(){display.cancelGesture();consoleDialog=SessionSheet.show((android.app.Activity)getContext(),"Console",consoleView);}

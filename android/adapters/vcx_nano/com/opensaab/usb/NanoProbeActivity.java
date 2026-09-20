@@ -56,6 +56,7 @@ public class NanoProbeActivity extends Activity {
     volatile File nativeDirectory;
     volatile String nativeFailure;
     ImageView nativeLcd;
+    private Tech2Controls controls;
     EmulatorHealthMonitor health;
     final Handler lcdHandler=new Handler(Looper.getMainLooper());
     int logLines=0;
@@ -121,7 +122,7 @@ public class NanoProbeActivity extends Activity {
             nativeLcd=new ImageView(this);health=new EmulatorHealthMonitor(this,this::cancel);
             lcdHandler.postDelayed(new Runnable(){public void run(){updateNativeLcd();if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
         }
-        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware())root.addView(new Tech2Controls(this,nativeLcd,scroll,code->nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code))),new LinearLayout.LayoutParams(-1,0,1));else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code)));root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         HeadunitLayout.apply(root);
         setContentView(root);
         IntentFilter f=new IntentFilter(PERMISSION); f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED); f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
@@ -457,7 +458,7 @@ public class NanoProbeActivity extends Activity {
             int width=Integer.parseInt(parts[1]),height=Integer.parseInt(parts[2]);
             if(width!=320 || height!=240 || bytes.length-pos!=width*height*3)return;
             int[] pixels=new int[width*height];for(int i=0;i<pixels.length;i++){pixels[i]=0xff000000|((bytes[pos++]&255)<<16)|((bytes[pos++]&255)<<8)|(bytes[pos++]&255);}
-            if(health!=null)health.frame();nativeLcd.setImageBitmap(android.graphics.Bitmap.createBitmap(pixels,width,height,android.graphics.Bitmap.Config.ARGB_8888));
+            if(health!=null)health.frame();nativeLcd.setImageBitmap(android.graphics.Bitmap.createBitmap(pixels,width,height,android.graphics.Bitmap.Config.ARGB_8888));if(controls!=null)controls.showFirstUseGuide();
         }catch(Exception ignored){} // Partial atomic snapshot: retain the previous real image.
     }
     // Captured normal-mode controls only; opcode 00 CAN transmission is excluded.

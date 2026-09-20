@@ -25,6 +25,13 @@ public final class FirmwareDownloadInstrumentedTest extends Instrumentation {
         try{
             check(Build.FINGERPRINT.contains("generic")||Build.MODEL.contains("sdk"),"Test requires Android emulator");
             FirmwareStore store=new FirmwareStore(getTargetContext().getFilesDir());check(!new File(store.firmware,"card.bin").exists(),"Use a fresh emulator; active card already exists");
+            // Leaving initial setup must not turn the new direct offline action into a dead end.
+            ActivityMonitor offlineMonitor=addMonitor("com.opensaab.usb.FirmwareActivity",null,false);
+            Activity idle=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            click(idle,"Run without an adapter");
+            Activity missingSetup=waitForMonitorWithTimeout(offlineMonitor,5000);removeMonitor(offlineMonitor);
+            check(missingSetup!=null,"Offline action did not open missing firmware setup");waitReady(missingSetup);
+            main(missingSetup::finish);main(idle::finish);waitForIdleSync();
             shell("svc wifi disable");shell("svc data disable");networkOff=true;SystemClock.sleep(1000);
             ActivityMonitor monitor=addMonitor("com.opensaab.usb.FirmwareActivity",null,false);
             Activity home=startActivitySync(new Intent(Intent.ACTION_MAIN).setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -69,7 +76,7 @@ public final class FirmwareDownloadInstrumentedTest extends Instrumentation {
             monitor=addMonitor("com.opensaab.usb.FirmwareActivity",null,false);
             Activity nextHome=startActivitySync(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_MULTIPLE_TASK));
             check(waitForMonitorWithTimeout(monitor,750)==null,"Completed setup repeated on launch");removeMonitor(monitor);main(nextHome::finish);main(home::finish);
-            result.putString("stream","PASS: single first-launch choice, default English NAO, offline error/retry, actual HTTPS ZIP download and activation, bundled support installed offline, automatic return after verified download, version switch with backup, cancellation, no repeated onboarding; no USB or vehicle\n");
+            result.putString("stream","PASS: direct offline action recovers missing setup; single first-launch choice, default English NAO, offline error/retry, actual HTTPS ZIP download and activation, bundled support installed offline, automatic return after verified download, version switch with backup, cancellation, no repeated onboarding; no USB or vehicle\n");
         }catch(Throwable e){try{shot("failure");}catch(Exception ignored){}code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{try{if(networkOff){shell("svc wifi enable");shell("svc data enable");}}catch(Exception ignored){}if(activity!=null){Activity a=activity;main(a::finish);}finish(code,result);}
     }

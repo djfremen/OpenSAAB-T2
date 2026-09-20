@@ -70,7 +70,7 @@ public final class FirmwareActivity extends Activity {
         button(supportPanel,"Import communication files",()->pick(SUPPORT,true));
 
         readyPanel=panel(root);label(readyPanel,"You’re ready to connect",22);
-        label(readyPanel,"Your software is installed and ready. You can now connect a supported USB adapter and tap Start, or select Run in emulation mode to explore without a vehicle.",16);
+        label(readyPanel,"Your software is installed and ready. You can now connect a supported USB adapter and tap Connect and start, or tap Run without an adapter to explore offline.",16);
         label(readyPanel,"This software now opens from your phone. Internet may still be needed for online features such as security access.",14);
         button(readyPanel,"Continue to OpenSAAB",this::finish);
 

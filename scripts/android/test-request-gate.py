@@ -15,8 +15,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/UsbBridgeCodec.java'),
         str(repo/'android/tests/UsbBridgeCodecTest.java'),
         str(repo/'android/shared/com/opensaab/usb/AdapterCatalog.java'),
-        str(repo/'android/shared/com/opensaab/usb/adapters/chipsoft/ChipsoftProfile.java'),
-        str(repo/'android/shared/com/opensaab/usb/adapters/vcx_nano/NanoProfile.java'),
+        str(repo/'android/adapters/chipsoft/com/opensaab/usb/ChipsoftProfile.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoProfile.java'),
         str(repo/'android/tests/AdapterCatalogTest.java'),
         str(repo/'android/tests/AdapterRoutingTest.java'),
         str(repo/'android/shared/com/opensaab/usb/TransportFailure.java'),
@@ -54,8 +54,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/IgnitionStatusText.java'),
         str(repo/'android/tests/IgnitionStatusTextTest.java'),
         str(repo/'android/tests/RequestGateTest.java'),
-        str(repo/'android/shared/com/opensaab/usb/adapters/vcx_nano/NativeCommandGate.java'),
-        str(repo/'android/shared/com/opensaab/usb/adapters/chipsoft/ChipsoftCommandGate.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NativeCommandGate.java'),
+        str(repo/'android/adapters/chipsoft/com/opensaab/usb/ChipsoftCommandGate.java'),
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)

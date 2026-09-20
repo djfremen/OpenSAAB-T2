@@ -1,6 +1,7 @@
 /target/
 /build/
 /.gradle/
+/.idea/
 /local.properties
 /android/studio-app/build/
 *.apk

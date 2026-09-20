@@ -47,11 +47,27 @@ The custom release builder records the clean source commit in `assets/build.json
 
 Open the repository root, let Gradle sync, and run `app`. The Gradle build invokes the Rust build and stages native binaries. By default it expects the three support files; use `-PbundleSupport=false` for a firmware-free build. Set `OPENSAAB_SUPPORT_ROOT` in the build environment for external inputs. Gradle's default output is a development build; the official preview uses the explicit custom release command above.
 
+Use **Settings → Build, Execution, Deployment → Build Tools → Gradle → Gradle JDK** to select JDK 21. Studio's bundled JBR 25 can run the IDE but is incompatible with this Gradle 8.13 project (`Unsupported class file major version 69`). Keep the IDE runtime and Gradle runtime separate.
+
+For GUI builds, which may not inherit your shell environment, put `opensaab.supportRoot=/absolute/path/to/private-inputs` in the ignored `local.properties` beside `sdk.dir`. An explicit `OPENSAAB_SUPPORT_ROOT` environment variable takes precedence. Do not commit private inputs or local configuration.
+
+Adapter source roots are `android/adapters/chipsoft` and `android/adapters/vcx_nano`. Each contains the normal `com/opensaab/usb` package path; existing component identities are preserved. Both Gradle/lint and the custom APK builder compile these sources.
+
 ## Checks
 
 ```sh
+./gradlew :app:assembleDebug :app:lintDebug :app:verifyDebugApk
 cargo test --locked --no-default-features
 python3 scripts/android/test-request-gate.py
 ```
 
 Device suites use `scripts/android/test-lcd-on-device.py` and a stopped emulator session. Use a disposable Android virtual device for tests that modify app state. No live adapter is required for host unit tests. Synthetic identities in legacy bench fixtures are not vehicle-specific public features.
+
+For a Gradle-built APK on a disposable AVD, pass its compiled classes to the device tests:
+
+```sh
+python3 scripts/android/test-lcd-on-device.py --serial emulator-5554 --suite keypad \
+  --classes android/studio-app/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes
+```
+
+Select the AVD explicitly before Run. An ARM64 AVD exercises the Android UI and actual ARM64 firmware engine; it does not establish ARM32 performance or physical USB/CAN compatibility. [September 19 Studio findings](docs/STUDIO_ONBOARDING_2026-09-19.md).

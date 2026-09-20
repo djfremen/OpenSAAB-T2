@@ -41,7 +41,7 @@ public final class MainActivity extends Activity {
     private final Runnable historyRefresh=new Runnable(){public void run(){if(foreground){refreshVehicleHistory();ui.postDelayed(this,60000);}}};
     private ScrollView consoleScroll;
     private LcdView lcd;
-    private Button start;
+    private Button start, offline;
     private com.opensaab.usb.SessionWorkspace workspace;
     private com.opensaab.usb.Tech2Controls controls;
     private LinearLayout details;
@@ -58,16 +58,17 @@ public final class MainActivity extends Activity {
         connectionDate=label("Last connection · Date unknown",13);details.addView(connectionDate);
         authStatus=label("auth_status: [N/A]",14);details.addView(authStatus);
         authDate=label("Timestamp unavailable",13);details.addView(authDate);
-        status=label("Ready — select an adapter to start",13);details.addView(status);
+        status=label("Ready — connect an adapter or explore offline",13);details.addView(status);
         status.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int a,int c,int f){}public void onTextChanged(CharSequence t,int a,int b,int c){updateWorkspace();}public void afterTextChanged(android.text.Editable e){}});
         lcd=new LcdView();console=label("Console: waiting for firmware",11);console.setTypeface(Typeface.MONOSPACE);
         consoleScroll=new ScrollView(this);consoleScroll.addView(console);
         controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
         controls.setActions(this::showActions);
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
-        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{health.frame();lcd.frame=frame;lcd.invalidate();});
+        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{health.frame();lcd.frame=frame;lcd.invalidate();controls.showFirstUseGuide();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
+        offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
@@ -112,6 +113,7 @@ public final class MainActivity extends Activity {
         if(workspace==null)return;
         workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):compactVehicle+"\n"+(compactSecurity.isEmpty()?status.getText():compactSecurity));
         if(start!=null)start.setVisibility(running?View.GONE:View.VISIBLE);
+        if(offline!=null)offline.setVisibility(running?View.GONE:View.VISIBLE);
     }
     public android.app.Dialog showActions(){
         return new com.opensaab.usb.SessionSheet.Menu(this)
@@ -227,10 +229,10 @@ public final class MainActivity extends Activity {
     }
     private void startSession() {
         if(running || !foreground || com.opensaab.usb.SecurityAccessView.workflowBusy()) return;
+        if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
+        String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
+        if(!missing.isEmpty()){status.setText("Firmware setup needed: "+missing);startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));return;}
         File firmware=new File(getFilesDir(),"firmware");
-        for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"}) {
-            if(!new File(firmware,name).isFile()) { status.setText("Missing "+name+" — install your firmware files first"); return; }
-        }
         if(getFilesDir().getUsableSpace()<64L*1024*1024) { status.setText("Need 64 MB free for session logs"); return; }
         if(com.opensaab.usb.DemandStartup.enabled(this)){startup=new com.opensaab.usb.StartupMeasurement(this,autoStarted?android.os.SystemClock.elapsedRealtime():launchOrigin);autoStarted=true;}
         running=true; stopping.set(false); logs.setLength(0);consoleDirty=true;
@@ -331,7 +333,7 @@ public final class MainActivity extends Activity {
     @Override protected void onStart() { super.onStart();foreground=true;ui.removeCallbacks(consoleRefresh);ui.post(consoleRefresh);
         ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
         refreshAdapterLabel();
-        if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — select an adapter to start");}
+        if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — connect an adapter or explore offline");}
     }
     @Override protected void onStop() { foreground=false;ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     private void refreshVehicleHistory(){

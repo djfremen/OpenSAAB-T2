@@ -74,7 +74,8 @@ def run(*args):
     subprocess.run([str(x) for x in args], check=True, env=env)
 
 run(jdk / 'bin/javac', '-source', '8', '-target', '8', '-classpath', android_jar,
-    '-d', classes, source / 'com/opensaab/tech2/MainActivity.java', *sorted((repo / 'android/shared/com/opensaab/usb').rglob('*.java')))
+    '-d', classes, source / 'com/opensaab/tech2/MainActivity.java', *sorted((repo / 'android/shared').rglob('*.java')),
+    *sorted((repo / 'android/adapters').rglob('*.java')))
 run(bt / 'd8', '--min-api', '26', '--lib', android_jar, '--output', build,
     *sorted(classes.rglob('*.class')))
 unsigned = build / 'unsigned.apk'

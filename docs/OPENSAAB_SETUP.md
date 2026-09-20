@@ -43,3 +43,7 @@ The normal launcher always offers adapter connection, including optimized ARM32.
 Chipsoft's key-ON confirmation authorizes a fresh VIN read followed by firmware startup. Optional online engine/color lookup is unchecked by default, discloses the VIN destination, and runs after the local VIN result without holding the firmware startup path. Session generations reject stale lookup results. ECU information uses exact recognized original Engine/Engine Control menu labels for a known 9440 vehicle; unavailable identity or unfamiliar screens leave manual navigation available. The shortcut does not bypass vehicle-network checks.
 
 The observed Chipsoft 001D rejection is explained as a single-wire wake failure only when the most recent CAN TX intent in the session trace matches that wake request. VIN success does not imply ECU-information/DTC success, and the status is not represented as a confirmed CAN transmission.
+
+## Development follow-up — September 19
+
+Home now exposes **Run without an adapter** directly, with a dismissible first-frame controls guide shared by offline and adapter sessions. Missing firmware returns to setup. These changes are development-source behavior; the earlier preview.22/headunit.17 release description above remains historical. See [Studio verification and the direct-APK assessment](STUDIO_ONBOARDING_2026-09-19.md).
