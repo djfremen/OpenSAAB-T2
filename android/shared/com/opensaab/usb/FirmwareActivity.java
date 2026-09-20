@@ -45,14 +45,14 @@ public final class FirmwareActivity extends Activity {
         current=label(root,"Checking your setup…",14);
 
         welcomePanel=panel(root); // Kept hidden; first run starts with the actual software choice.
-        choosePanel=panel(root);label(choosePanel,"Choose your software",20);
+        choosePanel=panel(root);
         label(choosePanel,"Version and language",14);
         choices=new Spinner(this);ArrayAdapter<FirmwareCatalog.Entry> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,FirmwareCatalog.ENTRIES);choices.setAdapter(adapter);choices.setMinimumHeight(dp(56));choices.setContentDescription("Software version and language");choosePanel.addView(choices);
         String remembered=getSharedPreferences("firmware_library",MODE_PRIVATE).getString("selected_id",FirmwareCatalog.ENTRIES[0].id);for(int i=0;i<FirmwareCatalog.ENTRIES.length;i++)if(FirmwareCatalog.ENTRIES[i].id.equals(remembered))choices.setSelection(i);
         details=label(choosePanel,"",15);choices.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int i,long id){
             FirmwareCatalog.Entry e=FirmwareCatalog.ENTRIES[i];getSharedPreferences("firmware_library",MODE_PRIVATE).edit().putString("selected_id",e.id).apply();
             if(v instanceof TextView){((TextView)v).setTextColor(0xffeff5fa);((TextView)v).setTextSize(16);}
-            details.setText(String.format(Locale.ROOT,"About %.1f MB to download from Tech2Wiki. Internet is needed for this step.\n\nWe’ll unpack the ZIP for you. The installed software uses 32 MB; you won’t need to download it each time you open the app.",e.downloadBytes/1048576.0)+(i==0?"\n\nRecommended starting choice: English · North American Operations (NAO).":"")+(FirmwareCatalog.runnable(e)?"":"\n\nThis version cannot run in this app yet. You can save it for later; it will not replace your installed software."));
+            details.setText(String.format(Locale.ROOT,"About %.1f MB from Tech2Wiki. Internet is needed for this download.\nWe’ll check and prepare it here, then continue to Connect.",e.downloadBytes/1048576.0)+(FirmwareCatalog.runnable(e)?"":"\nThis version cannot run yet. Downloading keeps your installed software."));
         }});
         download=button(choosePanel,"Download and continue",()->{FirmwareCatalog.Entry e=(FirmwareCatalog.Entry)choices.getSelectedItem();job(()->downloadAndUse(e),true);});
 
@@ -101,6 +101,7 @@ public final class FirmwareActivity extends Activity {
         heading.setText(welcome?"Welcome to OpenSAAB":ready&&!choose?"Setup complete":choose?"Your Saab software":"Finish your setup");
         subtitle.setText(welcome?"Let’s get your diagnostic software ready.":ready?"Installed on your phone and ready to use.":choose?"Download once. Get ready to connect.":"Add the communication firmware to continue");
         try{current.setText(cardReady?"Installed: "+store.active().optString("label"):"No diagnostic software installed yet");}catch(Exception e){current.setText("Your setup needs attention. Open the options below to restore a backup.");}
+        show(current,cardReady);
         String supportMissing=store.missingSupport();supportStatus.setText("Still needed: "+supportMissing);
         show(welcomePanel,welcome&&!busy);show(choosePanel,choose&&!busy);show(supportPanel,!welcome&&!supportMissing.isEmpty()&&!busy&&(!bundledSupport||cardReady));show(readyPanel,!welcome&&ready&&!busy);
         for(Button b:actions)b.setEnabled(!busy);choices.setEnabled(!busy);
