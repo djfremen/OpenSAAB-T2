@@ -1,10 +1,10 @@
 # Contributor USB captures (Mongoose first)
 
 This is a separate **local-only portable preview** inside OpenSAAB-Collector.
-It leaves the older Chipsoft service/shim installer intact. Do not give that
-installer to a Windows 8.1/Mongoose contributor: it targets .NET 8/Windows 10,
-replaces Chipsoft DLLs, and its current USB path captures a whole hub at a
-96-byte snap length. Those are unsuitable defaults for this task.
+The current instructions live in the public
+[OpenSAAB-Collector repository](https://github.com/djfremen/OpenSAAB-Collector/tree/main/portable).
+The legacy Chipsoft service is separate: 0.4.1 uses native driver logging,
+while earlier versions used DLL shims. Neither is the Mongoose contributor package.
 
 The portable helper targets Windows PowerShell 4 syntax/.NET Framework APIs
 available on Windows 8.1. It does not install drivers, modify adapter DLLs,
@@ -48,7 +48,9 @@ needed to get started and should not be triggered merely to collect more data.
 ## Helper status
 
 A separate local-only PowerShell helper is in development in OpenSAAB-Collector.
-It has fixture tests, but Windows 8.1 + Mongoose hardware validation is pending.
+Fifteen fixture checks pass on Windows 10/PowerShell 5.1. A Chipsoft bench DTC
+read produced a device-scoped USB capture. The interactive stop flow and
+Windows 8.1 + Mongoose hardware validation are still pending.
 Use the manual workflow above for now. This guide does not require installing
 the legacy Chipsoft Collector or changing Windows script-execution policy.
 
