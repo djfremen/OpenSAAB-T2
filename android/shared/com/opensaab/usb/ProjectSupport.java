@@ -35,7 +35,31 @@ public final class ProjectSupport {
         return button;
     }
 
+    /** Fixed app-level footer, outside scrollable content and expanded firmware views. */
+    public static void attachFooter(Activity activity) {
+        android.view.ViewGroup content=activity.findViewById(android.R.id.content);
+        if(content==null || content.getChildCount()!=1 || content.findViewWithTag("project-support-footer")!=null)return;
+        android.view.View original=content.getChildAt(0);
+        content.removeView(original);
+        android.widget.LinearLayout wrapper=new android.widget.LinearLayout(activity);
+        wrapper.setOrientation(android.widget.LinearLayout.VERTICAL);
+        wrapper.setTag("project-support-footer");wrapper.setBackgroundColor(0xff0d1620);
+        wrapper.addView(original,new android.widget.LinearLayout.LayoutParams(-1,0,1));
+        Button donate=button(activity,()->show(activity));
+        donate.setText("Donate · Support OpenSAAB");
+        donate.setContentDescription("Donate to OpenSAAB on Ko-fi");
+        android.widget.LinearLayout.LayoutParams footer=new android.widget.LinearLayout.LayoutParams(-1,Math.round(48*activity.getResources().getDisplayMetrics().density));
+        wrapper.addView(donate,footer);
+        wrapper.setOnApplyWindowInsetsListener((v,i)->{
+            v.setPadding(i.getSystemWindowInsetLeft(),i.getSystemWindowInsetTop(),i.getSystemWindowInsetRight(),i.getSystemWindowInsetBottom());
+            return i.consumeSystemWindowInsets();
+        });
+        content.addView(wrapper,new android.view.ViewGroup.LayoutParams(-1,-1));
+        wrapper.requestApplyInsets();
+    }
+
     public static void show(Activity activity) {
+        if(FirmwareGate.sessionActive() || SecurityAccessView.workflowBusy()){waitForSession(activity);return;}
         String configured=text(activity,"project_support_url").trim();
         Uri destination=Uri.parse(configured);
         boolean ready="https".equalsIgnoreCase(destination.getScheme())

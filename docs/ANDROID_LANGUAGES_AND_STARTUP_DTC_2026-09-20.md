@@ -57,3 +57,9 @@ Run `cargo test --locked --no-default-features --lib` and `python3 scripts/andro
 With a stopped, debug-signed app on an unlocked test device, run `scripts/android/test-lcd-on-device.py --serial SERIAL --suite languages` and `--suite firmware`. The `firmware-download` and `startup` suites require the disposable Android emulator. The download suite requires a fresh app data directory.
 
 For language boot checks, use the same packaged ARM64 executable and approved eprom/opsys/CANdi support files, a working copy of the catalog-pinned card, `--interactive-headless --research-harness --candi-native-link`, and a unique output directory. Send `enter` through `interactive-key.txt` at the splash and confirm both main-menu F0/F1 entries plus the LCD image. Send `stop` and preserve the output without committing firmware binaries.
+
+## Follow-up — September 23
+
+The physical Pixel 7 now passed the installed ARM64 preview.23 startup workflow with Chipsoft: fresh VIN, complete six-code HS-CAN report, USB release, and continuation into the original Main Menu. See [the scoped live test receipt](PIXEL_STARTUP_LIVE_2026-09-23.md). This supersedes the Pixel startup test's earlier pending status; ARM32 qualification and the other language/vehicle checks remain separate.
+
+The K2401 also passed an independent in-place headunit.17 -> headunit.19 upgrade and live Chipsoft startup test on September 23: same fresh VIN and six-code report as Pixel, USB release, then the original Main Menu. See [the ARM32 live test record](K2401_STARTUP_LIVE_2026-09-23.md). Language switching and controlled fast-start timing on this new ARM32 package still need separate checks.
