@@ -16,9 +16,9 @@ adb=[sdk/'platform-tools/adb','-s',a.serial];package='com.opensaab.beta.diagnost
 def run(*args,capture=False):
  return subprocess.run([str(x) for x in args],check=True,env=env,timeout=90,capture_output=capture,text=True)
 suites=['SupportReportInstrumentedTest','EmulatorHealthInstrumentedTest']
-sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest']]]
+sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 run(jdk/'bin/javac','-source','8','-target','8','-cp',jar,'-d',classes,*sources)
-run(jdk/'bin/java','-cp',classes,'com.opensaab.usb.DiagnosticFailureTest')
+for test in ['DiagnosticFailureTest','ChipsoftIdentityTest']:run(jdk/'bin/java','-cp',classes,'com.opensaab.usb.'+test)
 run(bt/'d8','--min-api','26','--lib',jar,'--output',out,*sorted(classes.rglob('*.class')))
 ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',ns)
 tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();root.set('package',package)

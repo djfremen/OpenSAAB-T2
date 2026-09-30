@@ -70,6 +70,7 @@ public final class SupportReports {
             }catch(Exception unavailable){}
             if(dir.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))session.put("session_id",dir.getName());
             session.put("diagnostic_events",SessionDiagnostics.read(dir));
+            try{File info=new File(dir,"adapter-identity.json");if(info.length()<=512){String version=FirmwareStore.json(info).optString("firmware_version");if(version.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){1,3}(?:[-+][A-Za-z0-9._-]{1,20})?"))session.put("firmware_version",version);}}catch(Exception ignored){}
             session.put("native_performance",PerformanceReport.session(dir));
             session.put("logs",logs);runs.put(session);
         }

@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class ChipsoftUsbActivity extends Activity {
     volatile ConnectionAttempt connectionAttempt;
     Button reportConnection;
-    TextView vinSummary,modeLabel;
+    TextView vinSummary,modeLabel,adapterSummary;
+    String adapterVersion;
     volatile VehicleIdentity vehicle;
     volatile long vehicleGeneration;
     Runnable pendingVehicleStart;
@@ -70,6 +71,7 @@ public final class ChipsoftUsbActivity extends Activity {
             root.addView(modeLabel);
         }
         status=new TextView(this);status.setMaxLines(2);status.setEllipsize(android.text.TextUtils.TruncateAt.END);status.setText(fullNative?"Original Tech2 + CANdi · Full native control":keyStatus?"Original firmware · CIM key-status diagnostic test":vinCheck?"Read VIN / model year · startup discovery":audible?"Original firmware · BCM audible reminder":symbolOnly?"Original firmware · BCM Symbol Only operation":seeds?"Original firmware · collect security data":nativeFirmware?"Original Tech2 + CANdi · Chipsoft · read-only":receiveTest?"Raw P-bus / I-bus receive test · no diagnostic requests":"Identify adapter · no vehicle commands");root.addView(status);
+        adapterSummary=new TextView(this);adapterSummary.setTextSize(14);adapterSummary.setText("Chipsoft Pro firmware: not detected");root.addView(adapterSummary);
         if(dtcRead || vinCheck || nativeFirmware){vinSummary=new TextView(this);vinSummary.setTextSize(14);vinSummary.setTextIsSelectable(true);vinSummary.setText("VIN: connect to identify vehicle");root.addView(vinSummary);}
         if(nativeFirmware){ignitionStatus=new IgnitionStatusView(this);root.addView(ignitionStatus);}
         LinearLayout actions=new LinearLayout(this);root.addView(actions,new LinearLayout.LayoutParams(-1,SessionStyle.dp(this,56)));
@@ -222,6 +224,7 @@ public final class ChipsoftUsbActivity extends Activity {
             getIntent().removeExtra("native_seeds");getIntent().putExtra("full_native",true);
             securityAccess.returnedToFirmware();
             modeLabel.setText("Mode: Full native control");
+            adapterVersion=null;adapterSummary.setText("Chipsoft Pro firmware: not detected");
             connectionAttempt=new ConnectionAttempt(this,ConnectionAttempt.Adapter.CHIPSOFT);
             connectionAttempt.device(attached.getVendorId(),attached.getProductId());
             reportConnection.setVisibility(android.view.View.GONE);
@@ -259,6 +262,7 @@ public final class ChipsoftUsbActivity extends Activity {
         if(nativeFirmware){String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty()){log("Firmware setup needed: "+missing);startActivity(new Intent(this,FirmwareActivity.class));return;}}
         if(SecurityAccessView.workflowBusy()){log("Finish security processing before starting another session");return;}
         if(!foreground || running.get() || pending)return;selected=null;vehicle=null;pendingVehicleStart=null;vehicleGeneration++;nativeDirectory=null;
+        adapterVersion=null;adapterSummary.setText("Chipsoft Pro firmware: not detected");
         connectionAttempt=new ConnectionAttempt(this,ConnectionAttempt.Adapter.CHIPSOFT);reportConnection.setVisibility(android.view.View.GONE);
         if(lcdPump!=null){lcdPump.setDirectory(null);nativeLcd.setImageDrawable(null);}
         if(vinSummary!=null)vinSummary.setText("VIN: waiting for adapter");
@@ -286,6 +290,7 @@ public final class ChipsoftUsbActivity extends Activity {
         final boolean symbolOnly=this.symbolOnly && !identifyFirst;
         final ConnectionAttempt progress=connectionAttempt;
         VehicleIdentity identified=null;
+        ChipsoftIdentity adapterIdentity=new ChipsoftIdentity();
         UsbDeviceConnection conn=null;UsbInterface ctl=null,data=null;UsbEndpoint rx=null,tx=null;
         boolean ctlClaim=false,dataClaim=false,quit=false,clean=true;
         UsbRequest read=null;boolean queued=false;PrintWriter out=null;java.lang.Process child=null;
@@ -353,6 +358,7 @@ public final class ChipsoftUsbActivity extends Activity {
                         if(opcode==1)progress.stage(ConnectionAttempt.Stage.IDENTIFICATION);
                         else if(opcode==4)progress.stage(ConnectionAttempt.Stage.CHANNEL_OPEN);
                         else if(opcode==15)progress.stage(vinCheck?ConnectionAttempt.Stage.VIN_REQUEST:ConnectionAttempt.Stage.SESSION);
+                        adapterIdentity.request(bytes);
                         sent=true;int n=conn.bulkTransfer(tx,bytes,bytes.length,500);if(nativeFirmware && bytes[0]==15)log(bytes.length==40 && bytes[33]==0x27 && bytes[34]==2?"NATIVE_USB_TX BCM security key (redacted)":"NATIVE_USB_TX "+cmd.substring(3));
                         capture.write(SystemClock.elapsedRealtime()+" TX "+cmd.substring(3)+" transferred="+n+"\n");capture.flush();if(!receiveTest)log("GET_INFO TX bytes="+n);if(n!=bytes.length)throw new IOException("Incomplete USB write");out.println("TXOK");
                     }else if(cmd.equals("READ") && sent){
@@ -360,6 +366,11 @@ public final class ChipsoftUsbActivity extends Activity {
                         try{
                             UsbRequest done=conn.requestWait(20);if(done!=read)throw new IOException("USB request failed/detached");queued=false;
                             int n=buffer.position();byte[] bytes=new byte[n];buffer.flip();buffer.get(bytes);received+=n;if(received>(nativeFirmware?64*1024*1024:receiveTest?4*1024*1024:4096) && !fullNative)throw new IOException("USB receive byte budget exhausted");
+                            String version=adapterIdentity.receive(bytes);
+                            if(version!=null){
+                                try{FirmwareStore.writeJson(new File(run,"adapter-identity.json"),new org.json.JSONObject().put("firmware_version",version));}catch(Exception ignored){}
+                                runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed()){adapterVersion=version;adapterSummary.setText("Chipsoft Pro firmware: "+version);}});
+                            }
                             String hex=UsbBridgeCodec.hex(bytes,n);capture.write(SystemClock.elapsedRealtime()+" RX "+hex+"\n");capture.flush();if(!receiveTest)log("USB_RX "+hex);out.println(n==0?"EMPTY":"RX "+hex);
                         }catch(java.util.concurrent.TimeoutException e){out.println("EMPTY");}
                     }else throw new IOException("Identity-only command gate rejected request");
@@ -390,6 +401,7 @@ public final class ChipsoftUsbActivity extends Activity {
             }
             if(nativeFirmware&&!vinCheck&&health!=null)health.ended(TransportFailure.from(run));
             running.set(false);
+            runOnUiThread(()->{if(!isDestroyed()&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");});
             if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
             if(dtcRead && quit && clean && !cancelled && generation==vehicleGeneration)runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed() && continueDiagnostics!=null)continueDiagnostics.setEnabled(true);});
             final VehicleIdentity ready=identified;
@@ -481,7 +493,7 @@ public final class ChipsoftUsbActivity extends Activity {
         });}catch(java.util.concurrent.RejectedExecutionException stopped){keyPending.set(false);}
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
-    void stop(){if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
+    void stop(){if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
     protected void onResume(){super.onResume();foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){

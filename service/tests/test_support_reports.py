@@ -56,7 +56,7 @@ class Reports(unittest.TestCase):
     def test_candidate_diagnostics_round_trip(self):
         session_id = 'chipsoft-00000000-0000-0000-0000-000000000001'
         report = dict(self.report, recent_sessions=[{
-            'adapter': 'chipsoft', 'session_id': session_id,
+            'adapter': 'chipsoft', 'session_id': session_id, 'firmware_version': '1.5.2',
             'diagnostic_events': [{'event': 'START', 'utc': '2026-09-29T12:00:00Z'},
                                   {'event': 'EXPECTED_STOP', 'utc': '2026-09-29T12:01:00Z'}],
             'logs': [{'source': 'rust.log', 'failure_categories': [
@@ -74,6 +74,7 @@ class Reports(unittest.TestCase):
     def test_candidate_diagnostics_reject_raw_and_unbounded_values(self):
         invalid = [
             {'session_id': '/private/owner/device'},
+            {'firmware_version': 'raw private text'},
             {'failure_category': 'raw secret error'},
             {'incident_relation': 'unverified value'},
             {'diagnostic_events': [{'event': 'private text'}]},

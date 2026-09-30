@@ -36,3 +36,7 @@ API 31, actual rotation/background transitions, clean installation, live upload 
 Maintain private receipt-to-incident mapping outside the repository. Deduplicate historical sessions and keep observations separate from hypotheses. Progress states: open → investigating → reproduced → fix candidate → verified → released. Each case needs an exact tested artifact/version, reproduction steps, next test and completion criteria. Notifications should cover actionable changes or access failure; unchanged polls stay quiet.
 
 Public updates contain aggregate models/builds, broad symptom groups and testing limitations. Exclude receipt numbers, submission times, contact details, VINs, security data and raw descriptions/logs. Seven reports are not seven unique devices and cannot establish a failure rate.
+
+## Adapter firmware identity
+
+The Android Chipsoft view observes the existing GET_INFO exchange without adding USB requests or vehicle commands. A bounded observer checks framing, status, checksum and version syntax, including fragmented replies. Connection details show the reported version, even if native startup subsequently rejects it. Stopped sessions label it last detected; each new discovery clears the prior identity. Unknown or missing replies remain not detected. Version detection is not a compatibility claim. Reviewed session reports include only the validated version token, never the raw identity or adapter serial. Server allowlist deployment remains required.

@@ -98,8 +98,12 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             JSONObject summary=SupportReports.logSummary(log),counts=summary.getJSONObject("event_counts");
             check(summary.getBoolean("tail_only")&&counts.getInt("USB_OPEN")==1&&counts.getInt("TIMEOUT")==1&&!counts.has("ERROR"),"Bounded tail counts wrong");
             Files.write(new File(dir,"report.json").toPath(),new JSONObject().put("status","incomplete").put("exit_code",3).put("instructions",120000000).put("reason",secret).put("card_image",secret).toString().getBytes("UTF-8"));
+            FirmwareStore.writeJson(new File(dir,"adapter-identity.json"),new JSONObject().put("firmware_version","1.5.2"));
             SupportReports.recordError(c,new IOException(secret),false,dir);
             JSONObject report=SupportReports.collect(c,"Tested an adapter timeout");String json=report.toString();
+            check(json.contains("firmware_version")&&json.contains("1.5.2"),"Missing adapter firmware");
+            FirmwareStore.writeJson(new File(dir,"adapter-identity.json"),new JSONObject().put("firmware_version",secret));
+            check(!SupportReports.collect(c,"").toString().contains(secret),"Unsafe adapter identity exported");
             check(report.getJSONObject("last-app-error.json").getString("session_id").equals(dir.getName()),"Exception lost session association");
             check(!json.contains(secret)&&!json.contains("xxxxxxxx")&&json.contains("java.io.IOException"),"Sensitive log/message exported or error absent");
             check(report.getJSONObject("device_resources").getLong("ram_total_bytes")>0,"Missing RAM context");
