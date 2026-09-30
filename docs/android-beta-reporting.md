@@ -1,6 +1,6 @@
 # Android limited-beta diagnostic evidence
 
-This is a diagnostic candidate based on `29e7809`, not a release qualification or a fix for the submitted incidents. It changes shared Android reporting; both architectures still require release qualification independently.
+This is a diagnostic candidate rebased onto installed preview.24 source `902c46f`, not a release qualification or a fix for the submitted incidents. It changes shared Android reporting; both architectures still require release qualification independently.
 
 ## Changes
 
