@@ -70,6 +70,7 @@ public final class ChipsoftUsbActivity extends Activity {
             modeLabel.setText(fullNative?"Mode: Full native control":seeds?"Mode: Security-data collection":keyStatus?"Mode: Key-status test":(symbolOnly || audible)?"Mode: BCM reminder operation":"Mode: Read-only diagnostics");
             root.addView(modeLabel);
         }
+        TextView appIdentity=new TextView(this);appIdentity.setText(AppUpdates.identity(this));root.addView(appIdentity);
         status=new TextView(this);status.setMaxLines(2);status.setEllipsize(android.text.TextUtils.TruncateAt.END);status.setText(fullNative?"Original Tech2 + CANdi · Full native control":keyStatus?"Original firmware · CIM key-status diagnostic test":vinCheck?"Read VIN / model year · startup discovery":audible?"Original firmware · BCM audible reminder":symbolOnly?"Original firmware · BCM Symbol Only operation":seeds?"Original firmware · collect security data":nativeFirmware?"Original Tech2 + CANdi · Chipsoft · read-only":receiveTest?"Raw P-bus / I-bus receive test · no diagnostic requests":"Identify adapter · no vehicle commands");root.addView(status);
         adapterSummary=new TextView(this);adapterSummary.setTextSize(14);adapterSummary.setText("Chipsoft Pro firmware: not detected");root.addView(adapterSummary);
         if(dtcRead || vinCheck || nativeFirmware){vinSummary=new TextView(this);vinSummary.setTextSize(14);vinSummary.setTextIsSelectable(true);vinSummary.setText("VIN: connect to identify vehicle");root.addView(vinSummary);}

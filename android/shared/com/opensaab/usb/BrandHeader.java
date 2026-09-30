@@ -21,7 +21,7 @@ public final class BrandHeader extends LinearLayout {
         LinearLayout labels=new LinearLayout(context);labels.setOrientation(LinearLayout.VERTICAL);
         labels.addView(name,new LayoutParams(-1,-2));
         TextView architecture=new TextView(context);architecture.setTextSize(12);architecture.setTextColor(0xffb8d9e8);architecture.setPadding(pad,0,0,0);
-        architecture.setText(EmulatorArchitecture.label(new java.io.File(context.getApplicationInfo().nativeLibraryDir,"libtech2_emu.so")));
+        architecture.setText(AppBuildProfile.installedVersion(context)+" · "+EmulatorArchitecture.label(new java.io.File(context.getApplicationInfo().nativeLibraryDir,"libtech2_emu.so")).replace("Emulator: ",""));
         if(!"com.opensaab.checker".equals(context.getPackageName())) labels.addView(architecture,new LayoutParams(-1,-2));
         addView(labels,new LayoutParams(0,-2,1));
     }

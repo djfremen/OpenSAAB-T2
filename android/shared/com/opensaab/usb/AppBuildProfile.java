@@ -15,5 +15,6 @@ public final class AppBuildProfile {
     public static String name(Context context) {
         return isHeadunit32(context) ? "headunit-arm32-development" : "arm64";
     }
+    public static String installedVersion(Context c){try{return c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName;}catch(Exception e){return "unknown";}}
     private AppBuildProfile() {}
 }

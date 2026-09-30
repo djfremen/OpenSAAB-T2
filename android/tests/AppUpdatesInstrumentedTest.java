@@ -15,6 +15,39 @@ public final class AppUpdatesInstrumentedTest extends Instrumentation {
                 .put("name","OpenSAAB-T2-arm64-v8a.apk")
                 .put("browser_download_url",base+"download/"+tag+"/OpenSAAB-T2-arm64-v8a.apk")));
     }
+    JSONObject entry(boolean head,String version)throws Exception{
+        String tag=(head?"headunit-v":"v")+version;
+        return new JSONObject().put("package",head?"com.opensaab.tech2.headunit32":"com.opensaab.tech2").put("abi",head?"armeabi-v7a":"arm64-v8a")
+            .put("version",version).put("version_code",ReleaseVersion.code(version.replace("-headunit.","-preview."))).put("bytes",100)
+            .put("sha256",new String(new char[64]).replace('\0','a')).put("url","https://github.com/djfremen/OpenSAAB-T2/releases/download/"+tag+"/"+(head?"OpenSAAB-T2-headunit-armeabi-v7a.apk":"OpenSAAB-T2-arm64-v8a.apk"));
+    }
+    JSONObject catalog(JSONObject... entries)throws Exception{JSONArray list=new JSONArray();for(JSONObject e:entries)list.put(e);return new JSONObject().put("schema",1).put("releases",list);}
+    void ui(Runnable r){runOnMainSync(r);}
+    void reminderTests()throws Exception{
+        android.content.SharedPreferences p=getTargetContext().getSharedPreferences("updates",0);p.edit().clear().putBoolean("automatic",false).commit();
+        android.app.Activity a=startActivitySync(new android.content.Intent().setClassName(getTargetContext(),"com.opensaab.usb.ChipsoftUsbActivity").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+        final AppUpdates.Reminder[] reminder={null};final boolean[] idle={true};final java.util.concurrent.atomic.AtomicInteger requests=new java.util.concurrent.atomic.AtomicInteger();
+        AppUpdates.Selection next=AppUpdates.catalog(catalog(entry(false,"0.2.0-preview.1")),"com.opensaab.tech2","arm64-v8a");
+        try{
+            p.edit().putBoolean("automatic",true).commit();
+            ui(()->{reminder[0]=new AppUpdates.Reminder(a,()->idle[0],(pkg,abi)->{requests.incrementAndGet();return next;});reminder[0].resume();});
+            long end=android.os.SystemClock.elapsedRealtime()+10000;
+            while(!p.contains("catalog")&&android.os.SystemClock.elapsedRealtime()<end)android.os.SystemClock.sleep(25);
+            final boolean[] shown={false};ui(()->{reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});
+            check(shown[0]&&requests.get()==1,"daily fetch/new release banner");
+            ui(()->{idle[0]=false;reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0],"banner during session");
+            ui(()->{idle[0]=true;reminder[0].refresh();reminder[0].offer();});waitForIdleSync();
+            java.lang.reflect.Field f=AppUpdates.Reminder.class.getDeclaredField("dialog");f.setAccessible(true);android.app.AlertDialog dialog=(android.app.AlertDialog)f.get(reminder[0]);
+            ui(()->dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick());
+            check(p.getLong("snooze_until",0)>System.currentTimeMillis(),"snooze not persisted");
+            ui(()->{reminder[0].pause();reminder[0].resume();reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0]&&requests.get()==1,"snooze/resume recheck");
+            p.edit().putLong("snooze_until",0).putBoolean("automatic",false).commit();ui(()->{reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0],"disabled reminder shown");
+            // An in-flight result must not present a reminder after the app goes into the background.
+            ui(()->reminder[0].pause());p.edit().clear().putBoolean("automatic",true).commit();java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
+            ui(()->{reminder[0]=new AppUpdates.Reminder(a,()->true,(pkg,abi)->{entered.countDown();release.await(5,java.util.concurrent.TimeUnit.SECONDS);return next;});reminder[0].resume();});
+            check(entered.await(5,java.util.concurrent.TimeUnit.SECONDS),"fetch not started");ui(()->reminder[0].pause());release.countDown();android.os.SystemClock.sleep(100);ui(()->shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE);check(!shown[0],"background response surfaced UI");
+        }finally{ui(()->{if(reminder[0]!=null)reminder[0].pause();a.finish();});p.edit().clear().putBoolean("automatic",false).commit();}
+    }
     public void onStart(){Bundle result=new Bundle();int code=-1;
         try{
             check(AppUpdates.select(new JSONArray(),true).code==-1,"empty release list");
@@ -31,7 +64,15 @@ public final class AppUpdatesInstrumentedTest extends Instrumentation {
             check(AppUpdates.select(new JSONArray().put(release("v3.0.0",false).put("assets",new JSONArray())),true).code==-1,"no APK means no update");
             check(AppUpdates.select(new JSONArray().put(release("v1.2.3/evil",false)),true).code==-1,"invalid tag rejected");
             check(AppUpdates.select(new JSONArray().put(release("v0.1.0-preview.99",true)).put(stable),true).tag.equals("v0.1.0"),"stable supersedes same-version previews");
-            result.putString("stream","PASS: release channel/version ordering, drafts, missing APK, invalid tag and foreign URLs; no network or USB\n");
+            JSONObject both=catalog(entry(false,"0.1.0-preview.28"),entry(true,"0.1.0-headunit.17"));
+            check(AppUpdates.catalog(both,"com.opensaab.tech2","arm64-v8a").code==100028,"ARM64 catalog");
+            check(AppUpdates.catalog(both,"com.opensaab.tech2.headunit32","armeabi-v7a").code==100017,"ARM32 catalog");
+            check(AppUpdates.catalog(both,"com.opensaab.tech2","armeabi-v7a").code==-1,"cross architecture");
+            check(AppUpdates.catalog(catalog(entry(false,"0.1.0-preview.28").put("url","https://example.com/app.apk")),"com.opensaab.tech2","arm64-v8a").code==-1,"foreign catalog URL");
+            check(AppUpdates.catalog(catalog(entry(false,"0.1.0-preview.28").put("version_code",100030)),"com.opensaab.tech2","arm64-v8a").code==-1,"version mismatch");
+            check(AppUpdates.due(100,0)&&!AppUpdates.due(1000,100)&&AppUpdates.due(AppUpdates.DAY+100,100)&&AppUpdates.due(50,100),"daily schedule/clock rollback");
+            reminderTests();
+            result.putString("stream","PASS: channel/package/ABI isolation, strict catalog URLs/version codes, daily rate limit, snooze, opt-out, foreground/session gating and in-flight background result; fake catalog only, no network or USB\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finish(code,result);
     }

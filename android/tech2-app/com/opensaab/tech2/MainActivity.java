@@ -42,6 +42,7 @@ public final class MainActivity extends Activity {
     private ScrollView consoleScroll;
     private LcdView lcd;
     private Button start, offline;
+    private com.opensaab.usb.AppUpdates.Reminder updateReminder;
     private com.opensaab.usb.SessionWorkspace workspace;
     private com.opensaab.usb.Tech2Controls controls;
     private LinearLayout details;
@@ -69,6 +70,8 @@ public final class MainActivity extends Activity {
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
+        details.addView(label(com.opensaab.usb.AppUpdates.identity(this),13));
+        updateReminder=new com.opensaab.usb.AppUpdates.Reminder(this,()->!running);workspace.addLaunch(updateReminder.view());
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);
         if(state==null && (getIntent().hasCategory(android.content.Intent.CATEGORY_LAUNCHER)||getIntent().getExtras()==null) && android.content.Intent.ACTION_MAIN.equals(getIntent().getAction()) && !new com.opensaab.usb.FirmwareStore(getFilesDir()).missing().isEmpty()){
             ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class)));return;
@@ -111,6 +114,7 @@ public final class MainActivity extends Activity {
     }
     private void updateWorkspace(){
         if(workspace==null)return;
+        if(updateReminder!=null)updateReminder.refresh();
         workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):compactVehicle+"\n"+(compactSecurity.isEmpty()?status.getText():compactSecurity));
         if(start!=null)start.setVisibility(running?View.GONE:View.VISIBLE);
         if(offline!=null)offline.setVisibility(running?View.GONE:View.VISIBLE);
@@ -339,6 +343,8 @@ public final class MainActivity extends Activity {
         refreshAdapterLabel();
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — connect an adapter or explore offline");}
     }
+    @Override protected void onResume(){super.onResume();if(updateReminder!=null)updateReminder.resume();}
+    @Override protected void onPause(){if(updateReminder!=null)updateReminder.pause();super.onPause();}
     @Override protected void onStop() { foreground=false;ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     private void refreshVehicleHistory(){
         if(!foreground||isDestroyed()||!historyPending.compareAndSet(false,true))return;

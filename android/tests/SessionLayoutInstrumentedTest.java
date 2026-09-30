@@ -23,6 +23,7 @@ public final class SessionLayoutInstrumentedTest extends Instrumentation {
   }
  }
  public void onStart(){Bundle out=new Bundle();Activity current=null;try{
+  getTargetContext().getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit();
   for(String name:new String[]{"com.opensaab.tech2.MainActivity","com.opensaab.usb.ChipsoftUsbActivity"}){
    Intent intent=new Intent().setClassName(getTargetContext(),name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);if(name.contains("Chipsoft"))intent.putExtra("full_native",true);
    current=startActivitySync(intent);final Activity a=current;waitForIdleSync();

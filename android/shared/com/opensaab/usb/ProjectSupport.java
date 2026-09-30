@@ -67,7 +67,7 @@ public final class ProjectSupport {
             && destination.getUserInfo()==null;
         AlertDialog.Builder dialog=new AlertDialog.Builder(activity)
             .setTitle(text(activity,"project_support_title"))
-            .setMessage(text(activity,"project_support_message")+"\n\n"
+            .setMessage(AppUpdates.identity(activity)+"\n\n"+text(activity,"project_support_message")+"\n\n"
                 +text(activity,ready?"project_support_external":"project_support_pending"))
             .setNegativeButton(text(activity,"project_support_close"),null);
         if(ready)dialog.setPositiveButton(text(activity,"project_support_donate"),(d,w)->{
