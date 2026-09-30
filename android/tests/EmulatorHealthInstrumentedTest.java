@@ -37,7 +37,9 @@ public final class EmulatorHealthInstrumentedTest extends Instrumentation {
   ActivityMonitor reportActivity=addMonitor("com.opensaab.usb.SupportReportActivity",null,false);
   runOnMainSync(()->reportDialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick());
   Activity reportScreen=waitForMonitorWithTimeout(reportActivity,5000);check(reportScreen!=null,"Report action did not open review flow");
-  check(text(reportScreen.getWindow().getDecorView(),"Prepare report")!=null,"Report review skipped");
+  // ActivityMonitor can observe the Activity before onCreate has populated its views.
+  waitForIdleSync();
+  runOnMainSync(()->check(text(reportScreen.getWindow().getDecorView(),"Prepare report")!=null,"Report review skipped"));
   runOnMainSync(reportScreen::finish);removeMonitor(reportActivity);
   new File(activity.getFilesDir(),"last-emulator-health.json").delete();run.delete();
   out.putString("stream","PASS: static screens, slow boot grace, loop stall, input stall, UI stall, one prompt, expected stop, report evidence; no uploads or vehicle commands\n");finish(-1,out);

@@ -29,7 +29,7 @@ API 36 ARM64 reporting/health instrumentation and host checks passed during this
 
 The live service rejected the candidate report. Its existing field allowlist does not accept `session_id`, `diagnostic_events` or the new failure/lifecycle fields. The reviewed JSON is retained privately. The server compatibility patch adds only the new keys, validates fixed diagnostic labels and enforces event/category bounds. Ten synthetic service tests pass, and the actual Pixel JSON round-trips intact through the patched local service using mock storage. The companion desktop-capable service preserves desktop handling and passes eleven tests. The server patch was subsequently deployed on 29 September Pacific time, preserving the current image configuration and changing only the report validator. An actual Pixel preview.26 reviewed owner-bench report uploaded successfully; independent R2 retrieval matched the JSON exactly, including firmware 1.5.2. This closes the live-schema/upload blocker, not the original crash incidents.
 
-API 31, actual rotation/background transitions, clean installation, security-handoff qualification, affected-model retests and 32-bit physical qualification remain pending. Do not mark the user incidents fixed or publish a production APK on these tests alone.
+API 28 and 31 clean installation, offline native startup and reporting lifecycle checks are recorded below. Security-handoff qualification, affected-model retests and 32-bit physical qualification remain pending. Do not mark the user incidents fixed or publish a production APK on these tests alone.
 
 ## Triage and publication
 
@@ -51,4 +51,23 @@ The existing OpenSAAB_SetupTest profile is 1024×600 at 160dpi. It did not honor
 python3 scripts/android/test-beta-reporting.py --serial emulator-5554 --lifecycle
 ```
 
-Only API36 is installed locally. API31, actual low-memory process death/relaunch, native firmware rotation/background behavior and field-device USB behavior remain separate pending checks. Synthetic health-state tests are not a substitute for those cases.
+API28, API31 and API36 are now installed locally. Actual low-memory process death/relaunch, native firmware rotation and field-device USB behavior remain separate pending checks. Synthetic health-state tests are not a substitute for those cases.
+
+
+## Android 9 and 12 offline qualification — 29 September 2026
+
+Google APIs ARM64 AVDs running Android 9 (API28) and Android 12 (API31), each configured with 2 GiB RAM and a 1080×2340 phone display, were clean-installed with the unchanged release-signed private preview.26 APK. APK SHA-256: `fa7e7bf98c1eb7a24df258c1f373543146d76579f90b73d7a383eb69e11629a8` (application source `8dbd9f7`). Both downloaded and prepared Saab NAO 9.250 English through the normal setup flow.
+
+Both passed:
+
+- Actual offline firmware startup, Main Menu, keypad input and Model Year navigation.
+- Workspace layout instrumentation covering phone and landscape bounds, expanded controls, EXIT, Actions, menu and status.
+- Report privacy/validation, fixed failure taxonomy, passive identity parser and synthetic health-monitor checks.
+- Actual report-form portrait/landscape rotation, Activity recreation and Home/resume with draft/context retained and contact consent remaining unchecked.
+- Deliberate `am crash` of the installed app with offline firmware running: next launch offered the report, the reviewed JSON retained the application crash breadcrumb and session events, and no native process remained. Reports were kept privately, never uploaded. API31 additionally supplied Android process-exit reason 4; API28 correctly omitted the unavailable Android exit-history field.
+
+The first API31 health test inspected the report view too early and failed `Report review skipped`. Waiting for UI idleness and checking the view on the main thread corrected this test synchronization defect; the complete harness then passed on both versions. No application behavior or APK was changed.
+
+A brief Home-and-return on API31 retained the process, but **full backgrounding ends offline emulation on both versions**. `MainActivity.onStop()` explicitly requests this stop. The API28 report recorded `PAUSED` followed by `EXPECTED_STOP`; restarting offline emulation worked. A quick switch is therefore not evidence of background session persistence. Do not count the expected background stop as a reproduced field crash.
+
+These tests do not qualify Android 8, ARM32 head units, 1 GiB hardware, real memory exhaustion, vendor-specific Android behavior, USB transport or vehicle/security operations. Existing field incidents remain open. The AVDs were shut down after testing and retained for repeatable follow-up; the physical Pixel was untouched in this round.
