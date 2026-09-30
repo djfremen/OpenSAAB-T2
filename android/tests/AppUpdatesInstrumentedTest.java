@@ -38,10 +38,19 @@ public final class AppUpdatesInstrumentedTest extends Instrumentation {
             ui(()->{idle[0]=false;reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0],"banner during session");
             ui(()->{idle[0]=true;reminder[0].refresh();reminder[0].offer();});waitForIdleSync();
             java.lang.reflect.Field f=AppUpdates.Reminder.class.getDeclaredField("dialog");f.setAccessible(true);android.app.AlertDialog dialog=(android.app.AlertDialog)f.get(reminder[0]);
-            ui(()->dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick());
+            ui(()->dialog.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick());waitForIdleSync();
             check(p.getLong("snooze_until",0)>System.currentTimeMillis(),"snooze not persisted");
             ui(()->{reminder[0].pause();reminder[0].resume();reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0]&&requests.get()==1,"snooze/resume recheck");
             p.edit().putLong("snooze_until",0).putBoolean("automatic",false).commit();ui(()->{reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0],"disabled reminder shown");
+            p.edit().putBoolean("automatic",true).putString("catalog",catalog(entry(false,AppUpdates.installedVersion(a))).toString()).putLong("catalog_utc",System.currentTimeMillis()).commit();
+            ui(()->{reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0],"already-current offer");
+            p.edit().putString("catalog",catalog(next.entry).toString()).putLong("catalog_utc",System.currentTimeMillis()-8*AppUpdates.DAY).commit();
+            ui(()->{reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(!shown[0],"expired cached offer");
+            ui(()->reminder[0].pause());p.edit().clear().putBoolean("automatic",true).commit();requests.set(0);
+            FirmwareGate.Lease lease=FirmwareGate.use();
+            ui(()->{reminder[0]=new AppUpdates.Reminder(a,()->true,(pkg,abi)->{requests.incrementAndGet();throw new java.io.IOException("synthetic offline");});reminder[0].resume();reminder[0].refresh();});waitForIdleSync();check(requests.get()==0,"fetch during firmware lease");lease.close();
+            ui(()->reminder[0].refresh());end=android.os.SystemClock.elapsedRealtime()+5000;while(requests.get()==0&&android.os.SystemClock.elapsedRealtime()<end)android.os.SystemClock.sleep(25);
+            waitForIdleSync();ui(()->{reminder[0].refresh();shown[0]=reminder[0].view().getVisibility()==android.view.View.VISIBLE;});check(requests.get()==1&&!shown[0],"offline response retries/prompts");
             // An in-flight result must not present a reminder after the app goes into the background.
             ui(()->reminder[0].pause());p.edit().clear().putBoolean("automatic",true).commit();java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(1),release=new java.util.concurrent.CountDownLatch(1);
             ui(()->{reminder[0]=new AppUpdates.Reminder(a,()->true,(pkg,abi)->{entered.countDown();release.await(5,java.util.concurrent.TimeUnit.SECONDS);return next;});reminder[0].resume();});
