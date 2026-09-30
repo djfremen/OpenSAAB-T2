@@ -68,6 +68,10 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
         File reports=new File(c.getFilesDir(),"support-reports");Set<String> existing=new HashSet<>();if(reports.list()!=null)Collections.addAll(existing,reports.list());
         try{
             uploadContract();
+            check(!SupportReportActivity.reportDescription("steps",2,"private@example.invalid",false).contains("private@example.invalid"),"Contact included without consent");
+            check(SupportReportActivity.reportDescription("steps",2,"private@example.invalid",true).contains("permission granted"),"Consent not represented");
+            check(SupportReportActivity.reportDescription(new String(new char[3000]),1,new String(new char[300]),true).length()<=2000,"Description exceeds server bound");
+
             JSONObject rawPerf=new JSONObject().put("performance_schema",1).put("complete",false).put("private_text","SECRET");
             JSONArray samples=new JSONArray();for(int i=0;i<20;i++)samples.put(new JSONObject().put("elapsed_ms",i*5000).put("cpu_ms",i*4000).put("rss_kib",-1).put("ram_available_kib","SECRET").put("vin","SECRET"));
             rawPerf.put("samples",samples);JSONObject perf=PerformanceReport.sanitize(rawPerf);
@@ -82,11 +86,21 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
                 byte[] padding=new byte[300000];Arrays.fill(padding,(byte)'x');out.write(padding);
                 out.write(("\nUSB_OPEN "+secret+"\nUSB_TX "+secret+"\nTIMEOUT\n").getBytes("UTF-8"));
             }
+            File errorLog=new File(dir,"rust.log");
+            Files.write(errorLog.toPath(),("ERROR: Unvalidated Chipsoft firmware version "+secret+"\nERROR: other "+secret).getBytes("UTF-8"));
+            JSONObject classified=SupportReports.logSummary(errorLog);
+            check(classified.getJSONArray("failure_categories").getJSONObject(0).getString("category").equals("adapter_firmware_not_validated")&&!classified.toString().contains(secret),"Failure classification leaks values or loses reason");
+            JSONArray unsafe=new JSONArray();for(int i=0;i<40;i++)unsafe.put(new JSONObject().put("event","PAUSED").put("utc","2026-09-30T00:00:00Z").put("secret",secret));
+            unsafe.put(new JSONObject().put("event",secret).put("utc","2026-09-30T00:00:00Z"));
+            JSONArray safe=SessionDiagnostics.sanitize(unsafe);check(safe.length()==31&&!safe.toString().contains(secret),"Timeline not bounded or sanitized");
+            SessionDiagnostics.record(dir,SessionDiagnostics.Event.START);SessionDiagnostics.record(dir,SessionDiagnostics.Event.EXPECTED_STOP);
+            check(SessionDiagnostics.read(dir).length()==2,"Missing session events");
             JSONObject summary=SupportReports.logSummary(log),counts=summary.getJSONObject("event_counts");
             check(summary.getBoolean("tail_only")&&counts.getInt("USB_OPEN")==1&&counts.getInt("TIMEOUT")==1&&!counts.has("ERROR"),"Bounded tail counts wrong");
             Files.write(new File(dir,"report.json").toPath(),new JSONObject().put("status","incomplete").put("exit_code",3).put("instructions",120000000).put("reason",secret).put("card_image",secret).toString().getBytes("UTF-8"));
-            SupportReports.recordError(c,new IOException(secret),false);
+            SupportReports.recordError(c,new IOException(secret),false,dir);
             JSONObject report=SupportReports.collect(c,"Tested an adapter timeout");String json=report.toString();
+            check(report.getJSONObject("last-app-error.json").getString("session_id").equals(dir.getName()),"Exception lost session association");
             check(!json.contains(secret)&&!json.contains("xxxxxxxx")&&json.contains("java.io.IOException"),"Sensitive log/message exported or error absent");
             check(report.getJSONObject("device_resources").getLong("ram_total_bytes")>0,"Missing RAM context");
             check(report.getJSONArray("recent_sessions").length()>0&&json.contains("emulator_outcome"),"Missing session/outcome");

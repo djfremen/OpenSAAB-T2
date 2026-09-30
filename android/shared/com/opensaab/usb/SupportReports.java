@@ -13,17 +13,20 @@ import org.json.*;
 public final class SupportReports {
     private static final String[] EVENTS={"USB_OPEN","USB_CLOSED","USB_TX","USB_RX","CAN_TX","CAN_RX","TIMEOUT","DISCONNECT","PANIC","ERROR","FAILED","NEGATIVE RESPONSE"};
     public static JSONObject logSummary(File file)throws Exception{
-        JSONObject out=new JSONObject().put("source",file.getName()).put("file_bytes",file.length());Map<String,Integer> counts=new LinkedHashMap<>();
+        JSONObject out=new JSONObject().put("source",file.getName()).put("file_bytes",file.length());Map<String,Integer> counts=new LinkedHashMap<>();JSONArray failures=new JSONArray();
         long start=Math.max(0,file.length()-262144);out.put("tail_only",start>0);
         try(RandomAccessFile in=new RandomAccessFile(file,"r")){
             in.seek(start);byte[] b=new byte[(int)Math.min(262144,in.length()-start)];in.readFully(b);String text=new String(b,StandardCharsets.UTF_8);if(start>0){int nl=text.indexOf('\n');text=nl<0?"":text.substring(nl+1);}
-            for(String line:text.split("\\n")){String upper=line.toUpperCase(Locale.ROOT);for(String event:EVENTS)if(upper.contains(event))counts.put(event,counts.getOrDefault(event,0)+1);}
+            int lineIndex=0;for(String line:text.split("\\n")){lineIndex++;String category=DiagnosticFailure.classify(line);if(!category.equals("unclassified")&&failures.length()<16)failures.put(new JSONObject().put("category",category).put("tail_line",lineIndex));String upper=line.toUpperCase(Locale.ROOT);for(String event:EVENTS)if(upper.contains(event))counts.put(event,counts.getOrDefault(event,0)+1);}
         }
-        out.put("event_counts",new JSONObject(counts));return out;
+        out.put("event_counts",new JSONObject(counts)).put("failure_categories",failures);return out;
     }
-    public static void recordError(Context context,Throwable error,boolean crash){
+    public static void recordError(Context context,Throwable error,boolean crash){recordError(context,error,crash,null);}
+    public static void recordError(Context context,Throwable error,boolean crash,File session){
         try{
             JSONObject j=new JSONObject().put("utc",java.time.Instant.now().toString()).put("kind",crash?"uncaught_java_exception":"handled_error").put("exception_class",error.getClass().getName());
+            j.put("failure_category",DiagnosticFailure.classify(error.getMessage()));
+            if(session!=null&&session.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))j.put("session_id",session.getName());
             JSONArray stack=new JSONArray();StackTraceElement[] frames=error.getStackTrace();for(int i=0;i<Math.min(frames.length,24);i++)stack.put(frames[i].getClassName()+"."+frames[i].getMethodName()+":"+frames[i].getLineNumber());j.put("stack",stack);
             FirmwareStore.writeJson(new File(context.getFilesDir(),crash?"last-app-crash.json":"last-app-error.json"),j);
         }catch(Throwable ignored){} // Error reporting must never replace the original error handler.
@@ -44,13 +47,14 @@ public final class SupportReports {
         if(health.isFile()&&health.length()<4096)try{
             JSONObject raw=FirmwareStore.json(health),safe=new JSONObject();
             String reason=raw.optString("reason");
-            if(Arrays.asList("ui_unresponsive","emulator_heartbeat_missing","input_without_display_response","unexpected_emulator_exit").contains(reason)){
+            if(Arrays.asList("ui_unresponsive","emulator_heartbeat_missing","input_without_display_response","unexpected_emulator_exit","vehicle_network_failure").contains(reason)){
                 safe.put("reason",reason).put("utc",java.time.Instant.parse(raw.getString("utc")).toString());
-                for(String key:new String[]{"elapsed_ms","heartbeat_age_ms","input_wait_ms","ui_delay_ms"})if(raw.opt(key) instanceof Number)safe.put(key,raw.getLong(key));
+                for(String key:new String[]{"elapsed_ms","heartbeat_age_ms","input_wait_ms","ui_delay_ms","orientation_start","orientation_end","pause_count","resume_count"})if(raw.opt(key) instanceof Number)safe.put(key,raw.getLong(key));
+                String sessionId=raw.optString("session_id");if(sessionId.matches("(?:chipsoft|native)-[a-f0-9-]{36}"))safe.put("session_id",sessionId);
                 report.put("emulator_health",safe);
             }
         }catch(Exception ignored){}
-        report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts cover bounded log tails only.");
+        report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts and fixed failure categories cover bounded log tails only.");
         JSONArray runs=new JSONArray();File files=c.getFilesDir();
         for(File dir:sessions(files)){
             JSONObject session=new JSONObject().put("adapter",dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":"offline").put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
@@ -64,6 +68,8 @@ public final class SupportReports {
                 if(Arrays.asList("complete","incomplete","error","failed","success","cancelled").contains(status))safe.put("status",status);
                 session.put("emulator_outcome",safe);
             }catch(Exception unavailable){}
+            if(dir.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))session.put("session_id",dir.getName());
+            session.put("diagnostic_events",SessionDiagnostics.read(dir));
             session.put("native_performance",PerformanceReport.session(dir));
             session.put("logs",logs);runs.put(session);
         }
@@ -92,7 +98,10 @@ public final class SupportReports {
             }catch(RuntimeException unavailable){}
             report.put("android_process_exits",exits);
         }
-        for(String name:new String[]{"last-app-crash.json","last-app-error.json"}){File f=new File(files,name);if(f.isFile())try{report.put(name,FirmwareStore.json(f));}catch(Exception ignored){}}
+        for(String name:new String[]{"last-app-crash.json","last-app-error.json"}){File f=new File(files,name);if(f.isFile())try{JSONObject error=FirmwareStore.json(f);JSONObject incident=report.optJSONObject("emulator_health");
+            String errorSession=error.optString("session_id"),healthSession=incident==null?"":incident.optString("session_id");
+            error.put("incident_relation",errorSession.isEmpty()||healthSession.isEmpty()?"unknown":errorSession.equals(healthSession)?"same_session":"different_session");
+            report.put(name,error);}catch(Exception ignored){}}
         return report;
     }
     public static File save(Context c,JSONObject report)throws Exception{

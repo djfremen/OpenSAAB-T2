@@ -154,6 +154,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private void begin(boolean process,boolean allowFallback){
         if(!WORKFLOW_BUSY.compareAndSet(false,true))return;
         final File run=session.get();busy=true;failure=null;action.setEnabled(false);
+        SessionDiagnostics.record(run,process?SessionDiagnostics.Event.SECURITY_PROCESS_REQUESTED:SessionDiagnostics.Event.SECURITY_COLLECTION_REQUESTED);
         message.setText("Closing the firmware session…");stop.run();
         worker.execute(()->{
             boolean released=false;
@@ -166,11 +167,13 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!process){WORKFLOW_BUSY.set(false);released=true;activity.runOnUiThread(()->{busy=false;if(!closed)collect.run();});return;}
                 if(run==null)throw new IOException("No collected session");
                 try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run,allowFallback);}
+                SessionDiagnostics.record(run,SessionDiagnostics.Event.SECURITY_IMPORTED);
                 // Release the image lease and workflow gate before the new emulator opens the card.
                 WORKFLOW_BUSY.set(false);released=true;
                 activity.runOnUiThread(()->{
                     busy=false;manualCollection=false;imported=true;
                     if(!closed&&session.get()==run){
+                        SessionDiagnostics.record(run,SessionDiagnostics.Event.RESTART_REQUESTED);
                         show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
                         android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
                         resume.run();

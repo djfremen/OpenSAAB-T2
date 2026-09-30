@@ -17,13 +17,14 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
     private final EmulatorHealthState state=new EmulatorHealthState();
     private File directory; private long stamp, generation; private boolean foreground=true,closed,uiPending;
     private AlertDialog dialog;
+    private int orientationStart,pauses,resumes;
     public EmulatorHealthMonitor(Activity a,Runnable stop){activity=a;this.stop=stop;a.getApplication().registerActivityLifecycleCallbacks(this);worker.scheduleWithFixedDelay(this::tick,1,1,TimeUnit.SECONDS);}
-    public synchronized void begin(File run){if(closed)return;directory=run;stamp=0;generation++;state.reset(SystemClock.uptimeMillis());}
+    public synchronized void begin(File run){if(closed)return;directory=run;SessionDiagnostics.record(run,SessionDiagnostics.Event.START);stamp=0;generation++;orientationStart=activity.getResources().getConfiguration().orientation;pauses=resumes=0;state.reset(SystemClock.uptimeMillis());}
     public synchronized void input(){if(directory!=null)state.input(SystemClock.uptimeMillis());}
     public synchronized void frame(){state.frame();}
-    public synchronized void expectedStop(){directory=null;generation++;}
+    public synchronized void expectedStop(){SessionDiagnostics.record(directory,SessionDiagnostics.Event.EXPECTED_STOP);directory=null;generation++;}
     public synchronized void ended(){ended(null);}
-    public synchronized void ended(String explanation){if(directory==null)return;incident(explanation==null?"unexpected_emulator_exit":"vehicle_network_failure",explanation);directory=null;}
+    public synchronized void ended(String explanation){if(directory==null)return;SessionDiagnostics.record(directory,SessionDiagnostics.Event.UNEXPECTED_EXIT);incident(explanation==null?"unexpected_emulator_exit":"vehicle_network_failure",explanation);directory=null;}
     private synchronized void tick(){
         if(closed||directory==null||!foreground)return;
         long now=SystemClock.uptimeMillis();
@@ -38,7 +39,10 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
         long now=SystemClock.uptimeMillis(),epoch=generation;
         try{JSONObject event=new JSONObject().put("utc",java.time.Instant.now().toString()).put("reason",reason)
             .put("elapsed_ms",now-state.started).put("heartbeat_age_ms",now-state.heartbeat)
-            .put("input_wait_ms",state.input<0?0:now-state.input).put("ui_delay_ms",now-state.ui);
+            .put("input_wait_ms",state.input<0?0:now-state.input).put("ui_delay_ms",now-state.ui)
+            .put("orientation_start",orientationStart).put("orientation_end",activity.getResources().getConfiguration().orientation)
+            .put("pause_count",pauses).put("resume_count",resumes);
+            if(directory!=null&&directory.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))event.put("session_id",directory.getName());
             FirmwareStore.writeJson(new File(activity.getFilesDir(),"last-emulator-health.json"),event);
         }catch(Exception ignored){}
         ui.post(()->{synchronized(this){if(closed||!foreground||epoch!=generation||activity.isFinishing()||activity.isDestroyed())return;}
@@ -50,8 +54,8 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
         });
     }
     public synchronized void close(){closed=true;directory=null;generation++;worker.shutdownNow();activity.getApplication().unregisterActivityLifecycleCallbacks(this);if(dialog!=null)dialog.dismiss();}
-    public synchronized void onActivityResumed(Activity a){if(a==activity){foreground=true;state.ui(SystemClock.uptimeMillis());}}
-    public synchronized void onActivityPaused(Activity a){if(a==activity){foreground=false;state.frame();}}
+    public synchronized void onActivityResumed(Activity a){if(a==activity){foreground=true;if(directory!=null){resumes++;SessionDiagnostics.record(directory,SessionDiagnostics.Event.RESUMED);}state.ui(SystemClock.uptimeMillis());}}
+    public synchronized void onActivityPaused(Activity a){if(a==activity){foreground=false;if(directory!=null){pauses++;SessionDiagnostics.record(directory,SessionDiagnostics.Event.PAUSED);}state.frame();}}
     public void onActivityDestroyed(Activity a){if(a==activity)close();}
     public void onActivityCreated(Activity a,Bundle b){} public void onActivityStarted(Activity a){} public void onActivityStopped(Activity a){} public void onActivitySaveInstanceState(Activity a,Bundle b){}
     public static void offerPreviousCrash(Activity a){

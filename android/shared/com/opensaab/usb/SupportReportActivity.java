@@ -10,7 +10,7 @@ import org.json.JSONObject;
 
 /** User reviews a frozen report before uploading or exporting it. */
 public final class SupportReportActivity extends Activity {
-    private Button prepare;private EditText description;
+    private Button prepare;private EditText description,contact;private Spinner testContext;private CheckBox allowContact;
     private static final int SAVE_REPORT = 41;
     private File pendingExport;
     private AlertDialog sending;
@@ -20,10 +20,27 @@ public final class SupportReportActivity extends Activity {
         try { JSONObject receipt=new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(getFilesDir(),"last-support-upload.json").toPath()),java.nio.charset.StandardCharsets.UTF_8));
             String number=receipt.optString("report_id","");if(number.matches("OS-[a-f0-9]{24}")){TextView previous=new TextView(this);previous.setText("Last sent report: "+number);previous.setTextIsSelectable(true);root.addView(previous);}
         }catch(Exception ignored){}
-        description=new EditText(this);description.setHint("What were you doing when the problem happened?");description.setMinLines(3);description.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(2000)});root.addView(description);if(b==null&&getIntent().getBooleanExtra("health_report",false))description.setText("Emulation stopped or appeared unresponsive. What I was doing: ");
+        description=new EditText(this);description.setHint("What were you doing when the problem happened?");description.setMinLines(3);description.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(1700)});root.addView(description);if(b==null&&getIntent().getBooleanExtra("health_report",false))description.setText("Emulation stopped or appeared unresponsive. What I was doing: ");
+        TextView contextLabel=new TextView(this);contextLabel.setText("Where were you testing?");root.addView(contextLabel);
+        testContext=new Spinner(this);testContext.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Not specified","In a vehicle","On a bench","Without an adapter"}));root.addView(testContext);
+        contact=new EditText(this);contact.setHint("Optional email or forum handle for follow-up");contact.setSingleLine(true);contact.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(160)});root.addView(contact);
+        allowContact=new CheckBox(this);allowContact.setText("Include my contact detail privately and allow OpenSAAB to contact me about this report");root.addView(allowContact);
+        if(b!=null){description.setText(b.getString("report_description",""));contact.setText(b.getString("report_contact",""));allowContact.setChecked(b.getBoolean("report_allow_contact",false));testContext.setSelection(Math.max(0,Math.min(3,b.getInt("report_context",0))));}
         prepare=new Button(this);prepare.setText("Prepare report");prepare.setOnClickListener(v->prepare());root.addView(prepare);Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->finish());root.addView(back);setContentView(scroll);
     }
-    private void prepare(){((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(description.getWindowToken(),0);description.clearFocus();prepare.setEnabled(false);String text=description.getText().toString();new Thread(()->{try{JSONObject report=SupportReports.collect(this,text);File file=SupportReports.save(this,report);String formatted=report.toString(2);runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);reviewReport(file,formatted);});}catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);new AlertDialog.Builder(this).setMessage("Could not prepare the report. Please check free space and try again.").setPositiveButton("OK",null).show();});}},"support-report").start();}
+    static String reportDescription(String description,int context,String contact,boolean consent){
+        String[] labels={"Not specified","In a vehicle","On a bench","Without an adapter"};
+        String detail=description==null?"":description;
+        // Reserve room within the existing server's 2000-character description contract.
+        if(detail.length()>1700)detail=detail.substring(0,1700);
+        String result=detail+"\nTesting context: "+labels[Math.max(0,Math.min(3,context))];
+        if(consent&&contact!=null&&!contact.trim().isEmpty()){
+            String value=contact.trim();if(value.length()>160)value=value.substring(0,160);
+            result+="\nPrivate follow-up contact (permission granted): "+value;
+        }
+        return result;
+    }
+    private void prepare(){((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(description.getWindowToken(),0);description.clearFocus();prepare.setEnabled(false);String text=reportDescription(description.getText().toString(),testContext.getSelectedItemPosition(),contact.getText().toString(),allowContact.isChecked());new Thread(()->{try{JSONObject report=SupportReports.collect(this,text);File file=SupportReports.save(this,report);String formatted=report.toString(2);runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);reviewReport(file,formatted);});}catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);new AlertDialog.Builder(this).setMessage("Could not prepare the report. Please check free space and try again.").setPositiveButton("OK",null).show();});}},"support-report").start();}
     private void reviewReport(File file,String formatted){
         // Give the report the remaining space, not an unbounded desired height.
         // Framework AlertDialog button stacking can otherwise clip actions on phones.
@@ -88,6 +105,7 @@ public final class SupportReportActivity extends Activity {
     }
     @Override protected void onSaveInstanceState(Bundle state){
         if(pendingExport!=null)state.putString("export_report",pendingExport.getName());
+        state.putString("report_description",description.getText().toString());state.putString("report_contact",contact.getText().toString());state.putBoolean("report_allow_contact",allowContact.isChecked());state.putInt("report_context",testContext.getSelectedItemPosition());
         super.onSaveInstanceState(state);
     }
     @Override protected void onActivityResult(int request,int result,Intent data){

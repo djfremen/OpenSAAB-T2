@@ -367,7 +367,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 }
                 if(!quit)throw new IOException("Session cancelled or expired");
             }
-        }catch(Exception e){if(cancelled)progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}if(!cancelled)SupportReports.recordError(this,e,false);log("ERROR "+e.getMessage());}
+        }catch(Exception e){if(cancelled)progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}if(!cancelled)SupportReports.recordError(this,e,false,run);log("ERROR "+e.getMessage());}
         finally{
             if(conn!=null){
                 if(read!=null && queued){try{if(!read.cancel())clean=false;UsbRequest done=conn.requestWait(300);if(done!=read)clean=false;}catch(Exception e){clean=false;}}
