@@ -6,6 +6,7 @@ import argparse, os, shutil, subprocess, zipfile, xml.etree.ElementTree as ET
 from pathlib import Path
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--serial',required=True)
+p.add_argument('--lifecycle',action='store_true',help='Add real report-screen rotation/recreation/Home tests; use a phone-sized AVD')
 a=p.parse_args()
 if not a.serial.startswith('emulator-'):raise SystemExit('Disposable Android emulator required')
 r=Path(__file__).resolve().parents[2];sdk=Path.home()/'Library/Android/sdk';bt=sdk/'build-tools/36.0.0'
@@ -16,6 +17,7 @@ adb=[sdk/'platform-tools/adb','-s',a.serial];package='com.opensaab.beta.diagnost
 def run(*args,capture=False):
  return subprocess.run([str(x) for x in args],check=True,env=env,timeout=90,capture_output=capture,text=True)
 suites=['SupportReportInstrumentedTest','EmulatorHealthInstrumentedTest']
+if a.lifecycle:suites.append('ReportLifecycleInstrumentedTest')
 sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 run(jdk/'bin/javac','-source','8','-target','8','-cp',jar,'-d',classes,*sources)
 for test in ['DiagnosticFailureTest','ChipsoftIdentityTest']:run(jdk/'bin/java','-cp',classes,'com.opensaab.usb.'+test)

@@ -40,3 +40,15 @@ Public updates contain aggregate models/builds, broad symptom groups and testing
 ## Adapter firmware identity
 
 The Android Chipsoft view observes the existing GET_INFO exchange without adding USB requests or vehicle commands. A bounded observer checks framing, status, checksum and version syntax, including fragmented replies. Connection details show the reported version, even if native startup subsequently rejects it. Stopped sessions label it last detected; each new discovery clears the prior identity. Unknown or missing replies remain not detected. Version detection is not a compatibility claim. Reviewed session reports include only the validated version token, never the raw identity or adapter serial. Server allowlist deployment and actual Pixel preview.26 upload/retrieval have been verified.
+
+## Android Studio lifecycle checks
+
+On the local API36 ARM64 AVD, report-screen landscape/portrait rotation, explicit Activity recreation and Home/resume preserve the typed description, contact draft, testing context and unchecked contact consent. These are real Activity transitions with synthetic input; they do not run the native emulator or contact the network. Existing report privacy and health-monitor tests passed in the same run. This is not evidence for the reported Motorola native startup failure.
+
+The existing OpenSAAB_SetupTest profile is 1024×600 at 160dpi. It did not honor the requested portrait transition in this run. The phone-profile run used temporary 1080×2400 at 420dpi overrides and passed; overrides were reset afterward. Add `--lifecycle` to the harness command on a phone-sized AVD:
+
+```sh
+python3 scripts/android/test-beta-reporting.py --serial emulator-5554 --lifecycle
+```
+
+Only API36 is installed locally. API31, actual low-memory process death/relaunch, native firmware rotation/background behavior and field-device USB behavior remain separate pending checks. Synthetic health-state tests are not a substitute for those cases.
