@@ -29,12 +29,29 @@ ram_total_kib ram_available_kib swap_free_kib frame_age_ms ram_total_bytes ram_a
 low_memory_threshold_bytes system_low_memory app_heap_used_bytes app_heap_limit_bytes
 app_native_heap_bytes storage_free_bytes display_width_px display_height_px density_dpi runtime_cpu_count'''.split())
 
+# Reviewed Android diagnostic candidate: fixed labels and bounded lifecycle evidence.
+FIELDS.update('''session_id diagnostic_events event failure_category failure_categories
+category tail_line incident_relation orientation_start orientation_end pause_count resume_count'''.split())
+DIAGNOSTIC_EVENTS = set('START EXPECTED_STOP UNEXPECTED_EXIT PAUSED RESUMED SECURITY_COLLECTION_REQUESTED SECURITY_PROCESS_REQUESTED SECURITY_IMPORTED RESTART_REQUESTED'.split())
+FAILURE_CATEGORIES = set('unclassified adapter_firmware_not_validated native_mode_mismatch usb_layout_not_validated usb_open_denied usb_interface_claim_failed usb_startup_drain_failed local_bridge_auth_failed usb_write_incomplete usb_read_detached local_bridge_disconnected command_policy_rejected firmware_missing adapter_status_error adapter_deadline adapter_reopen_required session_time_limit adapter_cleanup_incomplete adapter_startup_failed'.split())
+
 def validate(value, depth=0):
     if depth > 8:
         raise ValueError('Report is too deeply nested')
     if isinstance(value, dict):
         if len(value) > 48 or any(k not in FIELDS for k in value):
             raise ValueError('Unsupported report fields')
+        for key, allowed in (('event', DIAGNOSTIC_EVENTS), ('category', FAILURE_CATEGORIES),
+                             ('failure_category', FAILURE_CATEGORIES),
+                             ('incident_relation', {'unknown', 'same_session', 'different_session'})):
+            if key in value and (not isinstance(value[key], str) or value[key] not in allowed):
+                raise ValueError('Unsupported diagnostic label')
+        if 'session_id' in value and (not isinstance(value['session_id'], str) or
+                not re.fullmatch(r'(?:chipsoft|native)-[a-f0-9-]{36}', value['session_id'])):
+            raise ValueError('Unsupported session identifier')
+        for key, limit in (('diagnostic_events', 32), ('failure_categories', 16)):
+            if key in value and (not isinstance(value[key], list) or len(value[key]) > limit):
+                raise ValueError('Too many diagnostic entries')
         for child in value.values():
             validate(child, depth + 1)
     elif isinstance(value, list):

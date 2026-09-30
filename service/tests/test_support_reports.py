@@ -53,6 +53,39 @@ class Reports(unittest.TestCase):
         report['device_resources']['vin']='not-allowed'
         self.assertEqual(400,self.send(report).status_code)
 
+    def test_candidate_diagnostics_round_trip(self):
+        session_id = 'chipsoft-00000000-0000-0000-0000-000000000001'
+        report = dict(self.report, recent_sessions=[{
+            'adapter': 'chipsoft', 'session_id': session_id,
+            'diagnostic_events': [{'event': 'START', 'utc': '2026-09-29T12:00:00Z'},
+                                  {'event': 'EXPECTED_STOP', 'utc': '2026-09-29T12:01:00Z'}],
+            'logs': [{'source': 'rust.log', 'failure_categories': [
+                {'category': 'adapter_firmware_not_validated', 'tail_line': 3}]}]}],
+            emulator_health={'session_id': session_id, 'orientation_start': 1,
+                'orientation_end': 2, 'pause_count': 1, 'resume_count': 1},
+            **{'last-app-error.json': {'session_id': session_id,
+                'failure_category': 'usb_open_denied', 'incident_relation': 'same_session'}})
+        result = self.send(report)
+        self.assertEqual(201, result.status_code)
+        route = '/api/admin/support/reports/' + result.json()['report_id']
+        self.assertEqual(report, self.client.get(route, headers={
+            'Authorization': 'Bearer test-only-admin'}).json())
+
+    def test_candidate_diagnostics_reject_raw_and_unbounded_values(self):
+        invalid = [
+            {'session_id': '/private/owner/device'},
+            {'failure_category': 'raw secret error'},
+            {'incident_relation': 'unverified value'},
+            {'diagnostic_events': [{'event': 'private text'}]},
+            {'diagnostic_events': [{'event': 'START'}] * 33},
+            {'failure_categories': [{'category': 'unclassified'}] * 17},
+            {'failure_categories': [{'category': 'usb_open_denied', 'raw': 'private'}]},
+        ]
+        for extra in invalid:
+            with self.subTest(extra=extra):
+                self.assertEqual(400, self.send(dict(self.report, recent_sessions=[extra])).status_code)
+        self.assertFalse(self.store.objects)
+
     def test_consent_and_media_type(self):
         self.assertEqual(400,self.client.post('/api/support/reports',json=self.report).status_code)
         self.assertEqual(415,self.client.post('/api/support/reports',content=b'raw',headers=self.headers).status_code)
