@@ -82,7 +82,7 @@ public final class ChipsoftUsbActivity extends Activity {
         reportConnection=new Button(this);reportConnection.setText("Report connection problem");reportConnection.setVisibility(android.view.View.GONE);
         reportConnection.setOnClickListener(v->{if(running.get()){status.setText("Waiting for USB cleanup — try again shortly");return;}startActivity(new Intent(this,SupportReportActivity.class));});root.addView(reportConnection);
         if(fullNative||seeds){
-            securityAccess=new SecurityAccessView(this,seeds,()->nativeDirectory,()->running.get(),()->nativeKey("stop"),
+            securityAccess=new SecurityAccessView(this,seeds,()->nativeDirectory,()->running.get(),this::stopForSecurityHandoff,
                 ()->openSecuritySession(true),this::resumeSecurityFirmware);
             securityAccess.setMenuKey(this::sendMenuKey);
             root.addView(securityAccess);
@@ -470,6 +470,12 @@ public final class ChipsoftUsbActivity extends Activity {
         }
         if(!running.compareAndSet(false,true))return;
         new Thread(()->probe(attached,false,identity,generation),"chipsoft-firmware").start();
+    }
+    void stopForSecurityHandoff(){
+        // SecurityAccessView waits for cleanup and reports timeout/failure separately.
+        // Register the intended stop before the native worker can report its exit.
+        if(health!=null)health.expectedStop();
+        nativeKey("stop");
     }
     void nativeKey(String code){
         File run=nativeDirectory;

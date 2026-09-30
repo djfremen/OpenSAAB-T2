@@ -106,6 +106,7 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             check(!SupportReports.collect(c,"").toString().contains(secret),"Unsafe adapter identity exported");
             check(report.getJSONObject("last-app-error.json").getString("session_id").equals(dir.getName()),"Exception lost session association");
             check(!json.contains(secret)&&!json.contains("xxxxxxxx")&&json.contains("java.io.IOException"),"Sensitive log/message exported or error absent");
+            check(report.getJSONObject("security_status").has("auth_status")&&!report.getJSONObject("security_status").getBoolean("vehicle_access_verified"),"Auth snapshot missing or overclaims authorization");
             check(report.getJSONObject("device_resources").getLong("ram_total_bytes")>0,"Missing RAM context");
             check(report.getJSONArray("recent_sessions").length()>0&&json.contains("emulator_outcome"),"Missing session/outcome");
             File saved=SupportReports.save(c,report);

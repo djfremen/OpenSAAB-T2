@@ -16,7 +16,7 @@ out=r/'target/beta-diagnostics-harness';out.mkdir(parents=True,exist_ok=True);cl
 adb=[sdk/'platform-tools/adb','-s',a.serial];package='com.opensaab.beta.diagnostics'
 def run(*args,capture=False):
  return subprocess.run([str(x) for x in args],check=True,env=env,timeout=90,capture_output=capture,text=True)
-suites=['SupportReportInstrumentedTest','EmulatorHealthInstrumentedTest']
+suites=['SupportReportInstrumentedTest','EmulatorHealthInstrumentedTest','SecurityAccessInstrumentedTest']
 if a.lifecycle:suites.append('ReportLifecycleInstrumentedTest')
 sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 run(jdk/'bin/javac','-source','8','-target','8','-cp',jar,'-d',classes,*sources)

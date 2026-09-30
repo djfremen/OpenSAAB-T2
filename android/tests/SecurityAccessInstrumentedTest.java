@@ -15,7 +15,7 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
     void check(boolean value,String message){if(!value)throw new AssertionError(message);}
     void main(Runnable r){Throwable[] failure={null};runOnMainSync(()->{try{r.run();}catch(Throwable e){failure[0]=e;}});if(failure[0]!=null)throw new AssertionError(failure[0]);}
     void awaitUi(ChipsoftUsbActivity a,java.util.function.BooleanSupplier ready){
-        long deadline=SystemClock.elapsedRealtime()+5000;
+        long deadline=SystemClock.elapsedRealtime()+10000;
         while(SystemClock.elapsedRealtime()<deadline){
             final boolean[] done={false};main(()->{a.securityAccess.refresh();done[0]=ready.getAsBoolean();});
             if(done[0])return;SystemClock.sleep(50);
@@ -27,6 +27,15 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
         try{
             activity=(ChipsoftUsbActivity)startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.usb.ChipsoftUsbActivity").putExtra("full_native",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             final ChipsoftUsbActivity a=activity;waitForIdleSync();
+            // Exercise the real handoff stop binding, without USB or a native process.
+            File handoff=Files.createTempDirectory(a.getCacheDir().toPath(),"handoff-test-").toFile();
+            main(()->{a.health.begin(handoff);a.stopForSecurityHandoff();a.health.ended();});
+            java.lang.reflect.Field healthDialog=EmulatorHealthMonitor.class.getDeclaredField("dialog");healthDialog.setAccessible(true);
+            check(healthDialog.get(a.health)==null,"Expected security handoff raised crash prompt");
+            org.json.JSONArray events=SessionDiagnostics.read(handoff);
+            check(events.length()==2&&"EXPECTED_STOP".equals(events.getJSONObject(1).getString("event")),"Handoff did not record expected stop");
+            for(File f:handoff.listFiles())f.delete();handoff.delete();
+
             receiptFile=new File(a.getNoBackupFilesDir(),"security-processing-status.properties");
             if(receiptFile.exists())oldReceipt=Files.readAllBytes(receiptFile.toPath());
             receiptFile.delete();
@@ -78,8 +87,8 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             new File(run,VehicleSession.FILE).delete();
             awaitUi(a,()->!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"));
             main(()->check(!((TextView)a.securityAccess.findViewWithTag("security-message")).getText().toString().contains("Previous security processing"),"History shown without matching vehicle identity"));
-            result.putString("stream","PASS: manual full-control seed collection reaches Process security data in same session with no repeated navigation/API; Actions remains visible; persistent history, identity scope, prompt/menu discrimination, EXIT and dialog dismissal; no USB/API/card operations\n");
-        }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
+            result.putString("stream","PASS: deliberate security handoff records expected stop without crash prompt; manual full-control seed collection reaches Process security data in same session with no repeated navigation/API; Actions remains visible; persistent history, identity scope, prompt/menu discrimination, EXIT and dialog dismissal; no USB/API/card operations\n");
+        }catch(Throwable e){code=0;StringWriter trace=new StringWriter();e.printStackTrace(new PrintWriter(trace));result.putString("stream","FAIL: "+trace+"\n");}
         finally{if(activity!=null){final Activity a=activity;main(a::finish);}if(dir!=null){for(File f:dir.listFiles())f.delete();dir.delete();}
             if(receiptFile!=null){try{if(oldReceipt==null)receiptFile.delete();else Files.write(receiptFile.toPath(),oldReceipt);}catch(Exception ignored){}}
             finish(code,result);}

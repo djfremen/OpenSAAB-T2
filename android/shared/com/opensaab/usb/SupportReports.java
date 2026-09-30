@@ -77,6 +77,12 @@ public final class SupportReports {
         report.put("recent_sessions",runs);
         report.put("connection_attempts",ConnectionAttempt.collect(c));
         SecurityAccessStatus security=SecurityAccessStatus.read(new File(c.getNoBackupFilesDir(),"security-processing-status.properties"));
+        java.time.Instant observed=java.time.Instant.now();
+        VehicleHistoryStatus auth=new VehicleHistoryStatus(VehicleSession.read(new File(files,"last-vehicle.json")),security,new File(files,"firmware/card.bin"),observed);
+        JSONObject authSnapshot=new JSONObject().put("auth_status",auth.authState).put("freshness",auth.freshness)
+            .put("observed_utc",observed.toString()).put("vehicle_access_verified",false);
+        if(auth.statusUtc!=null)authSnapshot.put("status_utc",java.time.Instant.parse(auth.statusUtc).toString());
+        report.put("security_status",authSnapshot);
         if(security!=null)try{
             JSONObject safe=new JSONObject().put("stage",security.data.getProperty("stage")).put("vehicle_access_verified",false);
             for(String key:new String[]{"started_utc","processed_utc","imported_utc","failed_utc"})if(security.data.containsKey(key))safe.put(key,java.time.Instant.parse(security.data.getProperty(key)).toString());

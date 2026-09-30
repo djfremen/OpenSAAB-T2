@@ -53,6 +53,20 @@ class Reports(unittest.TestCase):
         report['device_resources']['vin']='not-allowed'
         self.assertEqual(400,self.send(report).status_code)
 
+    def test_auth_status_snapshot(self):
+        auth = {'auth_status': '[POST-AUTH]', 'freshness': 'Fresh',
+                'observed_utc': '2026-09-30T12:01:00Z', 'status_utc': '2026-09-30T12:00:00Z',
+                'vehicle_access_verified': False}
+        report = dict(self.report, security_status=auth)
+        result = self.send(report)
+        self.assertEqual(201, result.status_code)
+        route = '/api/admin/support/reports/' + result.json()['report_id']
+        self.assertEqual(report, self.client.get(route, headers={'Authorization': 'Bearer test-only-admin'}).json())
+        for bad in [dict(auth, auth_status='private payload'), dict(auth, vin='private'),
+                    dict(auth, vehicle_access_verified=True), dict(auth, status_utc='not a timestamp'),
+                    dict(auth, freshness='private'), dict(auth, observed_utc='2026-09-30T12:00:00')]:
+            self.assertEqual(400, self.send(dict(self.report, security_status=bad)).status_code)
+
     def test_candidate_diagnostics_round_trip(self):
         session_id = 'chipsoft-00000000-0000-0000-0000-000000000001'
         report = dict(self.report, recent_sessions=[{

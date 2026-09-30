@@ -12,13 +12,14 @@ public final class VehicleHistoryStatusTest {
   try{
    try(RandomAccessFile f=new RandomAccessFile(card,"rw")){f.seek(SsaData.OFFSET);f.write(data);}
    VehicleHistoryStatus h=new VehicleHistoryStatus(car,receipt,card,t.plusSeconds(60));
+   check(h.authState.equals("[POST-AUTH]")&&h.freshness.equals("Fresh")&&h.statusUtc.equals(t.toString()),"Structured status differs from display");
    check(h.auth.contains("[POST-AUTH] · Fresh"),"Fresh matching post-auth missing");check(h.timestamp.contains(VehicleHistoryStatus.time(t.toString())),"Written timestamp missing");
    h=new VehicleHistoryStatus(car,receipt,card,t.plusSeconds(10800));check(h.auth.endsWith("Stale"),"Stale boundary missing");
    check(h.connection.equals("Last connection · "+VehicleHistoryStatus.time(car.observedUtc)),"Reopening changed connection time");
    SecurityAccessStatus wrong=new SecurityAccessStatus(other,"other",t);wrong.processed("test","",t);wrong.imported(data,t);
    h=new VehicleHistoryStatus(car,wrong,card,t);check(h.timestamp.equals("Timestamp unavailable")&&!h.auth.contains("Fresh"),"Other vehicle's receipt leaked");
    data[0x26]=2;try(RandomAccessFile f=new RandomAccessFile(card,"rw")){f.seek(SsaData.OFFSET);f.write(data);}
-   h=new VehicleHistoryStatus(car,receipt,card,t);check(h.timestamp.equals("Timestamp unavailable"),"Changed card inherited import date");
+   h=new VehicleHistoryStatus(car,receipt,card,t);check(h.timestamp.equals("Timestamp unavailable")&&h.statusUtc==null&&h.freshness.equals("Age unknown"),"Changed card inherited import date");
    System.arraycopy(other.getBytes("US-ASCII"),0,data,0x14,17);try(RandomAccessFile f=new RandomAccessFile(card,"rw")){f.seek(SsaData.OFFSET);f.write(data);}
    h=new VehicleHistoryStatus(car,receipt,card,t);check(h.auth.equals("auth_status: [N/A]"),"Other vehicle's card leaked");
    check(VehicleHistoryStatus.time("bad").equals("Date unknown"),"Invalid date fabricated");
