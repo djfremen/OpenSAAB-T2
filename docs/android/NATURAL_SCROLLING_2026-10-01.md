@@ -1,7 +1,8 @@
-# Android Natural scrolling — implemented, not deployed
+# Android Natural scrolling — Pixel 7 test build installed
 
 Owner request, 1 October 2026: add the iOS scrolling preference to Android,
-retain it for a future release, and do not redeploy.
+retain it for a future release, and initially do not redeploy. The owner later
+authorized installing it on the connected Pixel 7 for their own testing.
 
 ## User behavior
 
@@ -23,7 +24,7 @@ SHA-256 `6ff3c66b8b285bcf3cc2513845e5c82946e57084529042f57ed89bf5f5b8d539`.
 Android's native binding is checked against its preference key, label, default,
 four direction mappings and two descriptions; no contract change was needed.
 
-## Local validation
+## Initial source validation (before Pixel installation)
 
 - `python3 scripts/android/test-firmware-scroll.py`: passed against the common
   contract. Use `--contract PATH` if the companion repository is elsewhere.
@@ -36,8 +37,27 @@ four direction mappings and two descriptions; no contract change was needed.
 The instrumented suite now covers both modes, unchanged keypad/hold/tap behavior,
 immediate adoption on an existing display, saving/reopening Preferences and no
 firmware keys from toggling. It restores the previous setting when finished.
-**It was compiled, not executed.** No Android device was contacted; no test APK
-or app APK was installed, and no release/version/catalog was changed.
+**It was compiled, not executed.** At this initial checkpoint no Android device
+was contacted and no APK was installed. The later owner-authorized installation
+is recorded below.
+
+## Pixel 7 installation — later October 1
+
+The owner authorized a private test build on Pixel 7. Signed ARM64
+`0.1.0-preview.30` (`100030`), built from application commit `105d7a2`, was
+installed over preview.29 with `adb install -r`. The signing certificate,
+native binaries and bundled support files match the previous installed APK.
+Installation succeeded; package read-back confirms preview.30 and the original
+first-install date. MainActivity launched successfully. There was no uninstall
+or clear-data operation. App-private firmware hashes were not read.
+
+The owner is testing the phone manually; no instrumentation, gestures or
+firmware commands were run for this installation. Natural scrolling remains
+default off until enabled in Preferences. Android ARM32 was not updated.
+Public preview.29, download catalogs and release tags remain unchanged.
+
+Receipt: `docs/android/NATURAL_SCROLLING_PIXEL7_2026-10-01.json`.
+Local APK, previous APK and logs: `target/android-natural-scrolling-20261001/pixel7/`.
 
 ## Release follow-up (still pending)
 
@@ -53,5 +73,6 @@ or app APK was installed, and no release/version/catalog was changed.
 - Carry this local commit into the next approved Android candidate, run its
   checks, and update the shared matrix/dashboard with exact installed evidence.
 
-Until then, published ARM64 preview.29 and existing ARM32 installations retain
-their previous directional scrolling. Desktop adoption remains a separate gap.
+The owner’s Pixel 7 now has the preference for testing. Published ARM64 preview.29
+and existing ARM32 installations retain their previous directional scrolling.
+Desktop adoption remains a separate gap.
