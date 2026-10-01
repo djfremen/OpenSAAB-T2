@@ -79,3 +79,32 @@ checks are recorded separately from those synthetic binding tests.
 The canonical contract lives in the companion OpenSAAB repository. Its scoped
 adoption matrix retains historical iOS build8/desktop receipts; this pass does not
 rebuild iOS, qualify desktop targets or declare uniform release conformance.
+
+## Final review checkpoint
+
+Implementation starts at `9a65a27`; packaging/process-test correction is `1c59e09`;
+final application source is `fef93a72eb4db9ad5f9fd8c0f84b8a7e1722d3e5`. Review the
+full branch against the pinned base, not only the final small correction. Fake
+reply tests cover lost/failed responses and confirmed body-bound delivery; failed
+responses never claim Already sent. End reasons remain in the workspace header
+even with saved security history.
+
+API31 and API36: seven instrumentation suites, actual background process-loss
+checks and pure failure/identity checks passed. API36 retained the cached process
+after am kill, so its isolated process test used app-UID SIGKILL. Both build paths
+and the payload gate passed; Kotlin runtime resources now match, with hashes pinned
+without broadly allowing arbitrary binary payloads.
+
+The exact signed ARM64 preview.29 candidate was installed and pulled back unchanged
+on API31: original splash/Main Menu/Diagnostics/model year/EXIT, offline ECU entry
+and prerequisite message, real Stop, controlled native-child exit, report rotation
+and actual cold process restoration passed. Stop/exit screenshots were inspected:
+the live display is blank and the reason remains visible. Downloaded software was
+retained through preview.28 and intermediate private preview.29 revisions; this is
+not a fresh-install or direct final-package upgrade qualification.
+
+`REPORT_REVIEW_FIRST_PASS_RECEIPT_2026-10-01.json` records exact artifact and private
+evidence hashes. Private logs/screenshots stay in the owner's evidence directory;
+no raw report body, firmware, credentials or private capture is committed. The
+public release remains preview.28. Do not publish this candidate before owner review
+and the remaining exact-package/ABI gates.

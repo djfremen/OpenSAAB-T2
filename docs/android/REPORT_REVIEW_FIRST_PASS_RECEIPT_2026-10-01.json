@@ -1,0 +1,147 @@
+{
+  "date": "2026-10-01",
+  "source_commit": "fef93a72eb4db9ad5f9fd8c0f84b8a7e1722d3e5",
+  "reference_commit": "a800c6854ae362378c702313e02c6a4634d2325b",
+  "branch": "codex/android-report-first-pass",
+  "publication": "private_candidate_not_published",
+  "artifact": {
+    "name": "OpenSAAB-T2-arm64-v8a-preview29.apk",
+    "version": "0.1.0-preview.29",
+    "version_code": 100029,
+    "sha256": "b1c32cb7566e00d2a5e686db5e99b1c373588a7403353b28f6ceb238dfd842ad",
+    "bytes": 10188264,
+    "abi": "arm64-v8a"
+  },
+  "native_binaries_unchanged_from_preview28": {
+    "libtech2_emu.so": "3535171b51fbfd2551f4f0a7f8dfe0cf240f5d44a39d89ce748be8489628fe47",
+    "libnano_probe.so": "58dbd1114845960b84635830b5b516a6ecca257e6e26d6b6d8c648c600e87a7f",
+    "libchipsoft_probe.so": "0ec8682d419865148b60acdd90e9cafa460899c8920853c636eeea405f4b4bd8"
+  },
+  "contract_source_sha256": "319856cb7aadabfa7d5bf8ad96539e7bd001e8da0d9ba68d2b689d13998ba976",
+  "scope": "Java collector retained, active reporting blocked; no server change or live upload. Contract adoption not uniform platform qualification.",
+  "instrumentation": {
+    "api31": {
+      "result": "pass",
+      "harness_apk_sha256": "5dcabb11071cb93c9d6cb3c546fb86a04ef9bf4d13230fd6055f6abf942eb1db",
+      "process_loss": "PASS: real HOME \u2192 am kill \u2192 relaunch in new process restores exact JSON/id/hash and an unchecked consent switch; Send disabled. No upload, adapter or firmware.",
+      "suites": [
+        "NativeLcdPumpInstrumentedTest",
+        "SecurityAccessInstrumentedTest",
+        "ReportReviewInstrumentedTest",
+        "ReportLifecycleInstrumentedTest",
+        "SupportReportInstrumentedTest",
+        "SessionEndInstrumentedTest",
+        "EmulatorHealthInstrumentedTest",
+        "ReportProcessLoss"
+      ]
+    },
+    "api36": {
+      "result": "pass",
+      "harness_apk_sha256": "e4368863c3796eed82b32e93b92b61347b7068c9fa63f7b5a79a31f9ea941f1e",
+      "process_loss": "PASS: real HOME \u2192 background app-UID SIGKILL \u2192 relaunch in new process restores exact JSON/id/hash and an unchecked consent switch; Send disabled. No upload, adapter or firmware.",
+      "suites": [
+        "NativeLcdPumpInstrumentedTest",
+        "SecurityAccessInstrumentedTest",
+        "ReportReviewInstrumentedTest",
+        "ReportLifecycleInstrumentedTest",
+        "SupportReportInstrumentedTest",
+        "SessionEndInstrumentedTest",
+        "EmulatorHealthInstrumentedTest",
+        "ReportProcessLoss"
+      ]
+    }
+  },
+  "installed_signed_candidate": {
+    "source_commit": "fef93a72eb4db9ad5f9fd8c0f84b8a7e1722d3e5",
+    "version": "0.1.0-preview.29",
+    "abi": "arm64-v8a",
+    "android_api": 31,
+    "checks": [
+      "original splash/Main Menu/Diagnostics/model year/EXIT",
+      "ECU information Actions entry",
+      "truthful offline shortcut prerequisite; session stays running",
+      "Real Stop returns ready, clears display (screenshot inspected), preserves end reason",
+      "controlled owned native child SIGKILL returns ready with exit reason",
+      "exact signed app: prepare/review/rotation retains consent",
+      "real HOME/am kill/new process resets consent and restores identical report JSON/id/hash"
+    ],
+    "production_uploads": 0,
+    "adapter_commands": 0,
+    "limits": [
+      "hardware adapter teardown unqualified",
+      "startup failure and ordinary completion use synthetic terminal bindings only",
+      "no active-session reporting"
+    ],
+    "upgrade_history": "Initial in-place preview.28 to private preview.29 candidate, then same-version private candidate revisions; downloaded firmware retained. Final signed artifact pulled back and matched byte-for-byte."
+  },
+  "evidence": {
+    "api31/NativeLcdPumpInstrumentedTest.txt": "de4b88e8a4274f45dac60e3d398cc1eb8d0f0b35c1176b8a2d6985fb80ca285e",
+    "api31/SecurityAccessInstrumentedTest.txt": "76feceac2aa4756f6d2b9b75674d54959b36b8723eab8c32deeda9afe00aa087",
+    "api31/process-restored.png": "565fbc28cc02c51371fbbeb395f27f92072001942c83a81051ebe53649954c24",
+    "api31/process-restored.xml": "f7483846a6015dad3525b61522b1f1e2de291ecd4bde5e935a7ea4bae8e8cdd5",
+    "api31/ReportReviewInstrumentedTest.txt": "1cbabd73f31d1ac3fe527e72f8a2108f80d00e00f3bdc97c062cee905bfdf70e",
+    "api31/process-consented.png": "b100d1adb11da28d3ed032c5c869ab2e3c60078d4dceaac85b9b3910b1e67fa5",
+    "api31/process-consented.xml": "a6dc06d806d050b1340e31d29e4ad53778dc02a822acad1f5ec6994445ab6d6a",
+    "api31/process-before.png": "565fbc28cc02c51371fbbeb395f27f92072001942c83a81051ebe53649954c24",
+    "api31/process-before.xml": "f7483846a6015dad3525b61522b1f1e2de291ecd4bde5e935a7ea4bae8e8cdd5",
+    "api31/ReportLifecycleInstrumentedTest.txt": "927bc463d930a73dfa0e2e19a71a47d17a675912b3aa146c05307ea15bdcc386",
+    "api31/SupportReportInstrumentedTest.txt": "7757d840cce4c0a7b5d2eaf3d52477da3fd70dc8f70f5daffbc787308a6e9562",
+    "api31/SessionEndInstrumentedTest.txt": "ee762bc7d75881c9b2a87012aee54ae6fd7102ed9bef9ffa0da40f54eddb01e7",
+    "api31/EmulatorHealthInstrumentedTest.txt": "7734f7fb97e753ac4d3eae23946dfb03ca7c2ff7bfb6c5d559bba36485f1e48d",
+    "api31/ReportProcessLoss.txt": "83b253ca59c983f3c08ceb7f6d781c50af8f74832891980b6fda0cfe7859035c",
+    "api36/NativeLcdPumpInstrumentedTest.txt": "b48fca6cdb2464c1b3fa5dcf857a8fade2e96287e9850563d91256064c510bb3",
+    "api36/SecurityAccessInstrumentedTest.txt": "76feceac2aa4756f6d2b9b75674d54959b36b8723eab8c32deeda9afe00aa087",
+    "api36/process-restored.png": "c6875d1c1c6e6ae5eedbd07fe8d4d255a98df76ad78a95a2fecb04cea1c3ef6c",
+    "api36/process-restored.xml": "fba15bf1f836a864c04682747049d7c4b2b8a515b65cff3a5c9c6137bf825c95",
+    "api36/ReportReviewInstrumentedTest.txt": "1cbabd73f31d1ac3fe527e72f8a2108f80d00e00f3bdc97c062cee905bfdf70e",
+    "api36/process-consented.png": "f094681af4504a17a430756816af02c359f091bc033ed21da38cd483dbdad78f",
+    "api36/process-consented.xml": "d22ca0bfff2fa707d7c66ef509036235e76ef87ebbda833f32c7b52e3c96f548",
+    "api36/process-before.png": "c6875d1c1c6e6ae5eedbd07fe8d4d255a98df76ad78a95a2fecb04cea1c3ef6c",
+    "api36/process-before.xml": "fba15bf1f836a864c04682747049d7c4b2b8a515b65cff3a5c9c6137bf825c95",
+    "api36/ReportLifecycleInstrumentedTest.txt": "927bc463d930a73dfa0e2e19a71a47d17a675912b3aa146c05307ea15bdcc386",
+    "api36/SupportReportInstrumentedTest.txt": "7757d840cce4c0a7b5d2eaf3d52477da3fd70dc8f70f5daffbc787308a6e9562",
+    "api36/SessionEndInstrumentedTest.txt": "ee762bc7d75881c9b2a87012aee54ae6fd7102ed9bef9ffa0da40f54eddb01e7",
+    "api36/EmulatorHealthInstrumentedTest.txt": "7734f7fb97e753ac4d3eae23946dfb03ca7c2ff7bfb6c5d559bba36485f1e48d",
+    "api36/ReportProcessLoss.txt": "471803b9ad0ff55fb3a59cfad287892cc5f6db29370a1a3d34809caa11febb85",
+    "installed-api31/10-landscape-review.png": "d0457187ac9275a5a91b87f555fc82cc24abf5d8e16059b3a987a58c4b71d19c",
+    "installed-api31/10-landscape-review.xml": "d4e80c371fdc21d25e7efce238e2f57f7839894bd8bf364e91a4b1f9433cc3ff",
+    "installed-api31/summary.json": "78fd29a53e5a9aeaf6bc6ce1dc9278da37573cfa06940383e8c7c892bc399bc8",
+    "installed-api31/08-unexpected-exit.xml": "658e38073d6d4e0e326383a8c42ad575c34956d8cb37704034c1299bab8de705",
+    "installed-api31/08-unexpected-exit.png": "e312d02b178df25369fe6b46451064a5b02354a6ec2fb308a58c58966b83b048",
+    "installed-api31/01-main-menu.png": "f0309d21f42a9b7a177956f523f1fd04c8ccd65563997f8515620c24b14ca193",
+    "installed-api31/01-main-menu.xml": "6e014271d5c6a98d9261de545e5806b898242ca4f81d65bae11f859783206ed9",
+    "installed-api31/07-before-child-exit.png": "915ebe67c167b1a2cd3f651c895647d66b6413de4dd7da618d7d2e7c11f9f179",
+    "installed-api31/07-before-child-exit.xml": "6e014271d5c6a98d9261de545e5806b898242ca4f81d65bae11f859783206ed9",
+    "installed-api31/05-blocked-shortcut.xml": "aec3c2bd2bc95ca14ba3799df18ac1cad22b8094a22f9c68402df8691768b8a3",
+    "installed-api31/05-blocked-shortcut.png": "ae4d4abb9ca253c75a045687c70bf73eb4d6861443d1c87807724089f35fdb1c",
+    "installed-api31/04-actions.xml": "ef32fdde6b958908fc2dff3239c88d5d836080ffbac9cb9b7657d3bde0158790",
+    "installed-api31/04-actions.png": "507f534f117e34ca6a7b67deba6466ef7596bfda3757023248bdbaed9379fc74",
+    "installed-api31/11-portrait-review.xml": "247550a77e5fe81d013f24772718de288f44ebe49e6b03e8aa6a5e22cb1e7e2a",
+    "installed-api31/11-portrait-review.png": "805b6899f6b5e8a280251a787f08f6159015570be295ba4844b4a90b29d10be7",
+    "installed-api31/09-review.xml": "601e9a1ac322dc9f024985e0a1333cf60f18a178763da40581c94a048178d0ed",
+    "installed-api31/09-review.png": "d4c441a83a68d1b3094cf4b25d75e32d19974c4726de4a1c764f6939d3c4d33c",
+    "installed-api31/03-exit-back.png": "f0309d21f42a9b7a177956f523f1fd04c8ccd65563997f8515620c24b14ca193",
+    "installed-api31/03-exit-back.xml": "6e014271d5c6a98d9261de545e5806b898242ca4f81d65bae11f859783206ed9",
+    "installed-api31/12-process-restored.png": "7172ccb575df84c4ce5e8a5bae424c3e7aa6e3851b0c49d7c244c0a755f5ab8f",
+    "installed-api31/12-process-restored.xml": "325c974bf4cb00f33d348be32d91994b65333b236952cde2b2395217932a1912",
+    "installed-api31/06-stopped.xml": "c6ada8a7033d5b2b2ad2b52cdec3eb880cf8650ffdef85d304fd8cfc6c14b86c",
+    "installed-api31/06-stopped.png": "a3da2ab1cd3e19425710e55cf73df9b43e12cceaac3756a9a1e790b6a4cf763b",
+    "installed-api31/02-model-year.png": "d77e9dd82d8b7305264501345273f85232d87abb1860f50107d734fc2a9fe77b",
+    "installed-api31/02-model-year.xml": "6e014271d5c6a98d9261de545e5806b898242ca4f81d65bae11f859783206ed9"
+  },
+  "limitations": [
+    "ARM32 installed/runtime pending",
+    "API36 qualified with isolated instrumentation APK, not final signed original-firmware walkthrough",
+    "hardware/adapter disconnect, release and port reopening pending",
+    "ordinary completion and startup failure use synthetic terminal-binding tests",
+    "Rust collector/formatter/worker and active-session reporting pending",
+    "server identical-body deduplication pending",
+    "historical iOS build8 unchanged; no new paired iOS walkthrough"
+  ],
+  "build_checks": [
+    "SDK AAPT2/D8 release signing and payload allowlist passed",
+    "Gradle assembleDebug with unchanged native executables and payload allowlist passed",
+    "Two build-profile checks passed",
+    "No staged secret/VIN/IP/private-key/binary matches detected in new first-pass files; no payloads committed"
+  ]
+}
