@@ -127,12 +127,28 @@
     "installed-api31/06-stopped.xml": "c6ada8a7033d5b2b2ad2b52cdec3eb880cf8650ffdef85d304fd8cfc6c14b86c",
     "installed-api31/06-stopped.png": "a3da2ab1cd3e19425710e55cf73df9b43e12cceaac3756a9a1e790b6a4cf763b",
     "installed-api31/02-model-year.png": "d77e9dd82d8b7305264501345273f85232d87abb1860f50107d734fc2a9fe77b",
-    "installed-api31/02-model-year.xml": "6e014271d5c6a98d9261de545e5806b898242ca4f81d65bae11f859783206ed9"
+    "installed-api31/02-model-year.xml": "6e014271d5c6a98d9261de545e5806b898242ca4f81d65bae11f859783206ed9",
+    "pixel7/01-offline-main.png": "d21f3d4c73f2f7fd609382c29f37a320bfb886684fb9dd2b22340f2f71007ba7",
+    "pixel7/02-offline-shortcut.png": "640596d1838752d8b08c0bc9ff24c72b7eb9ef0981c768bae9e0b647f73d2666",
+    "pixel7/03-offline-stopped.png": "8d85c353c1fb0efe3f078998a6762ff1d750a099396cd7f9d98c0d46ba343006",
+    "pixel7/04-chipsoft-hs-can-result.xml": "7145efa844386e6e83ce2e646ed2baf32edc45f8db0317785efeee0863953e75",
+    "pixel7/05-report-review.png": "50acedae61cadb70b4e19838c1412c49d82e9f03789b77fe6507abbb4cc46707",
+    "pixel7/05-report-review.xml": "9855d6302f22735fb96cb6cb4c37f835f79d254fddcb5cf092607d8bb614cc64",
+    "pixel7/06-report-landscape.png": "213d70e237eac9eebb5f26f4a50f7911b31b1a2905cfae6cd1d7c7e9f7227815",
+    "pixel7/06-report-landscape.xml": "0d1b13144f5aee3055c9c82ad0a7f0978f7c805005c5efb839e162cbf390b730",
+    "pixel7/07-report-portrait-return.png": "ed00ed299b56ba637607cbccae3ba3091334e301c70d3f9612365b155a09f944",
+    "pixel7/07-report-portrait-return.xml": "65b068da5644ddd50090bede86dcce13c860f38f4ae4060b155490aaad7759db",
+    "pixel7/08-report-cold-restore.png": "f5fb552bd31fa6a995545dbd9aa7f5bd5bc0fcc0ef15ff1f67301c29b0938fa4",
+    "pixel7/08-report-cold-restore.xml": "8b6c14b7178f4326e3ac142aac8f3137983a8a828adb041216f500cff90bda64",
+    "pixel7/09-chipsoft-repeat-read.xml": "6dcd7c98b8129f2b8fa3a4d15bb5032a189944843198286e5f8dbf898ab8a206",
+    "pixel7/after-repeat-processes.txt": "b6cc3311426493f43913ffbc4140a2bc160b344ad0696fe2a5234315cb9f0b20",
+    "pixel7/chipsoft-device-log-private.txt": "7973321ad51ab5f5076a357310688d50b2b4247dba350db3aa3238fc6bf6f1b0",
+    "pixel7/installation-and-test-receipt.json": "dcae98230586dc95163db88c949cdbe64f1565ca340b4c60897ba1d5596115e4"
   },
   "limitations": [
     "ARM32 installed/runtime pending",
-    "API36 qualified with isolated instrumentation APK, not final signed original-firmware walkthrough",
-    "hardware/adapter disconnect, release and port reopening pending",
+    "API36 isolated tests plus physical signed Pixel Main Menu/Stop/report/HS-CAN checks; full original diagnostics walkthrough pending",
+    "Bounded HS-CAN release/reopen passed on Pixel; forced disconnect/failure and native-firmware USB cleanup pending",
     "ordinary completion and startup failure use synthetic terminal-binding tests",
     "Rust collector/formatter/worker and active-session reporting pending",
     "server identical-body deduplication pending",
@@ -143,5 +159,38 @@
     "Gradle assembleDebug with unchanged native executables and payload allowlist passed",
     "Two build-profile checks passed",
     "No staged secret/VIN/IP/private-key/binary matches detected in new first-pass files; no payloads committed"
-  ]
+  ],
+  "physical_pixel7": {
+    "date": "2026-10-01",
+    "device": "Pixel 7",
+    "android_api": 36,
+    "android_release": "16",
+    "abi": "arm64-v8a",
+    "artifact_sha256": "b1c32cb7566e00d2a5e686db5e99b1c373588a7403353b28f6ceb238dfd842ad",
+    "previous_version": "0.1.0-preview.28-owner-audit.1",
+    "in_place_install": "success; app data retained; previous APK preserved",
+    "checks": [
+      "Original offline Main Menu via long-press ENTER",
+      "ECU information Actions entry and correct offline prerequisite message",
+      "Real offline Stop clears display and preserves reason with saved security history",
+      "Report review rotation retains consent and visible Send footer",
+      "Force-stop cold relaunch restores same on-screen JSON, resets consent, disables Send",
+      "Dismissal/reopen consent unchecked",
+      "Two fresh HS-CAN VIN/Trionic 8 code reads identify MY2004, display Chipsoft firmware 1.5.2",
+      "Six code/state/failure/status records identical across both reads and to historical September 29 Android bench receipt",
+      "Both reads log cleanup_ok=true; second read reopens USB; no native helpers remain"
+    ],
+    "production_uploads": 0,
+    "hardware_operations": "read-only VIN and engine DTC; no clear/security/programming",
+    "online_vehicle_lookup": false,
+    "cold_restore_method": "force-stop, not memory-pressure process loss",
+    "limits": [
+      "Historical Android code/status comparison; fresh OEM J2534 A/B not recovered",
+      "No original-firmware ECU information or SW-CAN qualification",
+      "No vehicle/car test or ARM32 qualification",
+      "Physical cold restore used force-stop, not actual memory-pressure process death",
+      "Saved internal report ID/hash not read through release-app sandbox; exact-byte tests passed separately on API31/36",
+      "No public release or production report upload"
+    ]
+  }
 }

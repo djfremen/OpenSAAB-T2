@@ -63,10 +63,11 @@ checks are recorded separately from those synthetic binding tests.
 
 ## Remaining gates
 
-- Android ARM32 installed/runtime and physical hardware qualification: pending;
-  the ARM64 emulator evidence cannot be inherited.
-- Real adapter failures/disconnect/reopen: pending hardware. Presentation tests
-  do not prove port ownership release or successful ECU operations.
+- Android ARM32 installed/runtime: pending; ARM64 evidence cannot be inherited.
+  Physical Pixel 7 ARM64 evidence is scoped below.
+- Forced adapter disconnect/failure and native original-firmware Stop/USB cleanup:
+  pending hardware. The bounded HS-CAN reader reopened Chipsoft on Pixel 7; this
+  does not qualify all adapter/session teardown paths.
 - Shared Rust collector/formatter/artifact/receipt engine and Java-reference corpus:
   pending, followed by worker packaging per ABI and server acceptance checks.
 - Reporting during emulation: remains blocked until that snapshot/schema migration
@@ -108,3 +109,36 @@ evidence hashes. Private logs/screenshots stay in the owner's evidence directory
 no raw report body, firmware, credentials or private capture is committed. The
 public release remains preview.28. Do not publish this candidate before owner review
 and the remaining exact-package/ABI gates.
+
+## Physical Pixel 7 checkpoint — 1 October 2026
+
+The final signed preview.29 APK was installed in place over
+preview.28-owner-audit.1 on a charging Pixel 7 running Android 16/API36. App data
+was retained and the previous private owner-audit APK was preserved. Preview.29
+does not include that private JEV audit instrumentation.
+
+Original firmware reached Main Menu using long-press ENTER. Offline Actions
+showed ECU information; Read DTC displayed the adapter/fresh-vehicle prerequisite
+without ending offline emulation. Stop cleared the display and retained the
+stopped reason even with existing security history.
+
+The real report dialog remained open through portrait → landscape → portrait,
+retaining consent with a visible Send footer. HOME → force-stop → cold relaunch
+restored identical on-screen report JSON in a different process, unchecked consent
+and disabled Send. Dismissal/reopen left consent unchecked. Send was never clicked.
+This is a force-stop cold-relaunch check, not an actual OS memory-pressure process
+loss test. Internal saved IDs and exact uploaded bytes were not independently read
+through the release app sandbox; those checks remain the API31/API36 isolated tests.
+
+With Chipsoft connected to the HS-CAN bench ECM, two independent startup VIN and
+Trionic 8 code reads completed. Fresh identity was MY2004, adapter firmware displayed
+1.5.2, and both reads returned the same six code/state/failure/status records as the
+September 29 Pixel bench receipt. Both cleanup records reported success; the second
+read reopened USB and no native emulator/probe helpers remained afterward. Optional
+online vehicle lookup was disabled; no codes were cleared or security data processed.
+
+The historical Android record is not a fresh OEM J2534 A/B. Original-menu ECU
+information, SW-CAN, real-vehicle continuation, forced adapter failure, ARM32 and
+active-session reporting remain unqualified. The private evidence hashes in the
+receipt cover screenshots, result XML and local logs; their bodies are not committed.
+Public preview.28 and production services remain unchanged.
