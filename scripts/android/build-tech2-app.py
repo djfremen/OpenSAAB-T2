@@ -102,6 +102,7 @@ deps.package(bt, android_jar, staged_manifest, source / "res", unsigned)
 deps.compile(jdk, android_jar, classes, [source / 'com/opensaab/tech2/MainActivity.java', *sorted((repo / 'android/shared').rglob('*.java')), *sorted((repo / 'android/adapters').rglob('*.java'))])
 deps.dex(bt, android_jar, classes)
 with zipfile.ZipFile(unsigned, 'a') as z:
+    deps.add_runtime_resources(z)
     if args.release:
         if subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip():
             raise SystemExit('Official release builds require a clean source checkout')

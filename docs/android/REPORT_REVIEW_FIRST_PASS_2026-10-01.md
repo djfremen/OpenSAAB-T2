@@ -50,9 +50,10 @@ reports/receipts and fake HTTP responses; it never opens USB or uploads to produ
 Report tests cover exact UTF-8 bytes, ZIP repacking, altered artifacts, consent gates,
 real portrait/landscape recreation, footer visibility, dismissal/reopen, cold sent
 restoration, new preparation and marker pruning. The external process test performs
-HOME → `am kill` → a verified new process and checks exact reviewed content/id/hash,
-unchecked consent and disabled Send. Force-stop is fixture cleanup only, not the
-process-loss operation being qualified.
+HOME → background process death → a verified new process and checks exact reviewed content/id/hash,
+unchecked consent and disabled Send. The test requests `am kill`; when Android retains a cached process, it uses
+SIGKILL under the disposable debug app’s own UID after checking it is background.
+Force-stop is fixture cleanup only, not the process-loss operation being qualified.
 
 LCD tests cover atomic publications, coalescing, malformed frames, directory switch,
 queued/late frames after clear, same-directory restart and closing. Session-end

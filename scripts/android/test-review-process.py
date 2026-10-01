@@ -61,6 +61,16 @@ def exercise(adb, output, env):
     run('shell','am','kill',package)  # OS-style background process loss, no force-stop.
     until=time.monotonic()+10
     while pid() and time.monotonic()<until:time.sleep(.1)
+    method='am kill'
+    if pid():
+        # Some Android 16 AVDs retain cached activities despite am kill. Kill only
+        # this disposable debug app's background process under its own UID.
+        current=pid();assert current==old and current.isdigit(), 'Unexpected process identity'
+        resumed=run('shell','dumpsys','activity','activities')
+        assert not any(package in line for line in resumed.splitlines() if 'topResumedActivity=' in line or 'mResumedActivity:' in line), 'Test app still foreground'
+        run('shell','run-as',package,'kill','-9',current);method='background app-UID SIGKILL'
+        until=time.monotonic()+5
+        while pid() and time.monotonic()<until:time.sleep(.1)
     assert not pid(), 'Background process was not killed'
     run('shell','am','start','-W','-n',activity)
     new=pid();assert new and new!=old, 'New process not created'
@@ -73,5 +83,5 @@ def exercise(adb, output, env):
     info=json.loads(run('exec-out','run-as',package,'cat','files/support-reports/review-state.json'))
     assert info['saved_id']==name and info['report_sha256']==digest
     assert 'consent' not in info
-    result='PASS: real HOME → am kill → relaunch in new process restores exact JSON/id/hash and an unchecked consent switch; Send disabled. No upload, adapter or firmware.\n'
+    result='PASS: real HOME → '+method+' → relaunch in new process restores exact JSON/id/hash and an unchecked consent switch; Send disabled. No upload, adapter or firmware.\n'
     (output/'ReportProcessLoss.txt').write_text(result);print(result)

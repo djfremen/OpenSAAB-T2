@@ -3,7 +3,7 @@
 Gradle is the dependency resolver, not a second manually maintained Maven list.
 The resulting AAR resources/R classes are also included in command-line test APKs.
 """
-import json, os, shutil, subprocess, xml.etree.ElementTree as ET, zipfile
+import hashlib, json, os, shutil, subprocess, xml.etree.ElementTree as ET, zipfile
 from pathlib import Path
 
 class ReportDependencies:
@@ -52,3 +52,17 @@ class ReportDependencies:
         for stale in self.output.glob('classes*.dex'):stale.unlink()
         subprocess.run([str(bt/'d8'),'--min-api','26','--lib',str(jar),'--output',str(self.output),
                         *map(str,classes.rglob('*.class')),*map(str,self.jars)],env=self.env,check=True)
+
+    def add_runtime_resources(self, apk):
+        # Match Gradle's runtime resources without permitting arbitrary .bin payloads.
+        expected=json.loads((self.repo/'android/shared/kotlin-runtime-resources.json').read_text())
+        found={}
+        for jar in self.jars:
+            with zipfile.ZipFile(jar) as source:
+                for name in expected.keys() & set(source.namelist()):
+                    data=source.read(name)
+                    if hashlib.sha256(data).hexdigest()!=expected[name]:
+                        raise ValueError('Pinned Kotlin runtime resource changed: '+name)
+                    found[name]=data
+        if found.keys()!=expected.keys():raise ValueError('Missing pinned Kotlin runtime resources')
+        for name,data in found.items():apk.writestr(name,data,compress_type=zipfile.ZIP_DEFLATED)

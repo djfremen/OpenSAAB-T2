@@ -8,6 +8,7 @@ import re
 from pathlib import PurePosixPath, Path
 from build_profiles import PROFILES, validate_elf
 
+KOTLIN_RESOURCES = json.loads((Path(__file__).resolve().parents[2] / 'android/shared/kotlin-runtime-resources.json').read_text())
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
 def check(path, allow_bundled_support=False, profile_name='arm64'):
     profile = PROFILES[profile_name]
@@ -24,6 +25,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64'):
             raise ValueError('Missing bundled support files or manifest')
         if json.loads(apk.read('assets/system/manifest.json')) != SUPPORT:
             raise ValueError('Bundled support manifest does not match the build profile')
+        if not set(KOTLIN_RESOURCES).issubset(names):raise ValueError('Missing pinned Kotlin runtime resources')
         for info in apk.infolist():
             name=info.filename
             if info.is_dir():
@@ -34,6 +36,9 @@ def check(path, allow_bundled_support=False, profile_name='arm64'):
                 spec = SUPPORT[PurePosixPath(name).name]
                 if info.file_size != spec['bytes'] or hashlib.sha256(apk.read(name)).hexdigest() != spec['sha256']:
                     raise ValueError(f'Incorrect bundled support file: {name}')
+                continue
+            if name in KOTLIN_RESOURCES:
+                if hashlib.sha256(apk.read(name)).hexdigest()!=KOTLIN_RESOURCES[name]:raise ValueError('Pinned Kotlin resource changed: '+name)
                 continue
             legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt')}
             if name in legal:

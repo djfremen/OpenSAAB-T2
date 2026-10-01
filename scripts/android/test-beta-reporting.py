@@ -38,6 +38,7 @@ deps.compile(jdk,jar,classes,sources)
 for test in ['DiagnosticFailureTest','ChipsoftIdentityTest']:run(jdk/'bin/java','-cp',classes,'com.opensaab.usb.'+test)
 deps.dex(bt,jar,classes)
 with zipfile.ZipFile(out/'unsigned.apk','a') as z:
+ deps.add_runtime_resources(z)
  for dex in sorted(out.glob('classes*.dex')):z.write(dex,dex.name)
 run(bt/'zipalign','-f','4',out/'unsigned.apk',out/'aligned.apk')
 run(bt/'apksigner','sign','--ks',Path.home()/'.android/debug.keystore','--ks-pass','pass:android','--key-pass','pass:android','--out',out/'diagnostics-test-only.apk',out/'aligned.apk')
