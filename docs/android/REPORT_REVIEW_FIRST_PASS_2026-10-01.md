@@ -4,7 +4,7 @@ Review branch: `codex/android-report-first-pass`, based on `a800c6854ae362378c70
 This is the independent first phase of the owner-approved reporting/session contract.
 The Java collector and existing active-report guard remain. No collector worker,
 server compatibility dependency, server deduplication or active-session reporting
-is introduced. Public preview.28 remains unchanged until separate publication.
+is introduced. Publication checkpoint: ARM64 preview.29 was released on 1 October 2026 after owner authorization and the exact-package Pixel checks below. ARM32 remains unchanged.
 
 ## Review map
 
@@ -107,8 +107,8 @@ not a fresh-install or direct final-package upgrade qualification.
 `REPORT_REVIEW_FIRST_PASS_RECEIPT_2026-10-01.json` records exact artifact and private
 evidence hashes. Private logs/screenshots stay in the owner's evidence directory;
 no raw report body, firmware, credentials or private capture is committed. The
-public release remains preview.28. Do not publish this candidate before owner review
-and the remaining exact-package/ABI gates.
+ARM64 candidate was subsequently authorized and published as preview.29 after
+the physical checkpoint below; remaining gates retain their stated limits.
 
 ## Physical Pixel 7 checkpoint — 1 October 2026
 
