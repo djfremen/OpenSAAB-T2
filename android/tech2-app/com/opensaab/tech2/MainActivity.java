@@ -115,7 +115,7 @@ public final class MainActivity extends Activity {
     private void updateWorkspace(){
         if(workspace==null)return;
         if(updateReminder!=null)updateReminder.refresh();
-        workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):compactVehicle+"\n"+(compactSecurity.isEmpty()?status.getText():compactSecurity));
+        workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):status.getText()+"\n"+compactVehicle+(compactSecurity.isEmpty()?"":"\n"+compactSecurity));
         if(start!=null)start.setVisibility(running?View.GONE:View.VISIBLE);
         if(offline!=null)offline.setVisibility(running?View.GONE:View.VISIBLE);
     }

@@ -95,6 +95,18 @@ public final class ReportReviewInstrumentedTest extends Instrumentation {
             runOnMainSync(restored::send);check(!restored.busy,"Sent report retransmission started");
             runOnMainSync(()->{restored.closeReview();restored.prepare("Synthetic new incident");});await(()->!restored.busy&&restored.reviewOpen,"New report not prepared");
             check(!restored.artifact.id.equals(a.id)&&restored.receipt.isEmpty()&&!restored.consent,"New incident inherited delivery/consent");
+            // A lost/failed reply must remain unconfirmed, never "Already sent" with an empty receipt.
+            final byte[][] captured={null};final int[] attempts={0};ReportReviewModel[] failed={null},success={null};
+            runOnMainSync(()->{failed[0]=new ReportReviewModel(app,body->{captured[0]=body;attempts[0]++;throw new IOException("Synthetic lost response");});
+                failed[0].initialize(restored.artifact.id,restored.artifact.hash,true);failed[0].confirm(true);failed[0].send();});
+            await(()->!failed[0].busy,"Failed reply test stalled");
+            check(failed[0].receipt.isEmpty()&&!failed[0].notice.contains("Already sent")&&failed[0].reviewOpen&&failed[0].canSend(),"Failed reply fabricated delivery or lost explicit retry");
+            check(attempts[0]==1&&Arrays.equals(captured[0],restored.artifact.bytes()),"Body changed or automatic retry");
+            runOnMainSync(()->{success[0]=new ReportReviewModel(app,body->{check(Arrays.equals(body,restored.artifact.bytes()),"Success body changed");return fake;});
+                success[0].initialize(restored.artifact.id,restored.artifact.hash,true);success[0].confirm(true);success[0].send();});
+            await(()->!success[0].busy,"Confirmed reply test stalled");
+            check(success[0].receipt.equals(fake)&&!success[0].consent&&!success[0].canSend()&&ReportArtifacts.receipt(app,restored.artifact).equals(fake),"Successful model delivery not bound to exact body");
+            ReportArtifacts.pruneReceipt(app,restored.artifact.id);
             // Changed local bytes invalidate consent before any network call can begin.
             ReportArtifacts.Artifact changed=restored.artifact;replace(changed.file,changed.text+" ");
             runOnMainSync(()->{restored.confirm(true);restored.send();});await(()->!restored.busy,"Changed file check stalled");

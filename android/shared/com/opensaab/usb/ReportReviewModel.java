@@ -19,7 +19,10 @@ public final class ReportReviewModel extends AndroidViewModel {
     private int revision;
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
-    public ReportReviewModel(Application app){super(app);}
+    interface Uploader {String send(byte[] body)throws Exception;}
+    private final Uploader uploader;
+    public ReportReviewModel(Application app){this(app,SupportUpload::send);}
+    ReportReviewModel(Application app,Uploader uploader){super(app);this.uploader=uploader;}
     public void initialize(String id,String hash,boolean open){
         if(initialized)return;initialized=true;consent=false;
         if(id==null&&!new java.io.File(getApplication().getFilesDir(),"support-reports/review-state.json").isFile())return;
@@ -59,8 +62,8 @@ public final class ReportReviewModel extends AndroidViewModel {
             try{
                 synchronized(ReportArtifacts.class){
                     ReportArtifacts.Artifact current=ReportArtifacts.read(getApplication(),frozen.id,frozen.hash);validated=true;
-                    number=ReportArtifacts.receipt(getApplication(),current);
-                    if(number.isEmpty())number=SupportUpload.send(frozen.bytes());
+                    String existing=ReportArtifacts.receipt(getApplication(),current);
+                    number=existing.isEmpty()?uploader.send(frozen.bytes()):existing;
                     try{ReportArtifacts.recordReceipt(getApplication(),frozen,number);recorded=true;}catch(Exception failed){}
                 }
             }catch(java.net.UnknownHostException|java.net.SocketTimeoutException e){problem="Could not confirm upload. Check your connection and retry explicitly. The same report is kept locally.";}

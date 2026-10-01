@@ -145,7 +145,7 @@ public final class ChipsoftUsbActivity extends Activity {
         String security="";
         if(securityAccess!=null){TextView state=securityAccess.findViewWithTag("security-state");security=securityAccess.busy()?"Security: processing · details":state.getText().toString();}
         String progress=menuShortcut!=null&&menuShortcut.active()?menuShortcut.getText().toString():running.get()?"Session active · details":"Session stopped · details";
-        workspace.summary(heading+"\n"+(security.isEmpty()?progress:security+"\n"+progress));
+        workspace.summary(running.get()?heading+"\n"+(security.isEmpty()?progress:security+"\n"+progress):status.getText()+"\n"+heading+(security.isEmpty()?"":"\n"+security));
         launchFirmware.setVisibility(running.get()?android.view.View.GONE:android.view.View.VISIBLE);
     }
     public Dialog showActions(){
