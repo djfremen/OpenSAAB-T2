@@ -59,9 +59,10 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         MotionEvent e=MotionEvent.obtain(t,t,action,x,y,0);
         v.dispatchTouchEvent(e);e.recycle();
     }
-    private void gestures(Activity activity) {
+    private void gestures(Activity activity, boolean natural) {
         final FirmwareGestureView[] area={null};
         checkedMain(()->{
+            FirmwareScrollPreferences.storage(activity).edit().putBoolean(FirmwareScrollPreferences.KEY,natural).commit();
             Tech2Controls panel=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
             activity.setContentView(panel);area[0]=panel.findViewWithTag("tech2-gestures");sent.clear();
         });
@@ -75,7 +76,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
             touch(v,MotionEvent.ACTION_DOWN,100*d,40*d);
             touch(v,MotionEvent.ACTION_MOVE,100*d,100*d);
             touch(v,MotionEvent.ACTION_UP,100*d,140*d);
-            check(sent.equals(Arrays.asList(9,12)),"Swipes must emit one directional key each");
+            check(sent.equals(natural?Arrays.asList(12,9):Arrays.asList(9,12)),"Wrong swipe direction or duplicate key; natural="+natural);
             sent.clear();
             // Tap, horizontal swipe, diagonal, interrupted stroke and multiple pointers.
             touch(v,0,100*d,100*d);touch(v,1,100*d,100*d);
@@ -103,6 +104,32 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         });
         SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+180);
         checkedMain(()->check(sent.isEmpty(),"Detached display emitted ENTER"));
+    }
+    private void scrollingPreference(Activity activity) {
+        checkedMain(()->{
+            FirmwareScrollPreferences.storage(activity).edit().remove(FirmwareScrollPreferences.KEY).commit();
+            check(!FirmwareScrollPreferences.natural(activity),"New installs must preserve directional scrolling");
+            Tech2Controls panel=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+            activity.setContentView(panel);sent.clear();panel.showPreferences();
+            Switch toggle=panel.preferencesDialog.getWindow().getDecorView().findViewWithTag("tech2-natural-scrolling");
+            check(toggle!=null && !toggle.isChecked(),"Missing default-off preference");
+            toggle.performClick();
+            check(FirmwareScrollPreferences.natural(activity),"Toggle did not save immediately");
+            panel.preferencesDialog.dismiss();
+            Tech2Controls reopened=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+            reopened.showPreferences();
+            Switch restored=reopened.preferencesDialog.getWindow().getDecorView().findViewWithTag("tech2-natural-scrolling");
+            check(restored.isChecked(),"Preference lost after control recreation");
+            restored.performClick();reopened.preferencesDialog.dismiss();
+            check(!FirmwareScrollPreferences.natural(activity),"Could not restore directional scrolling");
+            check(sent.isEmpty(),"Changing preferences sent a firmware key");
+            // The existing surface reads the new preference without recreation/restart.
+            View surface=panel.findViewWithTag("tech2-gestures");
+            float d=activity.getResources().getDisplayMetrics().density;
+            FirmwareScrollPreferences.storage(activity).edit().putBoolean(FirmwareScrollPreferences.KEY,true).commit();
+            touch(surface,0,100*d,140*d);touch(surface,2,100*d,60*d);touch(surface,1,100*d,40*d);
+            check(sent.equals(Arrays.asList(12)),"Existing display did not adopt the saved direction");sent.clear();
+        });
     }
     private void firstUseGuide(Activity activity){
         android.content.SharedPreferences prefs=activity.getSharedPreferences("firmware-controls",0);
@@ -138,6 +165,9 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
     }
     public void onStart() {
         Bundle result=new Bundle();int status=-1;Activity activity=null;
+        android.content.SharedPreferences preferences=FirmwareScrollPreferences.storage(getTargetContext());
+        boolean hadPreference=preferences.contains(FirmwareScrollPreferences.KEY);
+        boolean oldPreference=FirmwareScrollPreferences.natural(getTargetContext());
         try {
 
             for (String name : new String[]{"com.opensaab.tech2.MainActivity","com.opensaab.usb.ChipsoftUsbActivity","com.opensaab.usb.NanoProbeActivity"}) {
@@ -169,11 +199,22 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                     if(shown instanceof ChipsoftUsbActivity)check(!((ChipsoftUsbActivity)shown).running.get(),"Unexpected Chipsoft session");
                     if(shown instanceof NanoProbeActivity)check(!((NanoProbeActivity)shown).running.get(),"Unexpected Nano session");
                 });
-                if(name.endsWith("MainActivity")){checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});firstUseGuide(activity);gestures(activity);}
+                if(name.endsWith("MainActivity")){
+                    firstUseGuide(activity);scrollingPreference(activity);
+                    for(boolean natural:new boolean[]{false,true}){
+                        gestures(activity,natural);
+                        checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});
+                    }
+                }
                 checkedMain(shown::finish);activity=null;waitForIdleSync();
             }
-            result.putString("stream","PASS: first-frame guide, persistent dismissal, unchanged LCD size, guide touches send no firmware keys; 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; swipe direction and one-event limit; long-press ENTER; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
+            result.putString("stream","PASS: saved default-off Natural scrolling, immediate adoption, recreation and toggles without firmware keys; both swipe modes and unchanged keypad/hold/tap behavior; first-frame guide, persistent dismissal, unchanged LCD size, guide touches send no firmware keys; 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; one-event limit; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
         }catch(Throwable e){status=0;result.putString("stream","FAIL: "+e+"\n");}
-        finally{if(activity!=null){final Activity a=activity;runOnMainSync(a::finish);}finish(status,result);}
+        finally{
+            android.content.SharedPreferences.Editor restore=preferences.edit();
+            if(hadPreference)restore.putBoolean(FirmwareScrollPreferences.KEY,oldPreference);else restore.remove(FirmwareScrollPreferences.KEY);
+            restore.commit();
+            if(activity!=null){final Activity a=activity;runOnMainSync(a::finish);}finish(status,result);
+        }
     }
 }

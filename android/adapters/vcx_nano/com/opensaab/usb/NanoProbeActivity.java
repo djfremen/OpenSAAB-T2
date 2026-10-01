@@ -108,6 +108,12 @@ public class NanoProbeActivity extends Activity {
         if(nativeFirmware()){
             retry=new Button(this);retry.setText("Retry");retry.setOnClickListener(v->discover());
             recovery.addView(retry,new LinearLayout.LayoutParams(0,-2,1));
+            Button menu=new Button(this);menu.setText("App menu");
+            menu.setOnClickListener(v->new SessionSheet.Menu(this)
+                .add("Preferences",controls::showPreferences)
+                .add("Console",controls::showConsole)
+                .add("Firmware controls help",controls::showHelp).show("App menu"));
+            recovery.addView(menu,new LinearLayout.LayoutParams(0,-2,1));
         }
         reportConnection=new Button(this);reportConnection.setText("Report connection problem");reportConnection.setVisibility(android.view.View.GONE);
         reportConnection.setOnClickListener(v->{if(running.get()){summary.setText("Waiting for USB cleanup — try again shortly");return;}startActivity(new Intent(this,SupportReportActivity.class));});root.addView(reportConnection);

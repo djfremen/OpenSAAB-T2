@@ -137,6 +137,7 @@ public final class MainActivity extends Activity {
         if(com.opensaab.usb.SetupCleanup.available(this))menu.add("Remove installer",()->{if(idleTool())com.opensaab.usb.SetupCleanup.remove(this);});
         menu.add("Run without an adapter",()->{if(idleTool())startSession();});
         menu.add("Firmware selection",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));})
+            .add("Preferences",controls::showPreferences)
             .add("Adapter & advanced tools",()->com.opensaab.usb.AdvancedFeatures.show(this,()->running))
             .add("Report issue",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.SupportReportActivity.class));})
             .add("Console",controls::showConsole)

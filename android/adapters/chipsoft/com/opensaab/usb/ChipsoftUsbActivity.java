@@ -183,6 +183,7 @@ public final class ChipsoftUsbActivity extends Activity {
         if(running.get())menu.add("Stop emulation / USB",this::stop);
         menu.add("Return to home",()->{stop();finish();})
             .add("Firmware selection",()->{if(idleTool())startActivity(new Intent(this,FirmwareActivity.class));})
+            .add("Preferences",controls::showPreferences)
             .add("Adapter & advanced tools",()->AdvancedFeatures.show(this,()->running.get()))
             .add("Report issue",()->{if(idleTool())startActivity(new Intent(this,SupportReportActivity.class));})
             .add("Console",controls::showConsole)

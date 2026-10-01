@@ -25,7 +25,7 @@ public final class Tech2Controls extends LinearLayout {
     private FirmwareGestureView display;
     private FrameLayout screen;
     private boolean guideChecked;
-    android.app.Dialog keypadDialog,consoleDialog;
+    android.app.Dialog keypadDialog,consoleDialog,preferencesDialog;
     private ScrollView consoleView;
     private Button actionButton;
     private Runnable actions;
@@ -109,8 +109,9 @@ public final class Tech2Controls extends LinearLayout {
     }
     public void setActions(Runnable open){actions=open;actionButton.setText("Actions");actionButton.setContentDescription("Open diagnostic actions");actionButton.setOnClickListener(v->{display.cancelGesture();actions.run();});}
     public void showConsole(){display.cancelGesture();consoleDialog=SessionSheet.show((android.app.Activity)getContext(),"Console",consoleView);}
+    public void showPreferences(){display.cancelGesture();preferencesDialog=FirmwareScrollPreferences.show((android.app.Activity)getContext());}
     public void showHelp(){new android.app.AlertDialog.Builder(getContext()).setTitle("Firmware controls")
-        .setMessage("Swipe up or down on the Tech2 screen to move one item. Hold the screen for ENTER. S1–S4 follow the firmware labels. EXIT returns within the firmware; it does not stop emulation. Open Keypad for arrows, numbers and other keys.")
+        .setMessage("Swipe up or down on the Tech2 screen to move one item. Change swipe direction in App menu → Preferences → Natural scrolling. Hold the screen for ENTER. S1–S4 follow the firmware labels. EXIT returns within the firmware; it does not stop emulation. Open Keypad for arrows, numbers and other keys.")
         .setPositiveButton("Got it",null).show();}
     private Button button(String text, Runnable action) {
         Button b = new Button(getContext()); b.setText(text); b.setTextSize(14);
