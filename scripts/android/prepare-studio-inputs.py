@@ -24,7 +24,7 @@ assets = output / 'assets/system'
 assets.mkdir(parents=True, exist_ok=True)
 legal = output / 'assets/legal'
 legal.mkdir(parents=True, exist_ok=True)
-for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt'):
+for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
     shutil.copy2(repo / name, legal / Path(name).name)
 shutil.copy2(manifest_path, assets / 'manifest.json')
 for name, spec in (support.items() if bundle_support else []):

@@ -9,11 +9,15 @@ import org.json.JSONObject;
 /** Explicit, bounded HTTPS upload. No account keys, redirects or automatic retries. */
 public final class SupportUpload {
     public static final String ENDPOINT="https://www.opensaab.com/api/support/reports";
-    public static String send(String reviewedJson)throws IOException {
-        return send(reviewedJson,(HttpURLConnection)new URL(ENDPOINT).openConnection());
+    public static String send(String reviewedJson)throws IOException {return send(reviewedJson.getBytes(StandardCharsets.UTF_8));}
+    public static String send(byte[] reviewedBody)throws IOException {
+        return send(reviewedBody,(HttpURLConnection)new URL(ENDPOINT).openConnection());
     }
     static String send(String reviewedJson,HttpURLConnection connection)throws IOException {
-        byte[] body=reviewedJson.getBytes(StandardCharsets.UTF_8);
+        return send(reviewedJson.getBytes(StandardCharsets.UTF_8),connection);
+    }
+    static String send(byte[] reviewedBody,HttpURLConnection connection)throws IOException {
+        byte[] body=reviewedBody.clone();
         try {
             if(body.length>65536)throw new IOException("This report is too large. Use Copy / save instead.");
             connection.setConnectTimeout(15000);connection.setReadTimeout(30000);

@@ -35,7 +35,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64'):
                 if info.file_size != spec['bytes'] or hashlib.sha256(apk.read(name)).hexdigest() != spec['sha256']:
                     raise ValueError(f'Incorrect bundled support file: {name}')
                 continue
-            legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt')}
+            legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt')}
             if name in legal:
                 expected = Path(__file__).resolve().parents[2] / legal[name]
                 if apk.read(name) != expected.read_bytes():

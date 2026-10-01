@@ -29,3 +29,19 @@ Original firmware inputs, card images, Tech2Win installer/executable/language
 resources and adapter vendor DLLs are separate third-party material, not covered
 by OpenSAAB's license. The three-file support manifest records their identity,
 not a license grant. See [LICENSING.md](LICENSING.md) for the boundary.
+
+## Android report review lifecycle libraries
+
+Report review uses AndroidX Fragment 1.6.2 and Lifecycle ViewModel 2.6.2 and
+transitive AndroidX libraries, under the Apache License 2.0 (The Android Open Source
+Project). Their Kotlin standard library/coroutines dependencies are also under
+Apache License 2.0 (JetBrains). `com.google.guava:listenablefuture` is under
+Apache License 2.0 (Google); JetBrains annotations are under Apache License 2.0.
+The pinned Gradle dependency graph is used by both SDK-command-line and Android
+Studio builds. No credentials, native adapter driver or remote diagnostic service
+is supplied by these libraries.
+
+License: https://www.apache.org/licenses/LICENSE-2.0
+AndroidX source: https://android.googlesource.com/platform/frameworks/support/
+Kotlin source: https://github.com/JetBrains/kotlin
+Coroutines source: https://github.com/Kotlin/kotlinx.coroutines

@@ -111,12 +111,14 @@ public final class SupportReports {
             report.put(name,error);}catch(Exception ignored){}}
         return report;
     }
-    public static File save(Context c,JSONObject report)throws Exception{
+    public static File save(Context c,JSONObject report)throws Exception{return saveText(c,report.toString(2));}
+    public static File saveText(Context c,String frozenJson)throws Exception{
+        byte[] bytes=frozenJson.getBytes(StandardCharsets.UTF_8);if(bytes.length>ReportArtifacts.MAX_JSON)throw new IOException("Report exceeds the upload limit");
         File root=new File(c.getFilesDir(),"support-reports");Files.createDirectories(root.toPath());
         File file=new File(root,"android_support_"+UUID.randomUUID()+".zip"),tmp=File.createTempFile("report-",".tmp",root);
-        try{try(ZipOutputStream zip=new ZipOutputStream(new FileOutputStream(tmp))){zip.putNextEntry(new ZipEntry("diagnostics.json"));zip.write(report.toString(2).getBytes(StandardCharsets.UTF_8));zip.closeEntry();}Files.move(tmp.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE);}finally{tmp.delete();}
+        try{try(ZipOutputStream zip=new ZipOutputStream(new FileOutputStream(tmp))){zip.putNextEntry(new ZipEntry("diagnostics.json"));zip.write(bytes);zip.closeEntry();}Files.move(tmp.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE);}finally{tmp.delete();}
         File[] old=root.listFiles((d,n)->n.matches("android_support_[a-f0-9-]+\\.zip"));
-        if(old!=null){Arrays.sort(old,Comparator.comparingLong(File::lastModified));for(int i=0;i<old.length-8;i++)old[i].delete();}
+        if(old!=null){Arrays.sort(old,Comparator.comparingLong(File::lastModified));for(int i=0;i<old.length-8;i++)if(old[i].delete())ReportArtifacts.pruneReceipt(c,old[i].getName());}
         return file;
     }
     private SupportReports(){}

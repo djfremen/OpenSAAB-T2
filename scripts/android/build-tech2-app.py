@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the dependency-free Android firmware LCD/keypad app with installed SDK/JDK tools."""
+"""Build the Android firmware LCD/keypad app with installed SDK/JDK tools."""
 import os
 import json
 import hashlib
@@ -11,6 +11,7 @@ import argparse
 import re
 import xml.etree.ElementTree as ET
 from build_profiles import PROFILES, validate_elf
+from report_dependencies import ReportDependencies
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
@@ -73,11 +74,7 @@ env = dict(os.environ, JAVA_HOME=str(jdk), PATH=str(jdk / 'bin') + os.pathsep + 
 def run(*args):
     subprocess.run([str(x) for x in args], check=True, env=env)
 
-run(jdk / 'bin/javac', '-source', '8', '-target', '8', '-classpath', android_jar,
-    '-d', classes, source / 'com/opensaab/tech2/MainActivity.java', *sorted((repo / 'android/shared').rglob('*.java')),
-    *sorted((repo / 'android/adapters').rglob('*.java')))
-run(bt / 'd8', '--min-api', '26', '--lib', android_jar, '--output', build,
-    *sorted(classes.rglob('*.class')))
+deps = ReportDependencies(repo, build, env)
 unsigned = build / 'unsigned.apk'
 ns = 'http://schemas.android.com/apk/res/android'
 ET.register_namespace('android', ns)
@@ -101,15 +98,17 @@ manifest.getroot().set('{'+ns+'}versionCode', str(args.version_code))
 manifest.getroot().find('application').set('{'+ns+'}debuggable', 'false' if args.release else 'true')
 staged_manifest = build / 'AndroidManifest.xml'
 manifest.write(staged_manifest, encoding='utf-8', xml_declaration=True)
-run(bt / 'aapt', 'package', '-f', '-M', staged_manifest, '-S', source / 'res', '-I', android_jar, '-F', unsigned)
+deps.package(bt, android_jar, staged_manifest, source / "res", unsigned)
+deps.compile(jdk, android_jar, classes, [source / 'com/opensaab/tech2/MainActivity.java', *sorted((repo / 'android/shared').rglob('*.java')), *sorted((repo / 'android/adapters').rglob('*.java'))])
+deps.dex(bt, android_jar, classes)
 with zipfile.ZipFile(unsigned, 'a') as z:
     if args.release:
         if subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip():
             raise SystemExit('Official release builds require a clean source checkout')
         commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
         z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0'},sort_keys=True))
-    z.write(build / 'classes.dex', 'classes.dex')
-    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt'):
+    for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
+    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
     z.write(support_manifest, 'assets/system/manifest.json', compress_type=zipfile.ZIP_DEFLATED)
     for name, spec in (support.items() if bundle_support else []):

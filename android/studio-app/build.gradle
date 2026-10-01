@@ -68,3 +68,24 @@ tasks.register('verifyDebugApk', Exec) {
         layout.buildDirectory.file('outputs/apk/debug/app-debug.apk').get().asFile
     if (bundleSupport) args '--allow-bundled-support'
 }
+
+// Native report review/rotation state; versions shared with command-line builds.
+configurations { reportRuntime }
+dependencies {
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.20')
+    reportRuntime platform('org.jetbrains.kotlin:kotlin-bom:1.8.20')
+    implementation 'androidx.fragment:fragment:1.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.6.2'
+    reportRuntime 'androidx.fragment:fragment:1.6.2'
+    reportRuntime 'androidx.lifecycle:lifecycle-viewmodel:2.6.2'
+}
+tasks.register('exportReportDependencies') {
+    doLast {
+        def destination = file(project.property('reportDependencyOutput'))
+        destination.parentFile.mkdirs()
+        def artifacts = configurations.reportRuntime.resolvedConfiguration.resolvedArtifacts
+            .collect { [coordinate: it.moduleVersion.id.toString(), path: it.file.absolutePath] }
+            .sort { it.coordinate }
+        destination.text = groovy.json.JsonOutput.toJson(artifacts)
+    }
+}

@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
         controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
         controls.setActions(this::showActions);
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
-        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{health.frame();lcd.frame=frame;lcd.invalidate();controls.showFirstUseGuide();});
+        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{if(frame!=null){if(!running||stopping.get())return;health.frame();controls.showFirstUseGuide();}lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
@@ -123,6 +123,7 @@ public final class MainActivity extends Activity {
         return new com.opensaab.usb.SessionSheet.Menu(this)
             .add("Get security access",()->selectAdapter("native_seed",false))
             .add("Read engine codes — HS-CAN",()->selectAdapter("dtc_read",false))
+            .add("ECU information",()->selectAdapter("native_ecu_info",false))
             .add("Read DTC",()->selectAdapter("native_dtc",false))
             .add("Clear DTC",()->com.opensaab.usb.SessionSheet.confirmClear(this,()->selectAdapter("native_clear_dtc",false)))
             .add("Engine Data",()->selectAdapter("native_engine_data",false))
@@ -163,7 +164,7 @@ public final class MainActivity extends Activity {
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
         if(!missing.isEmpty()){status.setText("Firmware setup needed: "+missing);startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));return;}
         if(com.opensaab.usb.SecurityAccessView.workflowBusy()){status.setText("Finish security processing before starting another session");return;}
-        if(running){status.setText("Stop emulation before selecting an adapter");return;}
+        if(running){status.setText(allowEmulation?"Stop the current session before starting another connection":com.opensaab.usb.DiagnosticPrerequisites.OFFLINE);return;}
         android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
         List<android.hardware.usb.UsbDevice> devices=new ArrayList<>();
         List<String> labels=new ArrayList<>();
@@ -183,7 +184,7 @@ public final class MainActivity extends Activity {
         if(devices.isEmpty()){
             new com.opensaab.usb.ConnectionAttempt(this,com.opensaab.usb.ConnectionAttempt.Adapter.SELECTION)
                 .finish(com.opensaab.usb.ConnectionAttempt.Outcome.FAILED,com.opensaab.usb.ConnectionAttempt.Reason.NO_ADAPTER);
-            picker.setMessage("No supported adapter detected. Connect a USB adapter, then tap Refresh. If this keeps happening, use App menu → Report issue.");
+            picker.setMessage((allowEmulation?"No supported adapter detected.":com.opensaab.usb.DiagnosticPrerequisites.OFFLINE)+" Connect a USB adapter, then tap Refresh. If this keeps happening, use App menu → Report issue.");
         }
         else picker.setItems(labels.toArray(new String[0]),(dialog,index)->connectAdapter(devices.get(index),mode,!allowEmulation));
         picker.setPositiveButton("Refresh",(dialog,which)->selectAdapter(mode,allowEmulation));
@@ -204,6 +205,7 @@ public final class MainActivity extends Activity {
             if(match.backend()!=com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){android.widget.Toast.makeText(this,"Direct HS-CAN engine-code reading currently requires Chipsoft",android.widget.Toast.LENGTH_LONG).show();return;}
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("dtc_read",true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){
+            if(mode.equals("native_ecu_info")){status.setText("ECU information shortcut is not supported for VCX Nano yet");return;}
             launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode,true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){
             boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);
@@ -249,7 +251,7 @@ public final class MainActivity extends Activity {
         new Thread(()->runSession(firmware),"tech2-session").start();
     }
     private void runSession(File firmware) {
-        String end="Emulator stopped";
+        String end="Emulator stopped";boolean completed=false;
         com.opensaab.usb.FirmwareGate.Lease firmwareLease=null;
         try {
             firmwareLease=com.opensaab.usb.FirmwareGate.use();
@@ -292,7 +294,8 @@ public final class MainActivity extends Activity {
             }
             reader.join(2000);
             // NativeLcdPump observes final frame publication as well.
-            end=stopping.get()?"Offline menus stopped":"Offline session ended (exit "+child.exitValue()+")";
+            completed=child.exitValue()==0;
+            end=stopping.get()?"Offline menus stopped":completed?"Offline session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
         } catch(Exception e) {
             end="Cannot run firmware: "+e.getMessage();
         } finally {
@@ -300,11 +303,14 @@ public final class MainActivity extends Activity {
             java.lang.Process child=process;
             if(child!=null && child.isAlive()) child.destroyForcibly();
             process=null;
-            health.ended();
+            if(stopping.get()||completed)health.expectedStop();else health.ended();
             if(firmwareLease!=null)firmwareLease.close();
             final String message=end;
-            ui.post(()->{running=false;start.setText("Connect and start");start.setEnabled(true);status.setText(message);append(message);});
+            ui.post(()->finishSession(message));
         }
+    }
+    private void finishSession(String message){
+        running=false;lcdPump.clear();start.setText("Connect and start");start.setEnabled(true);status.setText(message);append(message);updateWorkspace();
     }
     private void readLogs(java.lang.Process child) {
         try(BufferedReader in=new BufferedReader(new InputStreamReader(child.getInputStream()));
@@ -315,18 +321,18 @@ public final class MainActivity extends Activity {
                 if(saved<2*1024*1024) { byte[] bytes=(line+"\n").getBytes(StandardCharsets.UTF_8);output.write(bytes);saved+=bytes.length; }
                 if(startup!=null && line.startsWith("STARTUP_READY:")) {
                     startup.ready(line.substring("STARTUP_READY:".length()));
-                    ui.post(()->{status.setText("Ready · CANdi starts when needed · offline test");lcd.invalidate();});
+                    ui.post(()->{if(process==child&&running&&!stopping.get()){status.setText("Ready · CANdi starts when needed · offline test");lcd.invalidate();}});
                 }
-                if(line.startsWith("CANDI_STARTING:"))ui.post(()->status.setText("Starting CANdi…"));
+                if(line.startsWith("CANDI_STARTING:"))ui.post(()->{if(process==child&&running&&!stopping.get())status.setText("Starting CANdi…");});
                 if(line.startsWith("CANDI_INITIALIZED:")) {
                     final boolean failed=line.contains("\"status\":\"failed\"");
-                    ui.post(()->status.setText(failed?"CANdi initialization failed":"Preparing CANdi firmware…"));
+                    ui.post(()->{if(process==child&&running&&!stopping.get())status.setText(failed?"CANdi initialization failed":"Preparing CANdi firmware…");});
                 }
-                if(line.startsWith("CANDI_GUEST_INITIALIZED:"))ui.post(()->status.setText("CANdi firmware initialized · no adapter connected"));
+                if(line.startsWith("CANDI_GUEST_INITIALIZED:"))ui.post(()->{if(process==child&&running&&!stopping.get())status.setText("CANdi firmware initialized · no adapter connected");});
                 final String text=line;
                 // Avoid thousands of pending UI callbacks from boot diagnostics.
                 if(text.startsWith("LCD:") || text.startsWith("KEYPAD:") || text.startsWith("SESSION:") || text.contains("ERROR") || text.contains("CRASH") || text.contains("| CANDI]")) {
-                    ui.post(()->{append(text);if(text.startsWith("LCD:") && !stopping.get())status.setText("Emulation mode • Offline • No vehicle connection");});
+                    ui.post(()->{append(text);if(text.startsWith("LCD:") && process==child && running && !stopping.get())status.setText("Emulation mode • Offline • No vehicle connection");});
                 }
             }
         } catch(IOException e) { ui.post(()->append("Console closed: "+e.getMessage())); }

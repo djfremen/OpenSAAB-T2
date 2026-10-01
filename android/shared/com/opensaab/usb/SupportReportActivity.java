@@ -9,12 +9,13 @@ import java.io.File;
 import org.json.JSONObject;
 
 /** User reviews a frozen report before uploading or exporting it. */
-public final class SupportReportActivity extends Activity {
+public final class SupportReportActivity extends androidx.fragment.app.FragmentActivity {
     private Button prepare;private EditText description,contact;private Spinner testContext;private CheckBox allowContact;
     private static final int SAVE_REPORT = 41;
     private File pendingExport;
-    private AlertDialog sending;
-    public void onCreate(Bundle b){super.onCreate(b);if(b!=null){String name=b.getString("export_report");if(name!=null && name.matches("android_support_[a-f0-9-]+\\.zip"))pendingExport=new File(new File(getFilesDir(),"support-reports"),name);}ScrollView scroll=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(24,24,24,24);scroll.addView(root);root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(24,i.getSystemWindowInsetTop()+24,24,i.getSystemWindowInsetBottom()+24);return i;});
+    private ReportReviewModel review;
+    private Button restoreReview;private TextView reportNotice;
+    public void onCreate(Bundle b){super.onCreate(b);review=new androidx.lifecycle.ViewModelProvider(this).get(ReportReviewModel.class);review.initialize(b==null?null:b.getString("review_id"),b==null?null:b.getString("review_hash"),b!=null&&b.getBoolean("review_open",false));if(b!=null){String name=b.getString("export_report");if(name!=null && name.matches("android_support_[a-f0-9-]+\\.zip"))pendingExport=new File(new File(getFilesDir(),"support-reports"),name);}ScrollView scroll=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(24,24,24,24);scroll.addView(root);root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(24,i.getSystemWindowInsetTop()+24,24,i.getSystemWindowInsetBottom()+24);return i;});
         TextView title=new TextView(this);title.setText("Report a problem");title.setTextSize(24);root.addView(title);
         TextView info=new TextView(this);info.setText("Tell us what happened and what you expected. We’ll prepare app/device details, connection stages and failure reasons, recent adapter event counts, memory/storage information and available error information. New firmware sessions also record a small set of CPU, memory and display-file timing samples to help investigate slowness. Review the report, then send it privately to OpenSAAB over the internet. No account or email app is needed. Reports are stored in our Cloudflare storage and available to the project administrator, not posted to GitHub. Reports stay until an administrator deletes them. Your description is included; remove anything private you do not want to send. You can also copy or save a report without sending it.\n\nRaw traffic, VIN, security data and screenshots are excluded. Please avoid entering private codes in your description.\n\nThis does not upload anything automatically.");root.addView(info);
         try { JSONObject receipt=new JSONObject(new String(java.nio.file.Files.readAllBytes(new File(getFilesDir(),"last-support-upload.json").toPath()),java.nio.charset.StandardCharsets.UTF_8));
@@ -26,7 +27,7 @@ public final class SupportReportActivity extends Activity {
         contact=new EditText(this);contact.setHint("Optional email or forum handle for follow-up");contact.setSingleLine(true);contact.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(160)});root.addView(contact);
         allowContact=new CheckBox(this);allowContact.setText("Include my contact detail privately and allow OpenSAAB to contact me about this report");root.addView(allowContact);
         if(b!=null){description.setText(b.getString("report_description",""));contact.setText(b.getString("report_contact",""));allowContact.setChecked(b.getBoolean("report_allow_contact",false));testContext.setSelection(Math.max(0,Math.min(3,b.getInt("report_context",0))));}
-        prepare=new Button(this);prepare.setText("Prepare report");prepare.setOnClickListener(v->prepare());root.addView(prepare);Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->finish());root.addView(back);setContentView(scroll);
+        prepare=new Button(this);prepare.setText("Prepare report");prepare.setOnClickListener(v->prepare());root.addView(prepare);restoreReview=new Button(this);restoreReview.setText("Review saved report");restoreReview.setOnClickListener(v->review.openReview());root.addView(restoreReview);reportNotice=new TextView(this);reportNotice.setTextIsSelectable(true);root.addView(reportNotice);Button back=new Button(this);back.setText("Back");back.setOnClickListener(v->finish());root.addView(back);setContentView(scroll);review.changes.observe(this,ignored->renderReportState());
     }
     static String reportDescription(String description,int context,String contact,boolean consent){
         String[] labels={"Not specified","In a vehicle","On a bench","Without an adapter"};
@@ -40,55 +41,20 @@ public final class SupportReportActivity extends Activity {
         }
         return result;
     }
-    private void prepare(){((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(description.getWindowToken(),0);description.clearFocus();prepare.setEnabled(false);String text=reportDescription(description.getText().toString(),testContext.getSelectedItemPosition(),contact.getText().toString(),allowContact.isChecked());new Thread(()->{try{JSONObject report=SupportReports.collect(this,text);File file=SupportReports.save(this,report);String formatted=report.toString(2);runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);reviewReport(file,formatted);});}catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;prepare.setEnabled(true);new AlertDialog.Builder(this).setMessage("Could not prepare the report. Please check free space and try again.").setPositiveButton("OK",null).show();});}},"support-report").start();}
-    private void reviewReport(File file,String formatted){
-        // Give the report the remaining space, not an unbounded desired height.
-        // Framework AlertDialog button stacking can otherwise clip actions on phones.
-        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
-        int pad=(int)(16*getResources().getDisplayMetrics().density);content.setPadding(pad,pad,pad,pad);
-        TextView title=new TextView(this);title.setText("Review support report");title.setTextSize(22);content.addView(title);
-        TextView preview=new TextView(this);preview.setText(formatted);preview.setTextIsSelectable(true);
-        ScrollView scroll=new ScrollView(this);scroll.addView(preview);
-        content.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        AlertDialog dialog=new AlertDialog.Builder(this).setView(content).create();
-        Button send=new Button(this);send.setText("Send to OpenSAAB");content.addView(send);
-        Button options=new Button(this);options.setText("Other options");content.addView(options);
-        Button keep=new Button(this);keep.setText("Keep private");content.addView(keep);
-        send.setOnClickListener(v->{dialog.dismiss();sendReport(file,formatted);});
-        options.setOnClickListener(v->{dialog.dismiss();exportOptions(file,formatted);});
-        keep.setOnClickListener(v->dialog.dismiss());
-        dialog.show();
-        android.graphics.Rect area=new android.graphics.Rect();getWindow().getDecorView().getWindowVisibleDisplayFrame(area);
-        dialog.getWindow().setLayout((int)(area.width()*0.92),(int)(area.height()*0.90));
+    private void prepare(){
+        ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(description.getWindowToken(),0);description.clearFocus();
+        review.prepare(reportDescription(description.getText().toString(),testContext.getSelectedItemPosition(),contact.getText().toString(),allowContact.isChecked()));
     }
-    private void sendReport(File file,String formatted){
-        sending=new AlertDialog.Builder(this).setTitle("Sending private report")
-            .setMessage("Sending to OpenSAAB… Your local copy will be kept.")
-            .setCancelable(false).create();sending.show();
-        new Thread(()->{
-            String id=null;String error=null;
-            try{
-                id=SupportUpload.send(formatted);
-                try{FirmwareStore.writeJson(new File(getFilesDir(),"last-support-upload.json"),new JSONObject()
-                    .put("report_id",id).put("submitted_utc",java.time.Instant.now().toString()));}catch(Exception ignored){}
-            }catch(java.net.UnknownHostException|java.net.SocketTimeoutException e){error="Could not reach OpenSAAB. Check your internet connection and try again. Your report is kept on this device.";}
-            catch(java.io.IOException e){error=e.getMessage();}
-            catch(Exception e){error="Could not send the report. Your local copy is kept; please try again.";}
-            final String number=id,problem=error;
-            runOnUiThread(()->{
-                if(sending!=null){sending.dismiss();sending=null;}
-                if(isFinishing()||isDestroyed())return;
-                if(number!=null){
-                    TextView text=new TextView(this);text.setText("Stored privately by OpenSAAB.\n\nReport number: "+number);text.setTextIsSelectable(true);text.setPadding(24,16,24,16);
-                    new AlertDialog.Builder(this).setTitle("Report sent").setView(text).setPositiveButton("Done",null)
-                        .setNeutralButton("Copy number",(d,w)->((ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("OpenSAAB report number",number))).show();
-                }else new AlertDialog.Builder(this).setTitle("Report not confirmed").setMessage(problem)
-                    .setPositiveButton("Retry",(d,w)->sendReport(file,formatted)).setNeutralButton("Other options",(d,w)->exportOptions(file,formatted)).setNegativeButton("Keep private",null).show();
-            });
-        },"support-upload").start();
+    private void renderReportState(){
+        if(prepare==null||isFinishing()||isDestroyed())return;
+        prepare.setEnabled(!review.busy);restoreReview.setEnabled(review.artifact!=null&&!review.busy);reportNotice.setText(review.notice);
+        if(getSupportFragmentManager().isStateSaved())return;
+        androidx.fragment.app.Fragment current=getSupportFragmentManager().findFragmentByTag(ReportReviewDialog.TAG);
+        if(review.reviewOpen&&review.artifact!=null&&current==null)new ReportReviewDialog().showNow(getSupportFragmentManager(),ReportReviewDialog.TAG);
+        else if(!review.reviewOpen&&current instanceof ReportReviewDialog)((ReportReviewDialog)current).dismiss();
     }
-    @Override protected void onDestroy(){if(sending!=null){sending.dismiss();sending=null;}super.onDestroy();}
-    private void exportOptions(File file,String formatted){
+    @Override protected void onPostResume(){super.onPostResume();renderReportState();}
+    void exportOptions(File file,String formatted){
         new AlertDialog.Builder(this).setTitle("Export support report")
             .setItems(new String[]{"Copy report text", "Save ZIP to a file", "Share / email"},(dialog,which)->{
                 if(which==0){
@@ -105,6 +71,8 @@ public final class SupportReportActivity extends Activity {
     }
     @Override protected void onSaveInstanceState(Bundle state){
         if(pendingExport!=null)state.putString("export_report",pendingExport.getName());
+        if(review.artifact!=null){state.putString("review_id",review.artifact.id);state.putString("review_hash",review.artifact.hash);state.putBoolean("review_open",review.reviewOpen);}
+        // Affirmative upload consent is ViewModel-only; never save it in this Bundle.
         state.putString("report_description",description.getText().toString());state.putString("report_contact",contact.getText().toString());state.putBoolean("report_allow_contact",allowContact.isChecked());state.putInt("report_context",testContext.getSelectedItemPosition());
         super.onSaveInstanceState(state);
     }

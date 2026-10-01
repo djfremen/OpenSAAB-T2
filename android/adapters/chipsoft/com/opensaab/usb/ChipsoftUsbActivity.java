@@ -96,7 +96,7 @@ public final class ChipsoftUsbActivity extends Activity {
             dtcReport=new DtcReportView(this,"chipsoft",()->nativeDirectory);root.addView(dtcReport);
             nativeLcd=new ImageView(this);
             health=new EmulatorHealthMonitor(this,this::stop);
-            lcdPump=new NativeLcdPump(frame->{health.frame();nativeLcd.setImageBitmap(frame);if(controls!=null)controls.showFirstUseGuide();});
+            lcdPump=new NativeLcdPump(frame->{if(frame!=null){if(!running.get()||cancelled)return;health.frame();if(controls!=null)controls.showFirstUseGuide();}if(frame==null)nativeLcd.setImageDrawable(null);else nativeLcd.setImageBitmap(frame);});
             lcdHandler.postDelayed(new Runnable(){public void run(){if(securityAccess!=null)securityAccess.refresh();if(menuShortcut!=null)menuShortcut.refresh();if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);updateWorkspace();if(!isFinishing())lcdHandler.postDelayed(this,(securityAccess!=null&&securityAccess.navigating())||(menuShortcut!=null&&menuShortcut.active())?100:1000);}},1000);
         }
         if(dtcRead){
@@ -400,8 +400,13 @@ public final class ChipsoftUsbActivity extends Activity {
                 try{synchronized(identityLock){if(!cancelled&&generation==vehicleGeneration){VehicleSession.save(new File(run,VehicleSession.FILE),identified);VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),identified);}}}
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
-            if(nativeFirmware&&!vinCheck&&health!=null)health.ended(TransportFailure.from(run));
+            if(nativeFirmware&&!vinCheck&&health!=null){
+                if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
+            }
             running.set(false);
+            final String endedMessage=cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
+            if(lcdPump!=null)lcdPump.clearDirectory(run);
+            runOnUiThread(()->{if(nativeFirmware&&!vinCheck&&!isDestroyed())finishNativePresentation(run,endedMessage);});
             runOnUiThread(()->{if(!isDestroyed()&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");});
             if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
             if(dtcRead && quit && clean && !cancelled && generation==vehicleGeneration)runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed() && continueDiagnostics!=null)continueDiagnostics.setEnabled(true);});
@@ -498,6 +503,12 @@ public final class ChipsoftUsbActivity extends Activity {
             }catch(Exception e){log("Key input failed: "+e.getMessage());}
             finally{keyPending.set(false);}
         });}catch(java.util.concurrent.RejectedExecutionException stopped){keyPending.set(false);}
+    }
+    void finishNativePresentation(File ended,String reason){
+        if(nativeDirectory!=ended)return;
+        if(lcdPump!=null)lcdPump.clearDirectory(ended);
+        if(nativeLcd!=null)nativeLcd.setImageDrawable(null);
+        status.setText(reason);showVehicle(true);updateWorkspace();
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
     void stop(){if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}

@@ -427,7 +427,8 @@ public class NanoProbeActivity extends Activity {
             if(!cleaned && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             if(requestedQuit && cleaned && resultPublished)progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             else if(!cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();}
-            closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null)health.ended();running.set(false);
+            closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null){if(cancelled||requestedQuit&&cleaned)health.expectedStop();else health.ended();}running.set(false);
+            runOnUiThread(()->{if(activeSessionId==sessionId)clearNativePresentation();});
             runOnUiThread(()->{if(retry!=null && !isFinishing())retry.setEnabled(true);});
         }
     }
@@ -444,9 +445,10 @@ public class NanoProbeActivity extends Activity {
         }catch(IOException e){log("Key failed: "+e.getMessage());}
     }
     DtcReportView dtcReport;
+    void clearNativePresentation(){if(nativeLcd!=null)nativeLcd.setImageDrawable(null);}
     void updateNativeLcd() {
         if(ignitionStatus!=null)ignitionStatus.refresh(nativeDirectory,running.get() && !cancelled);
-        if(nativeLcd==null || nativeDirectory==null)return;
+        if(nativeLcd==null || nativeDirectory==null || !running.get() || cancelled)return;
         // Show actual saved guest VRAM, never reconstruct a diagnostic result.
         File[] files=nativeDirectory.listFiles((d,n)->n.endsWith(".ppm"));if(files==null || files.length==0)return;
         File latest=new File(nativeDirectory,"live.ppm");if(!latest.isFile()){latest=files[0];for(File f:files)if(f.lastModified()>latest.lastModified())latest=f;}
