@@ -47,9 +47,12 @@ wire them into the ordinary offline/report workflow. Both native engines emit
 facts remain unfinished platform migrations; this is not a uniform release.
 
 Candidate Android version is private debug preview.37 (100037), based on today's
-dirty preview.36 worktree with these additions. The exact APK and source hashes,
+dirty preview.36 worktree with these additions. The exact APK and workspace source hashes,
 checks and remaining gates are in `OFFLINE_REPORT_EVIDENCE_2026-10-02.json`.
 No signed public download or physical handset has been updated by this pass.
+Source hashes describe the concurrent dirty workspace at receipt time; they do
+not substitute for a clean coupled rebuild before distribution. The native hash
+observed by the installed run matches the executable inside the tested APK.
 
 Three shared Rust tests cover reason classification, privacy and first/last
 retention with a mid-session extremum. Three native resource tests and the native
@@ -67,7 +70,8 @@ regression suites pass without a vehicle connection or live upload.
 The exact reports collected on Android validate locally against Android,
 canonical desktop and an iOS-compatible service overlay. The privacy corpus
 rejects raw reason/screens/payloads, malformed hashes and invalid flags/types.
-The overlay preserves existing iOS support; replacing production with the older
+All thirteen existing iOS service compatibility tests also pass against the
+additive overlay. The overlay preserves existing iOS support; replacing production with the older
 Android-only validator would regress it. Deployment is not performed here.
 
 ## Remaining release gates

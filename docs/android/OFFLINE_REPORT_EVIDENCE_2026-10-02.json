@@ -12,7 +12,7 @@
     "engine_sha256": "f9d651786e884e0806240a94d49001f9ff929bb289df7c839dfbd2f12e60ab7e",
     "base_revision": "7d8572f3ec0994236860b9c164e6f784558638e8",
     "source_dirty": true,
-    "source_sha256": {
+    "workspace_source_sha256_at_receipt": {
       "Cargo.toml": "0badee2af264fdd458bc2cf1f358db0e4ebdb9514231cb3ee64a0290dd86f041",
       "Cargo.lock": "834e1ce59d304a4be89e89f97aef5efc41fcbcb7a82be2da57dbda335f5eae77",
       "src/main.rs": "26e4f712292341484a3d992c7d447157f412b706c31dc5831aa9edab4de57e60",
@@ -28,7 +28,8 @@
       "android/tests/OfflineSessionRunInstrumentedTest.java": "e47e6dd9f0e468d407ac122694b1e1eb35614406f22eb32173ba62a956caa2cd",
       "service/support_reports_api.py": "24276dd4328a0e7048286f46ca23f454b69771de0026bc00785a94d3b0e1fc9a",
       "service/tests/test_offline_evidence.py": "d228ccefdda9e45bc4e546500973f30935534a1b07c0ce4f225855946640b2a9"
-    }
+    },
+    "provenance_limit": "APK fingerprint and installed native fingerprint are confirmed; source hashes record the concurrent dirty workspace at receipt time. A clean coupled rebuild is required before release."
   },
   "shared": {
     "base_revision": "c85a01375a07d566decd437a49a120f27b191e72",
@@ -48,7 +49,9 @@
     "android_reporting_regressions": "passed including frozen review, receipts, rotation, health, LCD, session end",
     "actual_packaged_offline_run": "passed short frame/input/explicit Stop; no adapter, no upload",
     "exact_android_collected_bodies_against_three_local_validators": "passed",
-    "arm32_compile_check": "passed, no APK/device qualification"
+    "arm32_compile_check": "passed, no APK/device qualification",
+    "ios_overlay_existing_compatibility_tests": 13,
+    "packaged_native_fingerprint_matches_installed_run": "passed"
   },
   "observed_run": {
     "host_reason": "user_stop",
@@ -67,5 +70,9 @@
     "installed_arm32",
     "desktop_and_ios_collector_forwarding"
   ],
-  "privacy": "No real submission contents, receipt IDs, raw logs, contact, VIN, screenshots, bus payloads or firmware bytes in this receipt."
+  "privacy": "No real submission contents, receipt IDs, raw logs, contact, VIN, screenshots, bus payloads or firmware bytes in this receipt.",
+  "implementation_commits": {
+    "android": "09ca979",
+    "shared": "237e57d"
+  }
 }
