@@ -27,10 +27,12 @@ public final class PerformanceReport {
     }
     static JSONObject sanitize(JSONObject raw)throws JSONException {
         if(raw.optInt("performance_schema",0)!=1)return new JSONObject().put("unavailable",true);
-        JSONObject safe=new JSONObject();numbers(raw,safe,"performance_schema","sample_interval_ms","sample_count","first_frame_observed_ms");
+        JSONObject safe=new JSONObject();numbers(raw,safe,"performance_schema","sample_interval_ms","sample_count","first_frame_observed_ms","retained_sample_count","max_frame_age_ms","min_ram_available_kib");
         if(raw.opt("complete") instanceof Boolean)safe.put("complete",raw.getBoolean("complete"));
+        if(raw.opt("samples_truncated") instanceof Boolean)safe.put("samples_truncated",raw.getBoolean("samples_truncated"));
         JSONArray source=raw.optJSONArray("samples"),samples=new JSONArray();
-        if(source!=null)for(int i=Math.max(0,source.length()-12);i<source.length();i++){
+        if(source!=null)for(int i=0;i<source.length();i++){
+            if(source.length()>12&&i>=2&&i<source.length()-10)continue;
             JSONObject value=source.optJSONObject(i);if(value==null)continue;JSONObject sample=new JSONObject();
             numbers(value,sample,"elapsed_ms","cpu_ms","rss_kib","peak_rss_kib","minor_faults","major_faults","ram_total_kib","ram_available_kib","swap_free_kib","frame_age_ms");
             if(sample.has("elapsed_ms"))samples.put(sample);

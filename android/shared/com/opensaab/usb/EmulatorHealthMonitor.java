@@ -46,7 +46,7 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
             .put("input_wait_ms",state.input<0?0:now-state.input).put("ui_delay_ms",now-state.ui)
             .put("orientation_start",orientationStart).put("orientation_end",activity.getResources().getConfiguration().orientation)
             .put("pause_count",pauses).put("resume_count",resumes);
-            if(directory!=null&&directory.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))event.put("session_id",directory.getName());
+            if(!OfflineSessionEvidence.id(directory).isEmpty())event.put("session_id",OfflineSessionEvidence.id(directory));
             FirmwareStore.writeJson(new File(activity.getFilesDir(),"last-emulator-health.json"),event);
         }catch(Exception ignored){}
         ui.post(()->{synchronized(this){if(closed||!foreground||epoch!=generation||activity.isFinishing()||activity.isDestroyed())return;}

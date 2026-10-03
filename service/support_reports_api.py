@@ -37,10 +37,72 @@ FIELDS.update('security_status auth_status freshness observed_utc status_utc'.sp
 DIAGNOSTIC_EVENTS = set('START EXPECTED_STOP UNEXPECTED_EXIT PAUSED RESUMED SECURITY_COLLECTION_REQUESTED SECURITY_PROCESS_REQUESTED SECURITY_IMPORTED RESTART_REQUESTED'.split())
 FAILURE_CATEGORIES = set('unclassified adapter_firmware_not_validated native_mode_mismatch usb_layout_not_validated usb_open_denied usb_interface_claim_failed usb_startup_drain_failed local_bridge_auth_failed usb_write_incomplete usb_read_detached local_bridge_disconnected command_policy_rejected firmware_missing adapter_status_error adapter_deadline adapter_reopen_required session_time_limit adapter_cleanup_incomplete adapter_startup_failed'.split())
 
+# Bounded offline-emulation evidence v1; labels only, never source reasons or screens.
+FIELDS.update("""emulation_evidence emulation_context schema candi attempted completed cycles
+serial_rx_bytes serial_rx_breaks serial_tx_bytes adapter_tx_confirmations native_uart external_tx
+access address width profile engine_sha256 firmware_sha256 eprom.bin opsys.dwn candi.bin card.bin instruction_limit
+deadline_ms session_end guest_crash input_count frame_count last_input_elapsed_ms last_frame_elapsed_ms
+forced_stop submitter_notes_provided retained_sample_count samples_truncated max_frame_age_ms min_ram_available_kib""".split())
+STOP_CODES = {'output_failure','adapter_failure','candi_stopped','instruction_budget','operator_or_deadline','operator_stop','guest_bootstrap_failure','guest_cpu_fault','link_unavailable','completed','unknown'}
+SCREEN_STAGES = {'link_unavailable','firmware_missing','vehicle_link_wait','main_menu','model_year','dtc_menu','diagnostics_menu','other_unknown'}
+CANDI_REASONS = {'unsupported_access','cpu_fault','instruction_budget','host_cancelled','none','unknown'}
+CANDI_NUMBERS = {'attempted','completed','cycles','pc','serial_rx_bytes','serial_rx_breaks','serial_tx_bytes','adapter_tx_confirmations','address','width'}
+END_REASONS = {'background_stop','user_stop','startup_failure','host_deadline','forced_stop','process_exit','exited','adapter_stopped','wake_rejected','unsupported_command','app_quit'}
+END_NUMBERS = {'elapsed_ms','input_count','frame_count','last_input_elapsed_ms','last_frame_elapsed_ms'}
+def evidence_object(v, allowed, labels=None, numbers=(), booleans=()):
+    if not isinstance(v, dict) or set(v) - set(allowed):
+        raise ValueError('Unsupported emulation evidence fields')
+    if v.get('unavailable') is True:
+        if set(v) - {'unavailable','schema','session_id'}:
+            raise ValueError('Invalid unavailable evidence')
+    elif 'unavailable' in v:
+        raise ValueError('Invalid unavailable evidence')
+    for key, choices in (labels or {}).items():
+        if key in v and (not isinstance(v[key],str) or v[key] not in choices):
+            raise ValueError('Unsupported emulation evidence label')
+    for key in numbers:
+        if key in v and (type(v[key]) is not int or v[key] < 0):
+            raise ValueError('Invalid emulation evidence number')
+    for key in booleans:
+        if key in v and type(v[key]) is not bool:
+            raise ValueError('Invalid emulation evidence flag')
+
+def validate_emulation(v):
+    for key in ('submitter_notes_provided','samples_truncated','guest_crash'):
+        if key in v and type(v[key]) is not bool:
+            raise ValueError('Invalid report flag')
+    if 'emulation_evidence' in v:
+        e=v['emulation_evidence']
+        evidence_object(e, {'schema','reason','stage','candi','unavailable'}, {'reason':STOP_CODES,'stage':SCREEN_STAGES})
+        if not e.get('unavailable') and (type(e.get('schema')) is not int or e['schema'] != 1 or 'reason' not in e or 'stage' not in e):
+            raise ValueError('Invalid emulation evidence schema')
+        if 'candi' in e:
+            evidence_object(e['candi'], CANDI_NUMBERS|{'reason','native_uart','external_tx','access'}, {'reason':CANDI_REASONS,'access':{'read','write'}}, CANDI_NUMBERS, {'native_uart','external_tx'})
+    if 'emulation_context' in v:
+        e=v['emulation_context']
+        evidence_object(e, {'schema','session_id','profile','started_utc','engine_sha256','firmware_sha256','instruction_limit','deadline_ms','unavailable'}, {'profile':{'offline_research'}}, {'schema','instruction_limit','deadline_ms'})
+        if not e.get('unavailable') and (e.get('schema') != 1 or e.get('profile') != 'offline_research'):
+            raise ValueError('Invalid emulation context schema')
+        if 'engine_sha256' in e and (not isinstance(e['engine_sha256'],str) or not re.fullmatch('[a-f0-9]{64}',e['engine_sha256'])):
+            raise ValueError('Invalid executable fingerprint')
+        if 'firmware_sha256' in e:
+            hashes=e['firmware_sha256']
+            if not isinstance(hashes,dict) or set(hashes)-{'eprom.bin','opsys.dwn','candi.bin','card.bin'} or any(not isinstance(h,str) or not re.fullmatch('[a-f0-9]{64}',h) for h in hashes.values()):
+                raise ValueError('Invalid firmware fingerprints')
+        if 'started_utc' in e:
+            try:
+                if datetime.datetime.fromisoformat(e['started_utc'].replace('Z','+00:00')).tzinfo is None: raise ValueError()
+            except (ValueError,TypeError,AttributeError): raise ValueError('Invalid emulation timestamp')
+    if 'session_end' in v:
+        e=v['session_end']
+        evidence_object(e, END_NUMBERS|{'reason','exit_code','forced_stop','unavailable'}, {'reason':END_REASONS}, END_NUMBERS, {'forced_stop'})
+        if 'exit_code' in e and type(e['exit_code']) is not int: raise ValueError('Invalid process exit code')
+
 def validate(value, depth=0):
     if depth > 8:
         raise ValueError('Report is too deeply nested')
     if isinstance(value, dict):
+        validate_emulation(value)
         if len(value) > 48 or any(k not in FIELDS for k in value):
             raise ValueError('Unsupported report fields')
         if 'security_status' in value:
@@ -70,7 +132,7 @@ def validate(value, depth=0):
             if key in value and (not isinstance(value[key], str) or value[key] not in allowed):
                 raise ValueError('Unsupported diagnostic label')
         if 'session_id' in value and (not isinstance(value['session_id'], str) or
-                not re.fullmatch(r'(?:chipsoft|native)-[a-f0-9-]{36}', value['session_id'])):
+                not re.fullmatch(r'(?:chipsoft|native|offline)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', value['session_id'])):
             raise ValueError('Unsupported session identifier')
         for key, limit in (('diagnostic_events', 32), ('failure_categories', 16)):
             if key in value and (not isinstance(value[key], list) or len(value[key]) > limit):

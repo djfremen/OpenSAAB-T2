@@ -2,7 +2,6 @@
 //! Opt-in, bounded host resource samples. Never reads guest memory or vehicle data.
 use serde_json::{json, Value};
 use std::{
-    collections::VecDeque,
     fs,
     path::PathBuf,
     sync::mpsc,
@@ -11,6 +10,7 @@ use std::{
 };
 
 const INTERVAL_MS: u64 = 5000;
+#[cfg(test)]
 const MAX_SAMPLES: usize = 12;
 
 pub struct Recorder {
@@ -40,9 +40,8 @@ fn record(path: PathBuf) -> Option<Recorder> {
         .name("host-resources".into())
         .spawn(move || {
             let start = Instant::now();
-            let mut history = VecDeque::new();
+            let mut history = opensaab_session_evidence::PerformanceWindow::default();
             let mut first_frame = None;
-            let mut count = 0u64;
             let mut complete = false;
             loop {
                 let elapsed = start.elapsed().as_millis() as u64;
@@ -58,13 +57,8 @@ fn record(path: PathBuf) -> Option<Recorder> {
                         }
                     }
                 }
-                history.push_back(sample);
-                if history.len() > MAX_SAMPLES {
-                    history.pop_front();
-                }
-                count += 1;
-                let mut report = json!({"performance_schema":1,"sample_interval_ms":INTERVAL_MS,
-                "sample_count":count,"complete":complete,"samples":history});
+                history.push(sample);
+                let mut report = history.report(INTERVAL_MS, complete);
                 if let Some(ms) = first_frame {
                     report["first_frame_observed_ms"] = json!(ms);
                 }

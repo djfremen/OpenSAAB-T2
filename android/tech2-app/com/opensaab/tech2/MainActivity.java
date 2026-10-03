@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
         controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
         controls.setActions(this::showActions);
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
-        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{if(frame!=null){if(!running||stopping.get())return;health.frame();controls.showFirstUseGuide();}lcd.frame=frame;lcd.invalidate();});
+        lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{if(frame!=null){if(!running||stopping.get())return;health.frame();offlineEvidence.frame();controls.showFirstUseGuide();}lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
@@ -230,6 +230,7 @@ public final class MainActivity extends Activity {
         health.input();
         com.opensaab.usb.InteractiveKeyPump pump=keyPump;
         if(pump==null || !pump.offer(command)) status.setText("Key queue full or firmware starting — wait for the menu");
+        else offlineEvidence.input();
     }
     private void append(String line) {
         // Called on the UI thread; bound both the retained and visible console.
@@ -246,13 +247,15 @@ public final class MainActivity extends Activity {
         File firmware=new File(getFilesDir(),"firmware");
         if(getFilesDir().getUsableSpace()<64L*1024*1024) { status.setText("Need 64 MB free for session logs"); return; }
         if(com.opensaab.usb.DemandStartup.enabled(this)){startup=new com.opensaab.usb.StartupMeasurement(this,autoStarted?android.os.SystemClock.elapsedRealtime():launchOrigin);autoStarted=true;}
-        running=true; stopping.set(false); logs.setLength(0);consoleDirty=true;
+        offlineBackgroundStop=null;running=true; stopping.set(false); logs.setLength(0);consoleDirty=true;
         start.setEnabled(false); lcd.frame=null; lcd.invalidate();
         status.setText("Emulation mode • Offline • No vehicle connection");
         new Thread(()->runSession(firmware),"tech2-session").start();
     }
+    private volatile Boolean offlineBackgroundStop;
+    private final com.opensaab.usb.OfflineSessionEvidence offlineEvidence=new com.opensaab.usb.OfflineSessionEvidence();
     private void runSession(File firmware) {
-        String end="Emulator stopped";boolean completed=false;
+        String end="Emulator stopped";boolean completed=false,hostDeadline=false,forced=false,launchFailed=true;Integer exitCode=null;
         com.opensaab.usb.FirmwareGate.Lease firmwareLease=null;
         try {
             firmwareLease=com.opensaab.usb.FirmwareGate.use();
@@ -263,24 +266,26 @@ public final class MainActivity extends Activity {
                 for(int i=0;i<old.length-2;i++) remove(old[i]); }
             session=new File(runs,UUID.randomUUID().toString());
             if(!session.mkdir()) throw new IOException("Cannot create session directory");
+            offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,"libtech2_emu.so"),firmware);
+            if(offlineBackgroundStop!=null)offlineEvidence.requestStop(offlineBackgroundStop);
             List<String> args=new ArrayList<>(Arrays.asList(
                 getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so",
                 "--interactive-headless","--research-harness","--candi-native-link",
                 "--candi-firmware",new File(firmware,"candi.bin").toString(),
                 "--boot",new File(firmware,"eprom.bin").toString(),
                 "--opsys",new File(firmware,"opsys.dwn").toString(),
-                "--max-insns","50000000000","--output-dir",session.toString(),
+                "--max-insns",Long.toString(com.opensaab.usb.OfflineSessionEvidence.INSTRUCTION_LIMIT),"--output-dir",session.toString(),
                 new File(firmware,"card.bin").toString()));
             ProcessBuilder builder=new ProcessBuilder(args).directory(session).redirectErrorStream(true);
             com.opensaab.usb.DemandStartup.configure(this,builder);
             if(startup!=null)startup.session(session);
             builder.environment().put("OPENSAAB_PERFORMANCE_DIR",session.getAbsolutePath());
             java.lang.Process child=builder.start();
-            process=child;
+            process=child;launchFailed=false;
             // The UI cannot be trapped by a blocked native process or lost ADB connection.
             if(stopping.get()) child.destroy();
             Thread reader=new Thread(()->readLogs(child),"tech2-console"); reader.start();
-            long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(30);
+            long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(com.opensaab.usb.OfflineSessionEvidence.DEADLINE_MS);
             File mailbox=new File(session,"interactive-key.txt");
             keyPump=new com.opensaab.usb.InteractiveKeyPump(mailbox,e->ui.post(()->append("Input stopped: "+e)));
             health.begin(session);
@@ -288,21 +293,24 @@ public final class MainActivity extends Activity {
             while(child.isAlive() && !stopping.get() && System.nanoTime()<deadline) {
                 Thread.sleep(50); // Lifecycle only; input and changed-frame delivery are independent.
             }
+            hostDeadline=child.isAlive()&&!stopping.get()&&System.nanoTime()>=deadline;
             keyPump.close();keyPump=null;
             if(child.isAlive()) {
                 publish(mailbox,"stop\n");
-                if(!child.waitFor(2,TimeUnit.SECONDS)) { child.destroyForcibly(); child.waitFor(2,TimeUnit.SECONDS); }
+                if(!child.waitFor(2,TimeUnit.SECONDS)) { forced=true;child.destroyForcibly(); child.waitFor(2,TimeUnit.SECONDS); }
             }
             reader.join(2000);
             // NativeLcdPump observes final frame publication as well.
-            completed=child.exitValue()==0;
+            exitCode=child.exitValue();completed=exitCode==0;
             end=stopping.get()?"Offline menus stopped":completed?"Offline session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
         } catch(Exception e) {
             end="Cannot run firmware: "+e.getMessage();
         } finally {
             com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.close();keyPump=null;
             java.lang.Process child=process;
-            if(child!=null && child.isAlive()) child.destroyForcibly();
+            if(child!=null && child.isAlive()){forced=true;child.destroyForcibly();}
+            if(exitCode==null&&child!=null&&!child.isAlive())exitCode=child.exitValue();
+            offlineEvidence.ended(exitCode,hostDeadline,forced,launchFailed);
             process=null;
             if(stopping.get()||completed)health.expectedStop();else health.ended();
             if(firmwareLease!=null)firmwareLease.close();
@@ -344,7 +352,7 @@ public final class MainActivity extends Activity {
         Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
     }
     private static void remove(File file) { File[] children=file.listFiles(); if(children!=null)for(File child:children)remove(child);file.delete(); }
-    private void stopSession(String reason) { if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
+    private void stopSession(String reason) { if(running&&offlineBackgroundStop==null)offlineBackgroundStop="Stopped in background".equals(reason);offlineEvidence.requestStop("Stopped in background".equals(reason));if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
     @Override protected void onStart() { super.onStart();foreground=true;ui.removeCallbacks(consoleRefresh);ui.post(consoleRefresh);
         ui.removeCallbacks(historyRefresh);ui.post(historyRefresh);
         refreshAdapterLabel();

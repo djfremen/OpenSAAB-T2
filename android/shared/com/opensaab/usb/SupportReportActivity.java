@@ -43,7 +43,7 @@ public final class SupportReportActivity extends androidx.fragment.app.FragmentA
     }
     private void prepare(){
         ((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(description.getWindowToken(),0);description.clearFocus();
-        review.prepare(reportDescription(description.getText().toString(),testContext.getSelectedItemPosition(),contact.getText().toString(),allowContact.isChecked()));
+        review.prepare(reportDescription(description.getText().toString(),testContext.getSelectedItemPosition(),contact.getText().toString(),allowContact.isChecked()),SupportReports.notesProvided(description.getText().toString()));
     }
     private void renderReportState(){
         if(prepare==null||isFinishing()||isDestroyed())return;

@@ -26,7 +26,7 @@ public final class SupportReports {
         try{
             JSONObject j=new JSONObject().put("utc",java.time.Instant.now().toString()).put("kind",crash?"uncaught_java_exception":"handled_error").put("exception_class",error.getClass().getName());
             j.put("failure_category",DiagnosticFailure.classify(error.getMessage()));
-            if(session!=null&&session.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))j.put("session_id",session.getName());
+            if(!OfflineSessionEvidence.id(session).isEmpty())j.put("session_id",OfflineSessionEvidence.id(session));
             JSONArray stack=new JSONArray();StackTraceElement[] frames=error.getStackTrace();for(int i=0;i<Math.min(frames.length,24);i++)stack.put(frames[i].getClassName()+"."+frames[i].getMethodName()+":"+frames[i].getLineNumber());j.put("stack",stack);
             FirmwareStore.writeJson(new File(context.getFilesDir(),crash?"last-app-crash.json":"last-app-error.json"),j);
         }catch(Throwable ignored){} // Error reporting must never replace the original error handler.
@@ -37,9 +37,17 @@ public final class SupportReports {
         File[] offline=new File(files,"sessions").listFiles();if(offline!=null)for(File f:offline)if(f.isDirectory())out.add(f);
         out.sort((a,b)->Long.compare(b.lastModified(),a.lastModified()));return out.subList(0,Math.min(5,out.size()));
     }
-    public static JSONObject collect(Context c,String description)throws Exception{
+    public static boolean notesProvided(String description){
+        String text=description==null?"":description.trim();
+        String prompt="Emulation stopped or appeared unresponsive. What I was doing:";
+        if(text.startsWith(prompt))text=text.substring(prompt.length()).trim();
+        return !text.isEmpty();
+    }
+    public static JSONObject collect(Context c,String description)throws Exception{return collect(c,description,notesProvided(description));}
+    public static JSONObject collect(Context c,String description,boolean notes)throws Exception{
         JSONObject report=new JSONObject().put("format",1).put("created_utc",java.time.Instant.now().toString()).put("description",description.length()>2000?description.substring(0,2000):description);
         android.content.pm.PackageInfo p=c.getPackageManager().getPackageInfo(c.getPackageName(),0);
+        report.put("submitter_notes_provided",notes);
         report.put("build_profile",AppBuildProfile.name(c)).put("apk_abi",AppBuildProfile.abi(c));
         report.put("app",c.getPackageName()).put("version",p.versionName==null?"development":p.versionName).put("version_code",p.versionCode).put("android_api",android.os.Build.VERSION.SDK_INT).put("device_model",android.os.Build.MODEL).put("abis",new JSONArray(Arrays.asList(android.os.Build.SUPPORTED_ABIS)));
         report.put("device_resources",PerformanceReport.device(c));
@@ -50,7 +58,7 @@ public final class SupportReports {
             if(Arrays.asList("ui_unresponsive","emulator_heartbeat_missing","input_without_display_response","unexpected_emulator_exit","vehicle_network_failure").contains(reason)){
                 safe.put("reason",reason).put("utc",java.time.Instant.parse(raw.getString("utc")).toString());
                 for(String key:new String[]{"elapsed_ms","heartbeat_age_ms","input_wait_ms","ui_delay_ms","orientation_start","orientation_end","pause_count","resume_count"})if(raw.opt(key) instanceof Number)safe.put(key,raw.getLong(key));
-                String sessionId=raw.optString("session_id");if(sessionId.matches("(?:chipsoft|native)-[a-f0-9-]{36}"))safe.put("session_id",sessionId);
+                String sessionId=raw.optString("session_id");if(sessionId.matches("(?:chipsoft|native|offline)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))safe.put("session_id",sessionId);
                 report.put("emulator_health",safe);
             }
         }catch(Exception ignored){}
@@ -65,10 +73,12 @@ public final class SupportReports {
                 for(String key:new String[]{"exit_code","instructions","pc","host_cancelled_operations"})
                     if(raw.opt(key) instanceof Number)safe.put(key,raw.opt(key));
                 String status=raw.optString("status");
-                if(Arrays.asList("complete","incomplete","error","failed","success","cancelled").contains(status))safe.put("status",status);
+                if(Arrays.asList("complete","incomplete","error","failed","success","cancelled","guest_failure","output_failure").contains(status))safe.put("status",status);
                 session.put("emulator_outcome",safe);
+                session.put("emulation_evidence",raw.optJSONObject("emulation_evidence")==null?new JSONObject().put("unavailable",true):OfflineSessionEvidence.nativeEvidence(raw.getJSONObject("emulation_evidence")));
             }catch(Exception unavailable){}
-            if(dir.getName().matches("(?:chipsoft|native)-[a-f0-9-]{36}"))session.put("session_id",dir.getName());
+            if(!OfflineSessionEvidence.id(dir).isEmpty())session.put("session_id",OfflineSessionEvidence.id(dir));
+            OfflineSessionEvidence.collect(dir,session);
             session.put("diagnostic_events",SessionDiagnostics.read(dir));
             try{File info=new File(dir,"adapter-identity.json");if(info.length()<=512){String version=FirmwareStore.json(info).optString("firmware_version");if(version.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){1,3}(?:[-+][A-Za-z0-9._-]{1,20})?"))session.put("firmware_version",version);}}catch(Exception ignored){}
             session.put("native_performance",PerformanceReport.session(dir));

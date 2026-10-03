@@ -41,11 +41,12 @@ public final class ReportReviewModel extends AndroidViewModel {
     public void openReview(){if(artifact==null||busy)return;consent=false;reviewOpen=true;remember();changed();}
     public void closeReview(){consent=false;reviewOpen=false;remember();changed();}
     private void remember(){if(artifact!=null)try{ReportArtifacts.remember(getApplication(),artifact,reviewOpen);}catch(Exception failed){notice="Could not save review restoration state. Your report file is still kept locally.";}}
-    public void prepare(String description){
+    public void prepare(String description){prepare(description,SupportReports.notesProvided(description));}
+    public void prepare(String description,boolean notes){
         if(busy)return;final ReportArtifacts.Artifact prior=artifact;final String priorReceipt=receipt;busy=true;artifact=null;consent=false;receipt="";reviewOpen=false;notice="Preparing report…";changed();
         worker.execute(()->{
             ReportArtifacts.Artifact next=null;String error=null;
-            try{JSONObject report=SupportReports.collect(getApplication(),description);String json=report.toString(2);
+            try{JSONObject report=SupportReports.collect(getApplication(),description,notes);String json=report.toString(2);
                 java.io.File file=SupportReports.saveText(getApplication(),json);
                 next=ReportArtifacts.read(getApplication(),file.getName(),null);
                 try{ReportArtifacts.remember(getApplication(),next,true);}catch(Exception stateFailure){error="Report saved, but review restoration state could not be saved. Keep a local copy before closing.";}

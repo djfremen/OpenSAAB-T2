@@ -12,6 +12,7 @@ gui = ["dep:minifb"]
 load-test = []
 
 [dependencies]
+opensaab-session-evidence = { path = "../OpenSAAB/shared/session-evidence" }
 m68k = { version = "0.12.1", features = ["serde"] }
 serde_json = "1.0"
 minifb = { version = "0.25", optional = true }

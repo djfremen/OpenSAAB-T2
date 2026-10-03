@@ -1846,6 +1846,10 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
     let report = format!("{{\n  \"candi\": {candi_report},\n  \"status\": {},\n  \"exit_code\": {},\n  \"mode\": {},\n  \"instructions\": {},\n  \"pc\": {},\n  \"reason\": {},\n  \"last_verified\": {},\n  \"boot_image\": {},\n  \"card_image\": {},\n  \"opsys_image\": {},\n  \"host_cancelled_operations\": {}\n}}\n",
         q(outcome.name()), outcome.code(), q(mode), insns, cpu.pc, q(&stop), q(&last_verified),
         q(&boot_path.to_string_lossy()), q(&card_path.to_string_lossy()), q(&opsys_path.to_string_lossy()), bus.host_cancelled_operations);
+    let mut report: serde_json::Value = serde_json::from_str(&report).expect("generated runtime report");
+    report["emulation_evidence"] = opensaab_session_evidence::snapshot(
+        outcome.name(), &stop, &text, report.get("candi"));
+    let report = serde_json::to_string_pretty(&report).expect("serializable runtime report");
     std::fs::write(&report_path, report)
         .map_err(|e| (4, format!("report {}: {e}", report_path.display())))?;
     Ok((outcome.code(), restart))
