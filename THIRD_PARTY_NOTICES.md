@@ -45,3 +45,8 @@ License: https://www.apache.org/licenses/LICENSE-2.0
 AndroidX source: https://android.googlesource.com/platform/frameworks/support/
 Kotlin source: https://github.com/JetBrains/kotlin
 Coroutines source: https://github.com/Kotlin/kotlinx.coroutines
+
+The ARM64 Bluetooth connection worker additionally uses the dependencies and full
+license texts listed in `licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt`. Its shared
+OpenSAAB workflow and translation source are MPL-2.0 and accompany the release
+in the explicitly named Bluetooth matching-source archive.

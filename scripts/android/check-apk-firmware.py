@@ -43,7 +43,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             if name in KOTLIN_RESOURCES:
                 if hashlib.sha256(apk.read(name)).hexdigest()!=KOTLIN_RESOURCES[name]:raise ValueError('Pinned Kotlin resource changed: '+name)
                 continue
-            legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt')}
+            legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt')}
             if name in legal:
                 expected = Path(__file__).resolve().parents[2] / legal[name]
                 if apk.read(name) != expected.read_bytes():

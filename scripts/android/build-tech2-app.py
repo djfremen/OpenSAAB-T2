@@ -114,7 +114,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
         commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
         z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0'},sort_keys=True))
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
-    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
+    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
     z.write(support_manifest, 'assets/system/manifest.json', compress_type=zipfile.ZIP_DEFLATED)
     for name, spec in (support.items() if bundle_support else []):
