@@ -42,6 +42,14 @@ public final class MainActivity extends Activity {
     private ScrollView consoleScroll;
     private LcdView lcd;
     private Button start, offline;
+    private com.opensaab.usb.VlinkerVehicleConnection simulatorConnection;
+    private com.opensaab.usb.VlinkerDevicePicker bluetoothPicker;
+    private com.opensaab.usb.VlinkerVehicleConnection hscanProbe;
+    public android.app.Dialog hscanDialog;
+    private org.json.JSONObject simulatorSnapshot;
+    private TextView connectionStatus;
+    private Button cancelConnection;
+    public android.app.AlertDialog adapterPicker;
     private com.opensaab.usb.AppUpdates.Reminder updateReminder;
     private com.opensaab.usb.SessionWorkspace workspace;
     private com.opensaab.usb.Tech2Controls controls;
@@ -68,7 +76,11 @@ public final class MainActivity extends Activity {
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
         lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{if(frame!=null){if(!running||stopping.get())return;health.frame();offlineEvidence.frame();controls.showFirstUseGuide();}lcd.frame=frame;lcd.invalidate();});
         workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
+        simulatorConnection=new com.opensaab.usb.SimulatorVehicleConnection(this,this::simulatorChanged);
+        connectionStatus=label("",12);connectionStatus.setTag("connection-status");connectionStatus.setVisibility(View.GONE);workspace.addLaunch(connectionStatus);
+        cancelConnection=new Button(this);cancelConnection.setText("Cancel");cancelConnection.setTag("cancel-connection");com.opensaab.usb.SessionStyle.button(cancelConnection,false);cancelConnection.setOnClickListener(v->simulatorConnection.stop());cancelConnection.setVisibility(View.GONE);workspace.addLaunch(cancelConnection);
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
+        start.setTag("connect-start");
         offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
         details.addView(label(com.opensaab.usb.AppUpdates.identity(this),13));
         updateReminder=new com.opensaab.usb.AppUpdates.Reminder(this,()->!running);workspace.addLaunch(updateReminder.view());
@@ -107,6 +119,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,android.content.Intent data) {
         super.onActivityResult(request,result,data);
+        if(request==com.opensaab.usb.VlinkerDevicePicker.PERMISSION_REQUEST+1&&bluetoothPicker!=null)bluetoothPicker.refresh();
         if(request==27 && data!=null){String message=data.getStringExtra("summary");if(message!=null){append(message);status.setText(message);}}
     }
     private TextView label(String text, int size) {
@@ -116,8 +129,40 @@ public final class MainActivity extends Activity {
         if(workspace==null)return;
         if(updateReminder!=null)updateReminder.refresh();
         workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):status.getText()+"\n"+compactVehicle+(compactSecurity.isEmpty()?"":"\n"+compactSecurity));
+        if(!running&&simulatorSnapshot!=null&&simulatorSnapshot.optJSONObject("vehicle")!=null){
+            org.json.JSONObject vehicle=simulatorSnapshot.optJSONObject("vehicle");
+            workspace.summary("Vehicle identified · Adapter connection closed\nVIN: "+vehicle.optString("vin")+"\n"+(vehicle.optString("adapter_label").isEmpty()?simulatorSnapshot.optString("description"):vehicle.optString("adapter_label")+" · "+vehicle.optString("adapter_voltage")));
+        }
         if(start!=null)start.setVisibility(running?View.GONE:View.VISIBLE);
         if(offline!=null)offline.setVisibility(running?View.GONE:View.VISIBLE);
+        if(start!=null&&simulatorConnection!=null)start.setEnabled(!com.opensaab.usb.VlinkerVehicleConnection.active());
+        if(offline!=null&&simulatorConnection!=null)offline.setEnabled(!com.opensaab.usb.VlinkerVehicleConnection.active());
+        if(cancelConnection!=null)cancelConnection.setVisibility(simulatorConnection.busy?View.VISIBLE:View.GONE);
+    }
+    private void simulatorChanged(org.json.JSONObject snapshot){
+        if(!foreground||isDestroyed())return;
+        simulatorSnapshot=snapshot;
+        status.setText(snapshot.optString("message"));
+        org.json.JSONObject vehicle=snapshot.optJSONObject("vehicle");
+        if(vehicle==null){clearSimulatorIdentity();simulatorSnapshot=snapshot;status.setText(snapshot.optString("message"));}
+        connectionStatus.setText(snapshot.optString("message"));connectionStatus.setVisibility(vehicle==null?View.GONE:View.VISIBLE);
+        if(vehicle!=null){
+            String description=snapshot.optString("description");
+            String extra="";for(String field:new String[]{"gearbox","body"})if(!vehicle.optString(field).isEmpty())extra+="\n"+vehicle.optString(field);
+            vehicleSummary.setText("VIN: "+vehicle.optString("vin")+"\n"+description+extra+"\n"+vehicle.optString("adapter_label")+" · "+vehicle.optString("adapter_voltage"));
+            connectionDate.setText("Observed connection · "+vehicle.optString("observed_utc"));
+            com.opensaab.usb.VehicleIdentity last=com.opensaab.usb.VehicleSession.read(new File(getFilesDir(),"last-vehicle.json"));
+            com.opensaab.usb.VehicleHistoryStatus history=new com.opensaab.usb.VehicleHistoryStatus(last,com.opensaab.usb.SecurityAccessStatus.read(new File(getNoBackupFilesDir(),"security-processing-status.properties")),new File(getFilesDir(),"firmware/card.bin"),java.time.Instant.now());
+            authStatus.setText(history.auth);authDate.setText(history.timestamp+"\nSaved emulator data · Vehicle access not verified");
+            vehicleDetails=vehicleSummary.getText()+"\n"+connectionDate.getText()+"\n"+snapshot.optString("message");
+        }
+        updateWorkspace();
+    }
+    private void clearSimulatorIdentity(){
+        simulatorSnapshot=null;if(connectionStatus!=null)connectionStatus.setVisibility(View.GONE);
+        compactVehicle="No vehicle connected · tap for details";compactSecurity="";
+        if(vehicleSummary!=null){vehicleSummary.setText("No current vehicle connection");connectionDate.setText("Last vehicle is saved history");authStatus.setText("auth_status: [N/A]");authDate.setText("Vehicle access not verified");vehicleDetails="No current vehicle connection. Last vehicle is saved history only.";}
+        if(status!=null&&!running)status.setText("Ready — connect an adapter or explore offline");
     }
     public android.app.Dialog showActions(){
         return new com.opensaab.usb.SessionSheet.Menu(this)
@@ -131,8 +176,31 @@ public final class MainActivity extends Activity {
             .add(workspace.expanded()?"Show header":"Expand screen",workspace::toggleExpanded)
             .add("App menu",this::showAppMenu).show("Actions");
     }
+    public android.app.Dialog showHscanProbe(){
+        if(running||simulatorConnection.busy||(hscanProbe!=null&&hscanProbe.busy))return null;
+        LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
+        content.addView(label("ECM-only reads · 500 kbit/s · fresh VIN per probe. Software identifiers are separate from adapter firmware. Codes retain raw status and are not cleared.",13));
+        TextView result=label("No HS-CAN probe started.",13);result.setTag("hscan-result");result.setTypeface(android.graphics.Typeface.MONOSPACE);
+        Button info=new Button(this);info.setText("Read ECM information — HS-CAN");info.setTag("hscan-read-info");com.opensaab.usb.SessionStyle.button(info,true);
+        Button codes=new Button(this);codes.setText("Read engine codes — HS-CAN");codes.setTag("hscan-read-codes");com.opensaab.usb.SessionStyle.button(codes,false);
+        Button cancel=new Button(this);cancel.setText("Stop test");com.opensaab.usb.SessionStyle.button(cancel,false);cancel.setEnabled(false);
+        com.opensaab.usb.VlinkerVehicleConnection.Listener changed=snapshot->{if(!foreground||isDestroyed())return;result.setText(snapshot.optString("message"));boolean busy=hscanProbe!=null&&hscanProbe.busy;info.setEnabled(!busy);codes.setEnabled(!busy);cancel.setEnabled(busy);updateWorkspace();};
+        hscanProbe=new com.opensaab.usb.SimulatorVehicleConnection(this,changed);
+        java.util.function.Consumer<String> read=mode->{
+            if(com.opensaab.usb.VlinkerVehicleConnection.active())return;
+            Runnable begin=()->{hscanProbe.startProbe(mode);info.setEnabled(!hscanProbe.busy);codes.setEnabled(!hscanProbe.busy);cancel.setEnabled(hscanProbe.busy);updateWorkspace();};
+            if(com.opensaab.usb.SimulatorVehicleConnection.available(this))begin.run();
+            else selectVlinker((device,compatibility)->{hscanProbe=com.opensaab.usb.VlinkerVehicleConnection.direct(this,changed,device,compatibility);begin.run();});
+        };
+        info.setOnClickListener(v->read.accept("ecm_info"));codes.setOnClickListener(v->read.accept("ecm_dtc"));cancel.setOnClickListener(v->{if(hscanProbe!=null)hscanProbe.stop();});
+        content.addView(info);content.addView(codes);content.addView(cancel);content.addView(result);
+        Button saved=new Button(this);saved.setText("Saved DTC reports");saved.setTag("hscan-saved-reports");saved.setOnClickListener(v->{if(hscanProbe==null||!hscanProbe.busy)com.opensaab.usb.DtcReportView.showSavedReports(this);});content.addView(saved);
+        com.opensaab.usb.SessionStyle.stack(content);com.opensaab.usb.SessionStyle.button(info,true);
+        hscanDialog=com.opensaab.usb.SessionSheet.show(this,"HS-CAN ECM probe",content);hscanDialog.setOnDismissListener(dialog->{if(hscanProbe!=null)hscanProbe.stop();if(bluetoothPicker!=null)bluetoothPicker.close();});return hscanDialog;
+    }
     private void showAppMenu(){
         com.opensaab.usb.SessionSheet.Menu menu=new com.opensaab.usb.SessionSheet.Menu(this);
+        if(com.opensaab.usb.VlinkerVehicleConnection.available(this))menu.add("HS-CAN ECM probe",this::showHscanProbe);
         if(running)menu.add("Stop emulation",()->stopSession("Stopped by operator"));
         if(com.opensaab.usb.SetupCleanup.available(this))menu.add("Remove installer",()->{if(idleTool())com.opensaab.usb.SetupCleanup.remove(this);});
         menu.add("Run without an adapter",()->{if(idleTool())startSession();});
@@ -146,6 +214,7 @@ public final class MainActivity extends Activity {
             .add("Firmware controls help",controls::showHelp).show("App menu");
     }
     private boolean idleTool(){
+        if((simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy))return false;
         if(!running&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy())return true;
         Toast.makeText(this,"Stop the current session before opening this tool",Toast.LENGTH_LONG).show();return false;
     }
@@ -161,6 +230,7 @@ public final class MainActivity extends Activity {
         start.setText(label);
     }
     private void selectAdapter(String mode,boolean allowEmulation) {
+        if(com.opensaab.usb.VlinkerVehicleConnection.active()){status.setText("Finish the current connection first");return;}
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
         if(!missing.isEmpty()){status.setText("Firmware setup needed: "+missing);startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));return;}
@@ -178,20 +248,36 @@ public final class MainActivity extends Activity {
             String label=match.profile!=null?match.profile.candidateLabel():match.label+" — not supported yet";
             labels.add(label+"\nUSB "+device.getDeviceName());
         }
-        if(devices.size()==1&&com.opensaab.usb.AdapterCatalog.supported(com.opensaab.usb.AdapterCatalog.identify(devices.get(0).getVendorId(),devices.get(0).getProductId()))){
+        boolean localMac=allowEmulation&&com.opensaab.usb.SimulatorVehicleConnection.available(this);
+        boolean bluetooth=com.opensaab.usb.VlinkerVehicleConnection.available(this)&&(allowEmulation||mode.equals("dtc_read")||mode.equals("native_ecu_info"));
+        if(bluetooth){clearSimulatorIdentity();labels.add(0,"Carista EVO / vLinker MC+ · Bluetooth");}
+        if(!bluetooth&&devices.size()==1&&com.opensaab.usb.AdapterCatalog.supported(com.opensaab.usb.AdapterCatalog.identify(devices.get(0).getVendorId(),devices.get(0).getProductId()))){
             connectAdapter(devices.get(0),mode,!allowEmulation);return;
         }
         android.app.AlertDialog.Builder picker=new android.app.AlertDialog.Builder(this).setTitle("Select adapter");
-        if(devices.isEmpty()){
+        if(devices.isEmpty()&&!bluetooth){
             new com.opensaab.usb.ConnectionAttempt(this,com.opensaab.usb.ConnectionAttempt.Adapter.SELECTION)
                 .finish(com.opensaab.usb.ConnectionAttempt.Outcome.FAILED,com.opensaab.usb.ConnectionAttempt.Reason.NO_ADAPTER);
             picker.setMessage((allowEmulation?"No supported adapter detected.":com.opensaab.usb.DiagnosticPrerequisites.OFFLINE)+" Connect a USB adapter, then tap Refresh. If this keeps happening, use App menu → Report issue.");
         }
-        else picker.setItems(labels.toArray(new String[0]),(dialog,index)->connectAdapter(devices.get(index),mode,!allowEmulation));
+        else picker.setItems(labels.toArray(new String[0]),(dialog,index)->{
+            if(bluetooth&&index==0){
+                if(!allowEmulation){showHscanProbe();return;}
+                Runnable begin=()->{clearSimulatorIdentity();status.setText("Opening selected adapter · Reading a fresh vehicle VIN…");simulatorConnection.start();updateWorkspace();};
+                if(localMac)begin.run();else selectVlinker((device,compatibility)->{simulatorConnection=com.opensaab.usb.VlinkerVehicleConnection.direct(this,this::simulatorChanged,device,compatibility);begin.run();});
+            }else connectAdapter(devices.get(index-(bluetooth?1:0)),mode,!allowEmulation);
+        });
         picker.setPositiveButton("Refresh",(dialog,which)->selectAdapter(mode,allowEmulation));
         picker.setNegativeButton("Cancel",null);
         if(allowEmulation)picker.setNeutralButton("Run in emulation mode",(dialog,which)->startSession());
-        picker.show();
+        adapterPicker=picker.show();
+    }
+    private void selectVlinker(com.opensaab.usb.VlinkerDevicePicker.Selection selected){
+        if(bluetoothPicker!=null)bluetoothPicker.close();
+        bluetoothPicker=new com.opensaab.usb.VlinkerDevicePicker(this,(device,compatibility)->{if(foreground&&!isDestroyed()&&!running&&!com.opensaab.usb.VlinkerVehicleConnection.active())selected.selected(device,compatibility);});bluetoothPicker.show();
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){
+        super.onRequestPermissionsResult(request,permissions,results);if(foreground&&bluetoothPicker!=null)bluetoothPicker.permissionsResult(request);
     }
     private void connectAdapter(android.hardware.usb.UsbDevice chosen,String mode,boolean shortcut){
         android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
@@ -240,6 +326,8 @@ public final class MainActivity extends Activity {
         if(line.startsWith("SESSION:")) status.setText(line.substring(8).trim());
     }
     private void startSession() {
+        if(com.opensaab.usb.VlinkerVehicleConnection.active())return;
+        clearSimulatorIdentity();
         if(running || !foreground || com.opensaab.usb.SecurityAccessView.workflowBusy()) return;
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
@@ -360,7 +448,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume(){super.onResume();if(updateReminder!=null)updateReminder.resume();}
     @Override protected void onPause(){if(updateReminder!=null)updateReminder.pause();super.onPause();}
-    @Override protected void onStop() { foreground=false;ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
+    @Override protected void onStop() { foreground=false;if(bluetoothPicker!=null)bluetoothPicker.close();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();clearSimulatorIdentity();ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     private void refreshVehicleHistory(){
         if(!foreground||isDestroyed()||!historyPending.compareAndSet(false,true))return;
         try{historyWorker.execute(()->{
@@ -368,7 +456,7 @@ public final class MainActivity extends Activity {
             com.opensaab.usb.SecurityAccessStatus receipt=com.opensaab.usb.SecurityAccessStatus.read(new File(getNoBackupFilesDir(),"security-processing-status.properties"));
             com.opensaab.usb.VehicleHistoryStatus history=new com.opensaab.usb.VehicleHistoryStatus(last,receipt,new File(getFilesDir(),"firmware/card.bin"),java.time.Instant.now());
             ui.post(()->{
-                historyPending.set(false);if(!foreground||isDestroyed())return;
+                historyPending.set(false);if(!foreground||isDestroyed()||(simulatorConnection!=null&&simulatorConnection.busy)||(simulatorSnapshot!=null&&simulatorSnapshot.optJSONObject("vehicle")!=null))return;
                 vehicleSummary.setText(last==null?"Connect an adapter to identify your vehicle":"Last vehicle · "+last.description());
                 connectionDate.setText(history.connection);authStatus.setText(history.auth);authStatus.setTextColor(history.color);authDate.setText(history.timestamp);
                 compactVehicle=last==null?"No vehicle connected · tap for details":"Last vehicle · "+last.modelYear+" · "+last.platform;
@@ -409,6 +497,12 @@ public final class MainActivity extends Activity {
         LcdView() {super(MainActivity.this);setContentDescription("Original Tech2 firmware LCD");paint.setFilterBitmap(false);}
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);canvas.drawColor(0xff04090e);
+            if(frame==null&&!running){
+                android.text.TextPaint p=new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);p.setColor(0xffedf4fa);p.setTextSize(dp(16));
+                String text="Original Tech 2 menus\n\nChoose Connect and start to identify the vehicle, or Run without an adapter to explore the menus.";
+                android.text.StaticLayout layout=android.text.StaticLayout.Builder.obtain(text,0,text.length(),p,Math.max(1,getWidth()-dp(32))).setAlignment(android.text.Layout.Alignment.ALIGN_CENTER).build();
+                canvas.save();canvas.translate(dp(16),(getHeight()-layout.getHeight())/2f);layout.draw(canvas);canvas.restore();
+            }
             if(frame!=null) {float scale=Math.min(getWidth()/320f,getHeight()/240f);float w=320*scale,h=240*scale;
                 canvas.drawBitmap(frame,null,new RectF((getWidth()-w)/2,(getHeight()-h)/2,(getWidth()+w)/2,(getHeight()+h)/2),paint);
                 if(startup!=null)startup.drawn(frame);}

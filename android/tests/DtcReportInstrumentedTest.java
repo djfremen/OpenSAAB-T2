@@ -18,7 +18,7 @@ public final class DtcReportInstrumentedTest extends Instrumentation {
     void awaitReport(ChipsoftUsbActivity a,String count){
         long started=SystemClock.elapsedRealtime();
         while(SystemClock.elapsedRealtime()-started<5000){
-            boolean[] ready={false};main(()->ready[0]=a.dtcReport.isShown()&&a.dtcReport.getContentDescription().toString().contains(count));
+            boolean[] ready={false};main(()->ready[0]=a.dtcReport.getVisibility()==View.VISIBLE&&a.dtcReport.getContentDescription().toString().contains(count));
             if(ready[0]){android.util.Log.i("OpenSaabDtcTest","Observed report "+count+" after "+(SystemClock.elapsedRealtime()-started)+" ms");return;}
             SystemClock.sleep(100);
         }
@@ -50,10 +50,12 @@ public final class DtcReportInstrumentedTest extends Instrumentation {
             main(()->check(a.dtcReport.getVisibility()==View.GONE,"Progress screen falsely captured"));
             Files.write(screen.toPath(),screen(2,3).getBytes("UTF-8"));awaitReport(a,"1/3");
             main(()->{
-                check(a.dtcReport.isShown()&&a.dtcReport.getContentDescription().toString().contains("1/3"),"Partial report not detected");
+                check(a.dtcReport.getVisibility()==View.VISIBLE&&a.dtcReport.getContentDescription().toString().contains("1/3"),"Partial report not detected");
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Report hid EXIT");
-                a.dtcReport.performClick();
-            });waitForIdleSync();returnToCodes();
+                a.getWindow().getDecorView().findViewWithTag("session-summary").performClick();
+            });waitForIdleSync();
+            main(()->{check(a.dtcReport.isShown(),"Report unavailable in vehicle details");a.dtcReport.performClick();});
+            waitForIdleSync();returnToCodes();
             main(()->check(!a.isFinishing()&&!a.isDestroyed(),"Review close finished diagnostics activity"));
             Files.write(screen.toPath(),screen(1,3).getBytes("UTF-8"));awaitReport(a,"2/3");
             Files.write(screen.toPath(),screen(3,3).getBytes("UTF-8"));awaitReport(a,"3/3");
@@ -81,7 +83,7 @@ public final class DtcReportInstrumentedTest extends Instrumentation {
                 try{a.getContentResolver().openFileDescriptor(bad,"r");throw new AssertionError("Provider exposed "+path);}catch(FileNotFoundException expected){}
             }
             Files.write(screen.toPath(),"Main Menu\n".getBytes("UTF-8"));SystemClock.sleep(1500);
-            main(()->check(a.dtcReport.isShown(),"Saved report disappeared on exit"));
+            main(()->check(a.dtcReport.getVisibility()==View.VISIBLE,"Saved report disappeared on exit"));
             Files.write(screen.toPath(),screen(1,3).getBytes("UTF-8"));awaitReport(a,"1/3");
             main(()->check(a.dtcReport.getContentDescription().toString().contains("1/3"),"Separate scan merged with old report"));
             result.putString("stream","PASS: numbered DTC detection, partial/full coverage, durable text/JSON, review dialog, persistent EXIT, separate scans, read-only sharing provider, traversal rejection; no USB/keys/network/mail\n");
