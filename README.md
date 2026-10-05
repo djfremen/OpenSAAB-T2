@@ -1,12 +1,12 @@
 # OpenSAAB T2
 
-**Head-unit development branch:** experimental 32-bit ARM work is isolated under the explicit `headunit-arm32` build profile. The published ARM64 APK remains unchanged. See [build targets and separation rules](docs/ANDROID_BUILD_TARGETS.md).
+**Head-unit development branch:** experimental 32-bit ARM work is isolated under the explicit `headunit-arm32` build profile. It has a separate APK and release schedule. See [build targets and separation rules](docs/ANDROID_BUILD_TARGETS.md).
 
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
-**First public developer preview: v0.1.0-preview.2.**
+**Public Android beta: v0.1.0-preview.56.**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.2) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.56) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
 **Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
 
@@ -27,7 +27,7 @@ Android 8+ with a 64-bit ARM Android system is required. Pixel 7 is the current 
 | Adapter / feature | Preview status |
 |---|---|
 | Chipsoft Pro | Current test path; original-firmware ECU information, DTC and selected security/configuration workflows previously exercised on project vehicles |
-| VCX Nano | Experimental; private Android initialization, security collection and SPA Add milestone verified on Pixel 7 / firmware 1.9.4.2; public APK coverage remains separate |
+| VCX Nano | Public beta includes fresh session initialization, security collection and responsive firmware controls; Pixel 7 / firmware 1.9.4.2 milestone and exact release testing are recorded separately |
 | MDI / other adapters | No supported Android backend yet |
 | Live data and module programming | Incomplete coverage; success on one vehicle is not general compatibility |
 
@@ -57,9 +57,16 @@ measurements, not a touch-to-ECU comparison. The menu-only check sent zero
 diagnostic transmissions and stopped with both channels and USB closed.
 
 [The sanitized receipt](docs/android/ANDROID_NANO_SECURITY_SPA_2026-10-05.json)
-pins the tested artifacts, results and remaining limits. These changes are
-source development work; the published preview.45 APK does not contain them.
+pins the tested private artifacts, results and remaining limits. Preview.56
+publishes these source changes in a signed nondebug ARM64 beta. Its exact-package
+checks are recorded with the release; the private SPA Add result remains separate.
 Other architectures, adapters and vehicles require their own qualification.
+
+Thanks to **[Erik Fuller (erik683)](https://github.com/erik683)** and
+**[OpenVCX](https://github.com/erik683/OpenVCX)**. We adapted his published Nano
+initialization code into the Rust backend; that work supplied the missing
+session handshake. The complete attribution, original copyright and LGPL/GPL
+texts accompany both the APK and matching source.
 
 ## Software and source
 
