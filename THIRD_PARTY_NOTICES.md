@@ -10,7 +10,7 @@ Direct Cargo dependencies checked against downloaded package metadata:
 | m68k | 0.12.1 | MIT |
 | serde_json | 1.0.151 | MIT OR Apache-2.0 |
 | minifb (optional desktop GUI) | 0.25.0 | MIT OR Apache-2.0 |
-| libc (macOS target) | 0.2.189 | MIT OR Apache-2.0 |
+| libc (Unix targets) | 0.2.189 | MIT OR Apache-2.0 |
 
 The Android no-default-features dependency set currently contains 12 external
 Cargo packages, including build-time/procedural-macro dependencies. Their original
@@ -50,3 +50,23 @@ The ARM64 Bluetooth connection worker additionally uses the dependencies and ful
 license texts listed in `licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt`. Its shared
 OpenSAAB workflow and translation source are MPL-2.0 and accompany the release
 in the explicitly named Bluetooth matching-source archive.
+
+## Nano transient PASSTHRU initializer
+
+`src/adapters/vcx_nano/init_handshake.rs` is a Rust adaptation of OpenVCX's
+published `dll/device_vcx.c` initialization protocol, under LGPL-3.0-only.
+Copyright (c) 2026 Erik Fuller and OpenVCX contributors. Source:
+https://github.com/erik683/OpenVCX, commit
+`d9387049d82232e4d88e236ad2e0c96a48b787ec`.
+
+The complete LGPL-3.0 text is retained in `licenses/OPENVCX_LGPL_3_0.txt` and
+its referenced GPL-3.0 text in `licenses/OPENVCX_GPL_3_0.txt`. The port's source
+origin, proper two-phase random DH modification and qualification boundary are
+in `licenses/OPENVCX_SOURCE_ORIGIN.txt`. Matching source must include these
+files and the initializer. Original OpenSAAB transport and application files
+retain MPL-2.0. Cargo identifies this combined source as
+`MPL-2.0 AND LGPL-3.0-only`; the initializer is not relicensed as MPL.
+
+This component selects an existing device record through the normal published
+protocol. It supplies no vendor DLL, firmware image, key, startup capture or
+replayed authorization payload.

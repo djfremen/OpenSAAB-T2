@@ -15,6 +15,7 @@ from report_dependencies import ReportDependencies
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
+parser.add_argument('--private-release-signing', action='store_true', help='Sign a private debuggable build with the existing app certificate')
 parser.add_argument('--version-name', default='0.1-dev')
 parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
@@ -112,9 +113,9 @@ with zipfile.ZipFile(unsigned, 'a') as z:
         if subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip():
             raise SystemExit('Official release builds require a clean source checkout')
         commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
-        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0'},sort_keys=True))
+        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only'},sort_keys=True))
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
-    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
+    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
     z.write(support_manifest, 'assets/system/manifest.json', compress_type=zipfile.ZIP_DEFLATED)
     for name, spec in (support.items() if bundle_support else []):
@@ -139,8 +140,12 @@ if args.release:
     run(bt / 'apksigner', 'sign', '--ks', keystore, '--ks-key-alias', 'opensaab-release',
         '--ks-pass', 'file:'+password_file, '--out', apk, aligned)
 else:
-    run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
-        '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
+    if args.private_release_signing:
+        run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.local/share/opensaab/release-signing/opensaab-release.p12',
+            '--ks-key-alias', 'opensaab-release', '--ks-pass', 'file:'+str(Path.home() / '.local/share/opensaab/release-signing/password.txt'), '--out', apk, aligned)
+    else:
+        run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
+            '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
 run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []))
 print(apk)

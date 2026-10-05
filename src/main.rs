@@ -1434,16 +1434,21 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         bus.candi_link
             .as_mut()
             .ok_or_else(|| (2, "Missing native CANdi".into()))?
-            .attach_nano_usb(
+            .attach_nano_usb_with_permissions(
                 token,
                 &opts.output,
                 if opts.candi_nano_clear_dtc {
                     tech2_emu::nano_native::Profile::ClearDtc
+                } else if opts.candi_nano_seeds {
+                    tech2_emu::nano_native::Profile::Seeds
                 } else {
                     tech2_emu::nano_native::Profile::collection(
                         opts.target == options::HarnessTarget::SecurityLink1367,
                     )
                 },
+                opts.candi_nano_key_status,
+                opts.candi_nano_full_native,
+                opts.candi_nano_seeds,
             )
             .map_err(|e| (2, e))?;
     }

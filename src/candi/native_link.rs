@@ -121,13 +121,67 @@ impl NativeLink {
         directory: &Path,
         profile: tech2_emu::nano_native::Profile,
     ) -> Result<(), String> {
-        let bridge = tech2_emu::nano_backend::Bridge::start(token, directory, profile)?;
+        self.attach_nano_usb_with_key_status(token, directory, profile, false)
+    }
+    pub fn attach_nano_usb_with_key_status(
+        &mut self,
+        token: &str,
+        directory: &Path,
+        profile: tech2_emu::nano_native::Profile,
+        key_status: bool,
+    ) -> Result<(), String> {
+        self.attach_nano_usb_with_modes(token, directory, profile, key_status, false)
+    }
+    pub fn attach_nano_usb_with_modes(
+        &mut self,
+        token: &str,
+        directory: &Path,
+        profile: tech2_emu::nano_native::Profile,
+        key_status: bool,
+        full_native: bool,
+    ) -> Result<(), String> {
+        self.attach_nano_usb_with_permissions(token, directory, profile, key_status, full_native, false)
+    }
+    pub fn attach_nano_usb_with_permissions(
+        &mut self,
+        token: &str,
+        directory: &Path,
+        profile: tech2_emu::nano_native::Profile,
+        key_status: bool,
+        full_native: bool,
+        manual_seeds: bool,
+    ) -> Result<(), String> {
+        if (key_status && full_native)
+            || ((key_status || full_native) && profile != tech2_emu::nano_native::Profile::Read) {
+            return Err("Nano native permissions cannot combine with seeds, clear or each other".into());
+        }
+        if manual_seeds && (key_status || full_native || profile != tech2_emu::nano_native::Profile::Seeds) {
+            return Err("Nano manual seed collection requires exclusive Seeds mode".into());
+        }
+        let bridge = if manual_seeds {
+            tech2_emu::nano_backend::Bridge::start_seeds(token, directory)?
+        } else if full_native {
+            tech2_emu::nano_backend::Bridge::start_full_native(token, directory)?
+        } else if key_status {
+            tech2_emu::nano_backend::Bridge::start_key_status(token, directory)?
+        } else {
+            tech2_emu::nano_backend::Bridge::start(token, directory, profile)?
+        };
         self.machine.enable_can_transport(0)?;
         self.machine.enable_can_transport(1)?;
         self.machine.enable_can_transport(2)?;
         self.bridge = Some(Box::new(bridge));
         self.live_clock = Some((std::time::Instant::now(), self.machine.elapsed_cycles()));
         self.events.push("Direct Android USB native bridge; requests=original-firmware completion=vcx-usb-write-compatibility electrical_ack=unverified".into());
+        if key_status {
+            self.events.push("Nano key-status permission: exact physical SW241 AE0302 only, maximum three requests; ordinary Read rules retained".into());
+        }
+        if full_native {
+            self.events.push("Nano full native control: unchanged original firmware commands; proven physical routes/frame validation retained".into());
+        }
+        if manual_seeds {
+            self.events.push("Nano manual security collection: original firmware seed requests only; key submission remains blocked".into());
+        }
         Ok(())
     }
     pub fn attach_chipsoft_usb(

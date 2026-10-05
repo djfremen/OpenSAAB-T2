@@ -22,6 +22,10 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             raise ValueError('Duplicate APK payload name')
         support_names = {'assets/system/' + name for name in SUPPORT}
         required = {'assets/system/manifest.json'} | (support_names if allow_bundled_support else set())
+        legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt')}
+        required_legal = set(legal)
+        if not required_legal.issubset(names):
+            raise ValueError('Missing required license or source-origin notice')
         if not allow_bundled_support and support_names.intersection(names):
             raise ValueError('OEM support firmware is bundled in the firmware-free build')
         if not required.issubset(names):
@@ -43,7 +47,6 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             if name in KOTLIN_RESOURCES:
                 if hashlib.sha256(apk.read(name)).hexdigest()!=KOTLIN_RESOURCES[name]:raise ValueError('Pinned Kotlin resource changed: '+name)
                 continue
-            legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt')}
             if name in legal:
                 expected = Path(__file__).resolve().parents[2] / legal[name]
                 if apk.read(name) != expected.read_bytes():
@@ -60,7 +63,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if info.file_size > 4096:
                     raise ValueError('Oversized build metadata')
                 receipt = json.loads(apk.read(name))
-                if set(receipt) != {'source_repository','source_commit','version_name','version_code','source_license'} or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0':
+                if set(receipt) != {'source_repository','source_commit','version_name','version_code','source_license'} or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
                     raise ValueError('Unexpected source metadata')
                 continue
             if name in native:

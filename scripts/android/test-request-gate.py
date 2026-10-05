@@ -19,6 +19,9 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/AdapterCatalog.java'),
         str(repo/'android/adapters/chipsoft/com/opensaab/usb/ChipsoftProfile.java'),
         str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoProfile.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoStartupGate.java'),
+        str(repo/'android/tests/NanoStartupGateTest.java'),
+        str(repo/'android/tests/NanoBridgeEnvelopeTest.java'),
         str(repo/'android/tests/AdapterCatalogTest.java'),
         str(repo/'android/tests/AdapterRoutingTest.java'),
         str(repo/'android/shared/com/opensaab/usb/TransportFailure.java'),
@@ -57,6 +60,11 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/tests/IgnitionStatusTextTest.java'),
         str(repo/'android/tests/RequestGateTest.java'),
         str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NativeCommandGate.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoNativeStopGate.java'),
+        str(repo/'android/tests/NanoKeyStatusGateTest.java'),
+        str(repo/'android/tests/NanoFullNativeGateTest.java'),
+        str(repo/'android/tests/NanoSecurityModeTest.java'),
+        str(repo/'android/tests/NanoNativeStopGateTest.java'),
         str(repo/'android/adapters/chipsoft/com/opensaab/usb/ChipsoftCommandGate.java'),
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
@@ -67,6 +75,12 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ReleaseVersionTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ReceivePumpTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NativeCommandGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoKeyStatusGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoFullNativeGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoSecurityModeTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoNativeStopGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoStartupGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoBridgeEnvelopeTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ChipsoftCommandGateTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.IgnitionStatusTextTest'],check=True)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.opensaab.usb;
 
-/** Defense at the USB owner: decode one VCX frame, admit captured firmware reads only. */
+/** USB-owner framing validation with separate explicit original-firmware policies. */
 public final class NativeCommandGate {
     private static final class Decoded { byte[] b; int count,channel,id; Decoded(byte[] b,int count,int channel,int id){this.b=b;this.count=count;this.channel=channel;this.id=id;} }
     private static Decoded decode(byte[] wire) {
@@ -22,13 +22,56 @@ public final class NativeCommandGate {
         int count=size-4, channel=b[3];
         return new Decoded(b,count,channel,id);
     }
+    /** Explicit full native control; does not change any default read/seed policy.
+     * The Rust electrical route supplies only standard HS/SW frames and this one wake.
+     * USB acceptance is not vehicle security authorization.
+     */
+    public static boolean fullNative(byte[] wire){
+        Decoded p=decode(wire);if(p==null)return false;
+        byte[] b=p.b;
+        if(b[4]==0 && b[5]==0 && b[6]==0 && b[7]==0)return true;
+        return b[4]==0 && b[5]==0 && b[6]==0x10 && b[7]==0
+            && p.channel==1 && p.id==0x100 && p.count==0;
+    }
+    /** Private explicit mode may not inherit another profile or adapter-test request. */
+    public static boolean fullNativeModeAllowed(boolean privateBuild,boolean otherNativeProfile,boolean adapterTest){
+        return privateBuild && !otherNativeProfile && !adapterTest;
+    }
+    /** Visible seed collection is available in release builds, with the same restricted profile. */
+    public static boolean securityCollectionModeAllowed(boolean otherNativeProfile,boolean adapterTest){
+        return !otherNativeProfile && !adapterTest;
+    }
+    /** Explain this exact local policy rejection; do not turn it into an ECU rejection or grant. */
+    public static String collectionRejectedExplanation(String line,boolean readMode){
+        if(!readMode || line==null || !line.contains("Native USB command rejected by collection profile"))return null;
+        return "This request is outside Read-only Nano mode. The blocked request was not sent to the vehicle. Tap Back, then App menu → Get security access and select Nano to collect fresh security data.";
+    }
+    /** Adapter-specific mapping into the existing verified VehicleIdentity contract. */
+    public static boolean securityVinReady(String status,String origin,String requestOrigin,
+            boolean startup,boolean query,boolean installed,long freshDh,long vehicleTx,
+            boolean closed,boolean channelCleanup,boolean cleanupErrorsEmpty){
+        return "hs_vin_received".equals(status) && "android-direct-usb".equals(origin)
+            && "host-transport-probe".equals(requestOrigin) && startup && query && installed
+            && freshDh==2 && vehicleTx==2 && closed && channelCleanup && cleanupErrorsEmpty;
+    }
     /** Per USB session, with a deadline and exact sequence for engine read packets. */
     public static final class Stream {
-        int remaining=0,sequence=0;long deadline;boolean packetSeeds,packetClear,packetRead;
+        int remaining=0,sequence=0,keyStatusSent=0;long deadline;boolean packetSeeds,packetClear,packetRead;
         public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,long now){
-            if(seeds && clearDtc)return false;
+            return allowed(wire,seeds,clearDtc,false,now);
+        }
+        /** Explicit Service key-status mode adds one captured DeviceControl only. */
+        public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,boolean keyStatus,long now){
+            if((seeds && clearDtc) || (keyStatus && (seeds || clearDtc)))return false;
             Decoded p=decode(wire);if(p==null)return false;
             byte[] b=p.b;int pci=b[14]&255;
+            if(keyStatus && p.channel==1 && p.id==0x241 && p.count==8
+                && b[4]==0 && b[5]==0 && b[6]==0 && b[7]==0
+                && b[14]==3 && b[15]==(byte)0xae && b[16]==3 && b[17]==2
+                && b[18]==0 && b[19]==0 && b[20]==0 && b[21]==0){
+                if(keyStatusSent>=3)return false;
+                keyStatusSent++;return true;
+            }
             boolean engine=p.channel==0 && p.id==0x7e0 && b[4]==0 && b[5]==0 && b[6]==0 && b[7]==0;
             if(engine && p.count==8 && (pci&0xf0)==0x10){
                 int length=((pci&15)<<8)|(b[15]&255);

@@ -90,7 +90,10 @@ public final class MainActivity extends Activity {
         }
         // Public builds use visible user actions; legacy ADB auto-start hooks are development-only.
         if((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)==0)return;
-        if(getIntent().getBooleanExtra("chipsoft_vin",false))ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("auto_start",true).putExtra("vin_check",true)));
+        if(getIntent().getBooleanExtra("nano_security_collect",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("nano_security_collect",true).putExtra("auto_start",true),27));
+        else if(getIntent().getBooleanExtra("nano_full_native",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("nano_full_native",true).putExtra("auto_start",true),27));
+        else if(getIntent().getBooleanExtra("native_key_status",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("native_key_status",true).putExtra("auto_start",true),27));
+        else if(getIntent().getBooleanExtra("chipsoft_vin",false))ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("auto_start",true).putExtra("vin_check",true)));
         else if(getIntent().getBooleanExtra("chipsoft_audible",false))ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("auto_start",true).putExtra("audible",true)));
         else if(getIntent().getBooleanExtra("chipsoft_seeds",false))ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("auto_start",true).putExtra("native_seeds",true)));
         else if(getIntent().getBooleanExtra("chipsoft_symbol_only",false))ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("auto_start",true).putExtra("symbol_only",true)));
@@ -103,12 +106,16 @@ public final class MainActivity extends Activity {
         else if(getIntent().hasExtra("nano_probe_mode")){
             // Bounded ADB harness inside the existing app, never a second APK.
             String mode=getIntent().getStringExtra("nano_probe_mode");
-            if(Arrays.asList("identity","channel","channel-sw","receive","voltage").contains(mode)){
+            if(Arrays.asList("identity","channel","channel-sw","channel-control","receive","voltage","vin","init","reboot").contains(mode)){
                 android.content.Intent probe=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra("auto_start",true);
-                if(mode.equals("channel") || mode.equals("channel-sw"))probe.putExtra("channel_test",true);
+                if(mode.equals("channel") || mode.equals("channel-sw") || mode.equals("channel-control"))probe.putExtra("channel_test",true);
+                if(mode.equals("channel-control"))probe.putExtra("skip_init",true);
                 if(mode.equals("channel-sw"))probe.putExtra("channel_test_sw",true);
                 if(mode.equals("receive"))probe.putExtra("receive_test",true);
                 if(mode.equals("voltage"))probe.putExtra("dlc_voltage",true);
+                if(mode.equals("vin"))probe.putExtra("hs_vin_check",true);
+                if(mode.equals("init"))probe.putExtra("init_handshake",true);
+                if(mode.equals("reboot"))probe.putExtra("reboot_nano",true);
                 ui.post(()->startActivityForResult(probe,27));
             }else status.setText("Unknown Nano probe mode — no session started");
         }
@@ -293,7 +300,7 @@ public final class MainActivity extends Activity {
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("dtc_read",true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){
             if(mode.equals("native_ecu_info")){status.setText("ECU information shortcut is not supported for VCX Nano yet");return;}
-            launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode,true);
+            launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode.equals("native_seed")?"nano_security_collect":mode,true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){
             boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);
             if(restricted && (mode.equals("native_seed") || mode.equals("native_clear_dtc"))){

@@ -1,0 +1,45 @@
+Private native Nano initialization preview, not a production backend.
+
+Protocol source: https://github.com/erik683/OpenVCX
+Commit: d9387049d82232e4d88e236ad2e0c96a48b787ec
+Original: dll/device_vcx.c (LGPL-3.0-only)
+Copyright (c) 2026 Erik Fuller and OpenVCX contributors.
+Retained LICENSE is upstream LGPL-3.0; COPYING is the referenced GPL-3.0.
+
+src/auth.rs is a Rust adaptation of the published transient PASSTHRU outer
+protocol. It preserves the corrected 64+52/n XXTEA rounds, LE layout, token,
+record marker, timestamp trailer and literal selector. It replaces upstream's
+public-one shortcut with two separate CSPRNG DH exchanges using g=5,
+p=2^64-59, and derives the second key from the second exchange. It verifies
+the returned record width, marker and PASSTHRU token. Bytes8..16 are opaque
+metadata, as in the exact C source; they do not modify the fixed A1 selector.
+V2's extra metadata-to-selector equality was our unsupported inference and
+was rejected by a valid native query. V3 removes only that inference.
+It does not synthesize a signed license or replace the stored device record.
+
+Transport/frame/client modules are included unchanged from the pinned
+OpenSAAB source-reference-frozen-20261005T0421 snapshot. Their SPDX license
+is MPL-2.0; LICENSE-MPL-2.0 is provided for those modules. Cargo.lock records
+registry dependency identities and checksums. libc supplies the native serial,
+clock and macOS arc4random_buf API bindings.
+
+This source-derived candidate has not yet been proven on the connected Nano.
+Third-party firmware support comments are not evidence for this adapter.
+Offline synthetic cipher agreement does not establish device initialization.
+No Windows provider, captured startup payload, external opaque blob, channel,
+CAN transmission or VIN request is used by this executable.
+
+Android shared-core integration (2026-10-05):
+The preceding text is the retained historical V3 candidate provenance. The
+initializer is now ported as src/adapters/vcx_nano/init_handshake.rs. Its
+original proven private V3 auth.rs SHA256 is
+c590ed82ed8adc4f142db1265a857b75e497c7944c7663c470a586654c4c3dbc.
+The shared entry reuses a caller's actual GetInfo reply, verifies VCX-NANO
+firmware1.9.4.2 before entropy/DH, then executes the same five authorization
+commands. Android/Linux entropy comes from nonblocking getrandom, or only
+on ENOSYS the real /dev/urandom character device. macOS retains arc4random_buf.
+Source adoption and offline oracle agreement do not qualify an installed
+Android artifact or physical power-loss cold start. The prior M4 V3 hardware
+receipt established acknowledged software reboot followed by fresh native
+authorization and VIN, without Windows conditioning; no physical-cold claim.
+The surrounding OpenSAAB modules retain their MPL-2.0 notices.

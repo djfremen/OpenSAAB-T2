@@ -13,12 +13,20 @@ public final class UsbBridgeCodec {
         return new String(text);
     }
     public static byte[] unhex(String s) throws IOException {
-        if ((s.length()&1)!=0 || s.length()>256 || !s.matches("[0-9A-F]+")) throw new IOException("Invalid TX encoding");
+        return unhex(s,256);
+    }
+    public static byte[] unhex(String s,int maxHexChars) throws IOException {
+        if(maxHexChars<1 || maxHexChars>4096)throw new IllegalArgumentException("Hex bound");
+        if ((s.length()&1)!=0 || s.length()>maxHexChars || !s.matches("[0-9A-F]+")) throw new IOException("Invalid TX encoding");
         byte[] b=new byte[s.length()/2];for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);return b;
     }
     public static String readLine(InputStream in) throws IOException {
+        return readLine(in,260);
+    }
+    public static String readLine(InputStream in,int maxChars) throws IOException {
+        if(maxChars<1 || maxChars>4096)throw new IllegalArgumentException("Line bound");
         ByteArrayOutputStream b=new ByteArrayOutputStream(); int c;
-        while((c=in.read())!=-1) { if(c=='\n')return b.toString("US-ASCII"); if(c<32 || c>126 || b.size()>=260)throw new IOException("Invalid command line");b.write(c); }
+        while((c=in.read())!=-1) { if(c=='\n')return b.toString("US-ASCII"); if(c<32 || c>126 || b.size()>=maxChars)throw new IOException("Invalid command line");b.write(c); }
         throw new EOFException("Controller disconnected");
     }
     private UsbBridgeCodec(){}

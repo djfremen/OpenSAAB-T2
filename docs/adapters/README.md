@@ -7,7 +7,7 @@ Each adapter owns its USB initialization, wire framing/opcodes, channel setup, r
 | Bucket | Rust | Android owner | Current coverage |
 | --- | --- | --- | --- |
 | Chipsoft Pro | `src/adapters/chipsoft/` | `android/adapters/chipsoft/com/opensaab/usb/` | Direct CDC USB; captured identity and vehicle-read workflows; exact vehicle/bus limitations still apply |
-| VCX Nano | `src/adapters/vcx_nano/` | `android/adapters/vcx_nano/com/opensaab/usb/` | CH343 USB initialization and Nano protocol; earlier successful tests, later channel-initialization regression remains unresolved |
+| VCX Nano | `src/adapters/vcx_nano/` | `android/adapters/vcx_nano/com/opensaab/usb/` | CH343 transport plus fresh PASSTHRU initialization; private Pixel 7 / Nano 1.9.4.2 software-reboot VIN and original SPA Add verified; physical power-loss startup remains pending |
 | Windows J2534 | `src/adapters/j2534/` | None | Shared Windows bridge dispatches the selected vendor's helper/driver; this is not an Android USB driver |
 | Common | `src/adapters/common/`, `src/can_adapter.rs` | `AdapterCatalog`, `AdapterProfile`, `UsbBridgeCodec` and other shared UI/session classes | Bounded byte transport, original-firmware request policy and CAN events; no vendor command fallback |
 | Bosch / ETAS / possible MDI | No Android backend | Inventory entries in `AdapterCatalog` | Detection only. No command implementation selected |
@@ -32,11 +32,21 @@ Chipsoft CDC deliberately skips line-coding and DTR/RTS changes. It must never i
 - `channel.rs`: Nano channel open/configure/close sequences and raw CAN decoding.
 - `native.rs`: Nano-specific encoding, reply handling and transmit bookkeeping.
 - `backend.rs`: original CANdi requests through the Nano backend.
+- `init_handshake.rs`: OpenVCX-derived transient PASSTHRU handshake, verified Nano model/firmware, fresh entropy/DH and record checks. This component retains LGPL-3.0-only.
 - `NanoProfile.java`: candidate USB ID `1A86:55D3`, backend identity and packaged probe executable.
 - `NanoProbeActivity.java`: Android CH343 setup, USB ownership and cleanup.
 - `NativeCommandGate.java`: existing Nano wire-command gate (legacy class name retained).
 
 Nano owns the captured vendor control requests (`A1`, then `A4` sequence) and its `BB`-delimited wire protocol. None of these commands belongs in generic adapter selection. A CH343 match is a candidate; the Nano identity response and channel results remain necessary.
+
+The October 5 private Android checkpoint runs a fresh handshake before channel
+setup and rejects unsuccessful setup replies, including session-absent `FE`.
+It selects the device's existing PASSTHRU record; it does not replay
+Windows startup payloads. The visible Get security access route uses restricted
+seed collection; private full native control is a separate explicit mode.
+Nano now uses the same `NativeLcdPump` and `InteractiveKeyPump` as the existing
+firmware interface, while adapter wire commands and electrical routing remain
+inside the Nano bucket. See the [exact artifact and result receipt](../android/ANDROID_NANO_SECURITY_SPA_2026-10-05.json).
 
 ## Initialization-menu contract
 
@@ -47,7 +57,10 @@ Nano owns the captured vendor control requests (`A1`, then `A4` sequence) and it
 5. Android USB permission and adapter-specific interface validation occur before initialization. Apply only that adapter's USB sequence. Verify the protocol identity, then attempt supported channel/vehicle operations.
 6. Report driver/identity/channel/vehicle failures separately. A recognized adapter does not establish SW-CAN wiring, vehicle compatibility, or a successful ECU reply. Never try another vendor's commands as an automatic fallback.
 
-This change centralizes the routing metadata and launcher dispatch. It does not claim a new working Nano vehicle session. More detailed persistent progress labels (for example “VCX Nano confirmed · configuring channels”) should be driven by actual successful protocol results, not USB descriptors.
+The original routing extraction centralizes metadata and launcher dispatch;
+its historical validation below did not include a new Nano vehicle session.
+The separately recorded October 5 checkpoint does. Persistent progress labels
+must still reflect actual successful protocol results, not USB descriptors.
 
 ## Shared helpers extracted from Nano
 
