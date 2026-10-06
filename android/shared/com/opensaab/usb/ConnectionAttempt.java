@@ -15,7 +15,7 @@ public final class ConnectionAttempt {
         IDENTIFICATION, CHANNEL_OPEN, VIN_REQUEST, FIRMWARE_START, SESSION, CLEANUP }
     public enum Outcome { IN_PROGRESS, COMPLETED, FAILED, CANCELLED }
     public enum Reason { NONE, NO_ADAPTER, MULTIPLE_ADAPTERS, PERMISSION_DENIED, DISCONNECTED,
-        TIMEOUT, IO_ERROR, PROTOCOL_OR_PROCESS_ERROR, VIN_UNAVAILABLE, CLEANUP_FAILED, USER_STOP }
+        TIMEOUT, IO_ERROR, PROTOCOL_OR_PROCESS_ERROR, VIN_UNAVAILABLE, SETUP_REQUIRED, CLEANUP_FAILED, USER_STOP }
     private static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r,"connection-reports"));
     private final File root;
     private final String id=UUID.randomUUID().toString(), created=java.time.Instant.now().toString();

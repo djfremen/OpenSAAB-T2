@@ -6,12 +6,14 @@ Classic MDI fixture. Android USB permission is required. Generic Linux RNDIS
 USB0525:a4a2 is a discovery candidate, not proof of exact model or MDI2 support.
 
 1. Install the signed ARM64 preview over the current app to preserve saved data.
-2. In App menu, import your own MDI connection profile locally. The schema is
-   documented in android/adapters/mdi/README.md. It contains adapter-specific
-   credentials; never include it in a public issue or report. No credential is
-   shipped with the release. Automatic profile provisioning is not implemented.
-3. Connect the powered adapter by USB, allow Android USB access, refresh discovery
+2. Connect the powered adapter by USB, allow Android USB access, refresh discovery
    and select its USB candidate. The generic discovery name is a tracked UI gap.
+3. Preview.63 retrieves the MDI management serial first, from a fresh validated
+   adapter announcement. No serial entry or saved serial is needed. If a base-key
+   profile is missing, the app releases USB and prompts to import it. Schema 2
+   requires only the 56-byte base key and adapter family, as documented in
+   android/adapters/mdi/README.md. Legacy schema-1 profiles still work, with their
+   serial ignored. No credentials are shipped; keep profiles out of public reports.
 4. Start with VIN and read-only diagnostics. Use original firmware EXIT to leave
    menus and App menu Stop to end the session. Follow physical ignition prompts.
 5. Security data can be collected through the original menu or Actions. Existing

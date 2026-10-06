@@ -140,8 +140,6 @@ public final class MdiUsbActivity extends Activity {
             setMessage("Finish the current session before connecting MDI");return;
         }
         if(!MdiProfile.packaged(this)){setMessage("MDI support is unavailable for this app architecture");return;}
-        try{MdiProfile.read(this);}catch(IOException missing){setMessage(missing.getMessage());return;}
-        String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty()){setMessage("Firmware setup needed");startActivity(new Intent(this,FirmwareActivity.class));return;}
         String path=getIntent().getStringExtra("usb_device_name");selected=null;
         for(UsbDevice d:manager.getDeviceList().values()){
             if(path!=null&&!path.equals(d.getDeviceName()))continue;
@@ -165,12 +163,14 @@ public final class MdiUsbActivity extends Activity {
     }
     private void execute(UsbDevice device){
         UsbDeviceConnection connection=null;UsbInterface control=null,data=null;boolean cc=false,dc=false;
-        FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed";MdiProfile profile=null;
+        FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed",setup="";MdiProfile profile=null;
         try{
-            lease=FirmwareGate.use();profile=MdiProfile.read(this);
+            lease=FirmwareGate.use();
+            try{profile=MdiProfile.read(this);}catch(IOException missing){/* Identify first; prompt after USB release. */}
             directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());
             nativeDirectory=new File(directory,"native");Files.createDirectories(nativeDirectory.toPath());
-            SecuritySessionData.recordBaseline(nativeDirectory,new File(getFilesDir(),"firmware/card.bin"));
+            File card=new File(getFilesDir(),"firmware/card.bin");
+            if(card.isFile())SecuritySessionData.recordBaseline(nativeDirectory,card);
             if(stopping)Files.write(new File(directory,"session-stop").toPath(),new byte[]{1});
             keyPump=new InteractiveKeyPump(new File(nativeDirectory,"native-key.txt"),e->ui.post(()->setMessage("Firmware input unavailable")));
             if(stopping)keyPump.cancel();
@@ -197,14 +197,15 @@ public final class MdiUsbActivity extends Activity {
             dc=connection.claimInterface(data,true);if(!dc)throw new IOException("MDI data interface unavailable");
             attempt.stage(ConnectionAttempt.Stage.TRANSPORT_START);
             boolean capture=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0&&getIntent().getBooleanExtra("mdi_capture",false);
-            int result=MdiNative.nativeRun(connection.getFileDescriptor(),profile.serial,profile.key,directory.getAbsolutePath(),
+            int result=MdiNative.nativeRun(connection.getFileDescriptor(),profile==null?new byte[0]:profile.key,directory.getAbsolutePath(),
                 new File(getApplicationInfo().nativeLibraryDir,"libtech2_mdi.so").getAbsolutePath(),new File(getFilesDir(),"firmware").getAbsolutePath(),authority,capture);
             workflowSucceeded=result==0;
             JSONObject report=json(new File(directory,"result-private.json"),65536);
             transportClean=report.optBoolean("filter_disabled")&&report.optBoolean("halt_sent")&&report.optBoolean("USB_IN_cancel_reaped");
             JSONObject workflow=report.optJSONObject("workflow");JSONObject nativeResult=workflow==null?null:workflow.optJSONObject("native_firmware");
+            setup=workflow==null?"":workflow.optString("setup_needed");
             if(nativeResult!=null)transportClean&=nativeResult.optBoolean("transport_cleanup_ok");
-            end=stopping?"Stopped by operator":result==0?"MDI session ended":"MDI connection or session failed";
+            end=stopping?"Stopped by operator":!setup.isEmpty()?"MDI identified · setup needed":result==0?"MDI session ended":workflow!=null&&workflow.has("error")?workflow.optString("error"):"MDI connection or session failed";
             if(!transportClean)end+=" · transport cleanup unconfirmed";
         }catch(Throwable error){end=stopping?"Stopped by operator":error instanceof IOException?error.getMessage():"MDI connection failed";
             if(attempt!=null&&!stopping)attempt.failure(error);
@@ -216,11 +217,25 @@ public final class MdiUsbActivity extends Activity {
             InteractiveKeyPump input=keyPump;if(input!=null)input.close();keyPump=null;
             if(lease!=null)lease.close();OWNED.set(false);running.set(false);
             final String result=end+(usbClean?" · USB closed":" · USB cleanup incomplete");
+            final String requiredSetup=setup;
+            final boolean released=transportClean&&usbClean;
             if(attempt!=null)attempt.finish(stopping?ConnectionAttempt.Outcome.CANCELLED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
-                stopping?ConnectionAttempt.Reason.USER_STOP:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.CLEANUP_FAILED);
+                stopping?ConnectionAttempt.Reason.USER_STOP:!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
             ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
+                if(!stopping&&foreground&&released&&!requiredSetup.isEmpty())showSetup(requiredSetup);
                 if(pendingTool!=null){Runnable next=pendingTool;pendingTool=null;next.run();}});
         }
+    }
+    private void importProfile(){
+        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/json").addCategory(Intent.CATEGORY_OPENABLE),91);
+    }
+    private void showSetup(String required){
+        if("connection_key".equals(required))new AlertDialog.Builder(this).setTitle("MDI connection setup")
+            .setMessage("The MDI serial number was retrieved automatically. Import a connection key profile to finish setup. No serial number entry is needed.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Import profile",(d,w)->importProfile()).show();
+        else if("firmware".equals(required))new AlertDialog.Builder(this).setTitle("Firmware setup needed")
+            .setMessage("The MDI serial number was retrieved automatically. Select and download diagnostic software before starting firmware.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Firmware selection",(d,w)->startActivity(new Intent(this,FirmwareActivity.class))).show();
     }
     private static JSONObject json(File f,int maximum)throws Exception{
         if(!f.isFile()||f.length()>maximum)throw new IOException("MDI result unavailable");
@@ -287,7 +302,7 @@ public final class MdiUsbActivity extends Activity {
             Runnable open=()->startActivity(new Intent(this,FirmwareActivity.class));
             if(running.get())new AlertDialog.Builder(this).setTitle("Firmware selection").setMessage("Stop and release MDI before selecting diagnostic software?")
                 .setNegativeButton("Keep running",null).setPositiveButton("Stop and select",(d,w)->{pendingTool=open;stop("Stopping before firmware selection");}).show();else open.run();})
-            .add("MDI connection profile",()->{if(running.get()||permissionPending){setMessage("Stop MDI before changing its connection profile");return;}startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/json").addCategory(Intent.CATEGORY_OPENABLE),91);})
+            .add("MDI connection profile",()->{if(running.get()||permissionPending){setMessage("Stop MDI before changing its connection profile");return;}importProfile();})
             .add("Preferences",controls::showPreferences)
             .add("Report issue",()->{if(!running.get())startActivity(new Intent(this,SupportReportActivity.class));})
             .add("Console",controls::showConsole)

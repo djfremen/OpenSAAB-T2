@@ -17,8 +17,19 @@ Generic RNDIS USB IDs remain candidates, not model identification. Other models,
 descriptors, physical cold reconnect and other architectures require qualification.
 
 The connection profile is local to `getNoBackupFilesDir()/mdi/connection-profile.json`.
-It contains schema 1, adapter_family `classic_mdi`, an unsigned nonzero adapter serial
-and a base64-encoded 56-byte management key. Import is explicit in App menu.
+Schema 2 contains adapter_family `classic_mdi` and a base64-encoded 56-byte
+management base key; no serial is required. Legacy schema-1 profiles are accepted,
+but their saved serial is ignored. After RNDIS initialization and the startup drain,
+the carrier retrieves the fresh serial from the observed IPv4 multicast
+`225.1.1.1:8194` announcement (`0x86d`, version byte 7, LE serial at body offset 9).
+It validates Ethernet/IP/UDP framing, checksums, source address and record bounds.
+Retrieval has an eight-second deadline and remains cancellable; no management or
+vehicle request starts before it succeeds. Generic USB descriptor serials are
+never used as management identity. This is scoped to the observed classic MDI.
+
+Without a key profile, identity retrieval still runs, then USB is released before
+the app prompts to import the connection key. No serial entry is needed. Import
+is also available in App menu. Firmware setup is checked after identity retrieval.
 Credentials are neither bundled nor logged. The owner fixture was provisioned
 locally; no Windows program, vendor DLL, root or Android network driver is used.
 

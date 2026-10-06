@@ -10,18 +10,19 @@ import android.content.Context;
 
 /** Local connection credentials; deliberately excluded from APKs and backups. */
 public final class MdiProfile {
-    final int serial;
     final byte[] key;
-    private MdiProfile(int serial,byte[] key){this.serial=serial;this.key=key;}
+    private MdiProfile(byte[] key){this.key=key;}
     static MdiProfile parse(byte[] bytes)throws IOException {
         try {
             if(bytes.length>4096)throw new IOException();
             JSONObject p=new JSONObject(new String(bytes,StandardCharsets.UTF_8));
-            long serial=p.getLong("serial");
             byte[] key=Base64.getDecoder().decode(p.getString("base_key"));
-            if(p.getInt("schema")!=1 || !"classic_mdi".equals(p.getString("adapter_family"))
-                || serial<1 || serial>0xffffffffL || key.length!=56)throw new IOException();
-            return new MdiProfile((int)serial,key);
+            int schema=p.getInt("schema");
+            if((schema!=1&&schema!=2) || !"classic_mdi".equals(p.getString("adapter_family"))
+                || key.length!=56)throw new IOException();
+            // Legacy schema-1 serials are ignored. Every connection obtains a
+            // fresh management serial from the selected adapter, before login.
+            return new MdiProfile(key);
         }catch(Exception invalid){throw new IOException("Invalid MDI connection profile");}
     }
     static File file(Context c){return new File(c.getNoBackupFilesDir(),"mdi/connection-profile.json");}

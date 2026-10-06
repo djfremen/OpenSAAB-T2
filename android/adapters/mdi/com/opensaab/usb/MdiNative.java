@@ -4,7 +4,7 @@ package com.opensaab.usb;
 /** Packaged MDI transport. No other APK, vendor DLL, root or kernel route. */
 final class MdiNative {
     static { System.loadLibrary("opensaab_mdi_android"); }
-    static native int nativeRun(int fd,int serial,byte[] key,String directory,
+    static native int nativeRun(int fd,byte[] key,String directory,
         String executable,String firmware,String authority,boolean capture);
     private MdiNative() {}
 }

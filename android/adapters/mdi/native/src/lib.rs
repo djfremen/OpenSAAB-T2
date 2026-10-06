@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Android MDI module: USB carrier and packaged firmware bridge. Protocol stays in openmdi.
 mod async_input;
+mod discovery;
 use serde_json::{json, Value};
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
@@ -17,7 +18,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        mpsc, Arc,
     },
     thread,
     time::{Duration, Instant as WallInstant, SystemTime, UNIX_EPOCH},
@@ -387,6 +388,7 @@ struct Carrier {
     receiver: async_input::Input,
     error: Option<String>,
     complete_transfers: bool,
+    identity_sender: Option<mpsc::SyncSender<u32>>,
 }
 impl Carrier {
     fn ingest(&mut self, bytes: &[u8]) -> Result<Vec<Vec<u8>>, String> {
@@ -466,6 +468,11 @@ impl Device for Carrier {
                                     self.error = Some(e);
                                     return None;
                                 }
+                                if let Some(serial) = discovery::announced_serial(&f) {
+                                    if let Some(sender) = self.identity_sender.take() {
+                                        let _ = sender.try_send(serial);
+                                    }
+                                }
                                 self.queue.push_back(f)
                             }
                         }
@@ -499,7 +506,6 @@ struct Forward {
 fn run(
     fd: i32,
     mode: i32,
-    serial: u32,
     dir: &Path,
     executable: &Path,
     firmware: &Path,
@@ -507,17 +513,14 @@ fn run(
     authority: &str,
     capture: bool,
 ) -> Result<Value, String> {
-    if !(0..=6).contains(&mode) || serial == 0 {
-        return Err("Explicit mode and serial required".into());
+    if !(0..=6).contains(&mode) {
+        return Err("Explicit mode required".into());
     }
-    if mode != 6 || !matches!(authority, "full" | "seeds") || key.len() != 56 {
+    if mode != 6 || !matches!(authority, "full" | "seeds") || !matches!(key.len(), 0 | 56) {
         return Err("Exclusive MDI firmware module configuration required".into());
     }
     phase(dir, "opening", "Initializing MDI USB transport")?;
     let evidence = Evidence::new(dir, true, capture)?;
-    if mode == 6 {
-        validate_firmware(executable, firmware)?;
-    }
     let copied = unsafe { libc::dup(fd) };
     if copied < 0 {
         return Err("USB descriptor duplication failed".into());
@@ -566,6 +569,7 @@ fn run(
     }
     usb.filter(11)?;
     save(&dir.join("rndis-init-private.json"), &initialized)?;
+    let (identity_sender, identity_receiver) = mpsc::sync_channel(1);
     let mut carrier = Carrier {
         usb,
         queue: VecDeque::new(),
@@ -573,6 +577,7 @@ fn run(
         receiver,
         error: None,
         complete_transfers: mode == 6,
+        identity_sender: Some(identity_sender),
     };
     // An isolated userspace subnet. No Android kernel route or root privilege is needed.
     let mut config = Config::new(EthernetAddress([0x02, 0x4f, 0x4d, 0x44, 0x49, 0x07]).into());
@@ -606,6 +611,49 @@ fn run(
     let worker = thread::spawn(move || {
         let result = (|| -> Result<Value, String> {
             let ip = "127.0.0.1".parse().unwrap();
+            phase(
+                &worker_dir,
+                "adapter_identity",
+                "Retrieving MDI serial number",
+            )?;
+            let identity_started = WallInstant::now();
+            let serial = loop {
+                if worker_dir.join("session-stop").exists()
+                    || worker_aborted.load(Ordering::Acquire)
+                {
+                    return Err("Stopped during MDI identity retrieval".into());
+                }
+                if identity_started.elapsed() >= Duration::from_secs(8) {
+                    return Err(
+                        "MDI serial retrieval timed out; no management or vehicle request sent"
+                            .into(),
+                    );
+                }
+                match identity_receiver.recv_timeout(Duration::from_millis(50)) {
+                    Ok(serial) => break serial,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        return Err("MDI identity transport ended".into())
+                    }
+                }
+            };
+            save(
+                &worker_dir.join("identity-private.json"),
+                &json!({"schema":1,"serial":serial,
+                "source":"fresh_classic_mdi_announcement","opcode":0x86d,"version":7,
+                "elapsed_ms":identity_started.elapsed().as_millis(),"saved_serial_used":false,
+                "USB_descriptor_serial_used":false,"vehicle_requests":0,"management_requests":0}),
+            )?;
+            if key.len() != 56 {
+                return Ok(
+                    json!({"success":false,"setup_needed":"connection_key","adapter_identity_retrieved":true,"vehicle_requests":0,"management_requests":0}),
+                );
+            }
+            if let Err(error) = validate_firmware(&executable, &firmware) {
+                return Ok(
+                    json!({"success":false,"setup_needed":"firmware","error":error,"adapter_identity_retrieved":true,"vehicle_requests":0,"management_requests":0}),
+                );
+            }
             if worker_dir.join("session-stop").exists() {
                 return Err("Stopped before management handshake".into());
             }
@@ -1008,7 +1056,6 @@ pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeRun(
     mut env: jni::JNIEnv,
     _class: jni::objects::JClass,
     fd: i32,
-    serial: i32,
     key: jni::objects::JByteArray,
     directory: jni::objects::JString,
     executable: jni::objects::JString,
@@ -1040,7 +1087,6 @@ pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeRun(
         run(
             fd,
             6,
-            serial as u32,
             &dir,
             &executable,
             &firmware,
@@ -1177,10 +1223,8 @@ mod module_tests {
             (6, vec![0; 55], "full"),
             (6, vec![0; 56], "read"),
         ] {
-            let error = run(
-                -1, mode, 1, missing, missing, missing, &key, authority, false,
-            )
-            .unwrap_err();
+            let error =
+                run(-1, mode, missing, missing, missing, &key, authority, false).unwrap_err();
             assert!(error.contains("configuration"));
         }
     }

@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-10-05",
+  "device": "Pixel7 Android16 ARM64",
+  "private_test_build": {
+    "private_APK_sha256": "018f0c30fe9a9f8d5cb37d65db1349ad7b3ea99b914bb1b3a2852f96ba7ad69e",
+    "native_pins": {
+      "lib/arm64-v8a/libtech2_emu.so": "4211cb6cd0e531411eac01137bcc8c59ebb5185413a9d5aeaa9f6b9009f8ce73",
+      "lib/arm64-v8a/libnano_probe.so": "67718eaed94cef5eb09d878fe057f1dd63dbde83298e4db6471064a61ad60e7c",
+      "lib/arm64-v8a/libchipsoft_probe.so": "afd3c5527cd7f95f5bcf807dfb5c3d73ca23caf82a7d65f19b1fb6329f112040",
+      "lib/arm64-v8a/libopensaab_connection.so": "deed02b2fb033cdc546f1196d27caeeb72f93f3b2d8aa30de89ad3ad77b4479b",
+      "lib/arm64-v8a/libopensaab_mdi_android.so": "29a840d212e4f199340e9220f862dcfe98931910c2dcf5e544986b3bb2c06fe0",
+      "lib/arm64-v8a/libtech2_mdi.so": "b0d46d07b4d8eaf1f3bc4414df90e2db4f472555dbf04f5d1c2c04d1ef616274"
+    },
+    "only_MDI_module_native_changed": true,
+    "profile_schema": 2,
+    "saved_serial_removed_before_test": true
+  },
+  "tests": {
+    "key-only": {
+      "serial_retrieved": true,
+      "matches_previous_working_serial": true,
+      "retrieval_ms": 542,
+      "saved_serial_used": false,
+      "USB_descriptor_serial_used": false,
+      "transport_cleanup_confirmed": true,
+      "Java_USB_release_confirmed": true,
+      "tcp_connections": 7,
+      "fresh_VIN_received": true,
+      "firmware_started": true,
+      "native_firmware_cleanup_confirmed": true
+    },
+    "missing-profile": {
+      "serial_retrieved": true,
+      "matches_previous_working_serial": true,
+      "retrieval_ms": 878,
+      "saved_serial_used": false,
+      "USB_descriptor_serial_used": false,
+      "transport_cleanup_confirmed": true,
+      "Java_USB_release_confirmed": true,
+      "tcp_connections": 0,
+      "setup_prompt_visible": true,
+      "zero_management_and_vehicle_requests": true
+    }
+  },
+  "host_native_tests": 15,
+  "strict_clippy": "pass",
+  "shared_Java_host_regressions": "pass",
+  "scope": "One powered classic-MDI owner fixture; fresh adapter identity and existing configured firmware path. No repeated security/SPA programming, physical cold-start, other MDI or platform qualification. Base key still requires explicit local import."
+}
