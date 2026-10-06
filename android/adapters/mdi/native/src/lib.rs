@@ -2,6 +2,7 @@
 //! Android MDI module: USB carrier and packaged firmware bridge. Protocol stays in openmdi.
 mod async_input;
 mod discovery;
+mod usb_configuration;
 use serde_json::{json, Value};
 use smoltcp::{
     iface::{Config, Interface, SocketHandle, SocketSet},
@@ -377,7 +378,7 @@ impl Usb {
         let media = self.query(0x00010114)?;
         let speed = self.query(0x00010107)?;
         Ok(
-            json!({"version":"1.0","max_transfer_size":word(&b,36)?,"adapter_mac_private":mac,"max_frame_size":word(&frame,0)?,"media_state":word(&media,0)?,"link_speed_100bps":word(&speed,0)?,"filter":11}),
+            json!({"version":"1.0","max_transfer_size":word(&b,36)?,"adapter_mac_private":mac,"max_frame_size":word(&frame,0)?,"media_state":word(&media,0)?,"link_speed_100bps":word(&speed,0)?,"filter":15,"discovery_multicast":"all_multicast_software_validated"}),
         )
     }
 }
@@ -509,14 +510,13 @@ fn run(
     dir: &Path,
     executable: &Path,
     firmware: &Path,
-    key: &[u8],
     authority: &str,
     capture: bool,
 ) -> Result<Value, String> {
     if !(0..=6).contains(&mode) {
         return Err("Explicit mode required".into());
     }
-    if mode != 6 || !matches!(authority, "full" | "seeds") || !matches!(key.len(), 0 | 56) {
+    if mode != 6 || !matches!(authority, "full" | "seeds") {
         return Err("Exclusive MDI firmware module configuration required".into());
     }
     phase(dir, "opening", "Initializing MDI USB transport")?;
@@ -567,7 +567,11 @@ fn run(
         }
         thread::sleep(Duration::from_millis(1));
     }
-    usb.filter(11)?;
+    // Native Windows startup ends with directed/multicast/all-multicast/broadcast
+    // (15). Filter 11 alone depends on a pre-existing multicast address list;
+    // a new initializer must receive discovery without inheriting that state.
+    // Only validated announcements from this USB adapter supply its identity.
+    usb.filter(15)?;
     save(&dir.join("rndis-init-private.json"), &initialized)?;
     let (identity_sender, identity_receiver) = mpsc::sync_channel(1);
     let mut carrier = Carrier {
@@ -590,6 +594,9 @@ fn run(
         a.push(IpCidr::new(IpAddress::v4(192, 168, 171, 30), 24))
             .unwrap()
     });
+    // Windows discovery joins this group. Passive reception can depend on
+    // membership retained by the adapter's bridge; announce our membership.
+    join_discovery(&mut iface)?;
     let mut sockets = SocketSet::new(vec![]);
     let ports = [9000u16, 9002, 9004, 10123];
     let mut listeners = Vec::new();
@@ -607,7 +614,6 @@ fn run(
     let worker_dir = dir.to_path_buf();
     let firmware = firmware.to_path_buf();
     let authority = authority.to_owned();
-    let key = key.to_vec();
     let worker = thread::spawn(move || {
         let result = (|| -> Result<Value, String> {
             let ip = "127.0.0.1".parse().unwrap();
@@ -642,13 +648,9 @@ fn run(
                 &json!({"schema":1,"serial":serial,
                 "source":"fresh_classic_mdi_announcement","opcode":0x86d,"version":7,
                 "elapsed_ms":identity_started.elapsed().as_millis(),"saved_serial_used":false,
-                "USB_descriptor_serial_used":false,"vehicle_requests":0,"management_requests":0}),
+                "USB_descriptor_serial_used":false,"vehicle_requests":0,"management_requests":0,
+                "management_bootstrap":"built_in_classic_mdi_2.5.33.154","imported_profile_used":false}),
             )?;
-            if key.len() != 56 {
-                return Ok(
-                    json!({"success":false,"setup_needed":"connection_key","adapter_identity_retrieved":true,"vehicle_requests":0,"management_requests":0}),
-                );
-            }
             if let Err(error) = validate_firmware(&executable, &firmware) {
                 return Ok(
                     json!({"success":false,"setup_needed":"firmware","error":error,"adapter_identity_retrieved":true,"vehicle_requests":0,"management_requests":0}),
@@ -658,9 +660,6 @@ fn run(
                 return Err("Stopped before management handshake".into());
             }
             phase(&worker_dir, "handshake", "Initializing MDI connection")?;
-            if key.len() != 56 {
-                return Err("Private key boundary".into());
-            }
             let label = format!(
                 "OpenMDI-Android-{}",
                 SystemTime::now()
@@ -675,7 +674,7 @@ fn run(
             } else {
                 "reboot"
             };
-            let management = openmdi::management::attempt(ip, serial, &key, action, &label);
+            let management = openmdi::classic_mdi_bootstrap::attempt(ip, serial, action, &label);
             save(&worker_dir.join("management-private.json"), &management)?;
             if management["success"] != true {
                 return Ok(json!({"success":false,"management":management,"vehicle_requests":0}));
@@ -891,6 +890,20 @@ fn run(
     }
     drop(listeners);
     let workflow = worker.join().map_err(|_| "Shared core thread panicked")?;
+    let multicast_tx_before_leave = carrier.usb.evidence.tx;
+    let discovery_leave_requested = iface
+        .leave_multicast_group(IpAddress::v4(225, 1, 1, 1))
+        .is_ok();
+    if discovery_leave_requested {
+        iface.poll(
+            Instant::from_millis(origin.elapsed().as_millis() as i64),
+            &mut carrier,
+            &mut sockets,
+        );
+    }
+    let discovery_left = discovery_leave_requested
+        && carrier.usb.evidence.tx > multicast_tx_before_leave
+        && carrier.error.is_none();
     let filter_off = carrier.usb.filter(0).is_ok();
     let mut input_reaped = false;
     match carrier.receiver.stop() {
@@ -940,8 +953,14 @@ fn run(
         .unwrap_or(false);
     carrier.usb.evidence.raw(0, &halt)?;
     let outcome = workflow.unwrap_or_else(|e| json!({"success":false,"error":e}));
-    let result = json!({"schema":1,"mode":mode,"success":outcome["success"]==true&&carrier.error.is_none()&&filter_off&&halt_sent&&input_reaped,"elapsed_ms":origin.elapsed().as_millis(),"rndis":initialized,"tcp_connections":connections,"tcp_established":established,"ethernet_rx":carrier.usb.evidence.rx,"ethernet_tx":carrier.usb.evidence.tx,"carrier_error":carrier.error,"filter_disabled":filter_off,"halt_sent":halt_sent,"USB_IN_cancel_reaped":input_reaped,"startup_quarantined_bytes":startup_bytes,"workflow":outcome,"receive_journal_granularity":if mode==6 {"whole-2048-byte-URB-completion"} else {"64-byte-read-completion"},"kernel_network_route_used":false,"vendor_driver_used":false,"root_used":false,"structured_capture_enabled":capture});
+    let result = json!({"schema":1,"mode":mode,"success":outcome["success"]==true&&carrier.error.is_none()&&filter_off&&halt_sent&&input_reaped&&discovery_left,"elapsed_ms":origin.elapsed().as_millis(),"rndis":initialized,"tcp_connections":connections,"tcp_established":established,"ethernet_rx":carrier.usb.evidence.rx,"ethernet_tx":carrier.usb.evidence.tx,"carrier_error":carrier.error,"filter_disabled":filter_off,"halt_sent":halt_sent,"USB_IN_cancel_reaped":input_reaped,"discovery_multicast_joined":true,"discovery_multicast_left":discovery_left,"startup_quarantined_bytes":startup_bytes,"workflow":outcome,"receive_journal_granularity":if mode==6 {"whole-2048-byte-URB-completion"} else {"64-byte-read-completion"},"kernel_network_route_used":false,"vendor_driver_used":false,"root_used":false,"structured_capture_enabled":capture});
     Ok(result)
+}
+
+fn join_discovery(iface: &mut Interface) -> Result<(), String> {
+    iface
+        .join_multicast_group(IpAddress::v4(225, 1, 1, 1))
+        .map_err(|e| format!("MDI discovery multicast join: {e}"))
 }
 
 fn phase(directory: &Path, state: &str, message: &str) -> Result<(), String> {
@@ -1052,11 +1071,30 @@ fn run_firmware(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeSelectConfiguration(
+    _env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    fd: i32,
+    configuration: i32,
+) -> i32 {
+    usb_configuration::select(fd, configuration)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeReleaseForConfiguration(
+    _env: jni::JNIEnv,
+    _class: jni::objects::JClass,
+    fd: i32,
+    interface: i32,
+) -> i32 {
+    usb_configuration::release(fd, interface)
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeRun(
     mut env: jni::JNIEnv,
     _class: jni::objects::JClass,
     fd: i32,
-    key: jni::objects::JByteArray,
     directory: jni::objects::JString,
     executable: jni::objects::JString,
     firmware: jni::objects::JString,
@@ -1079,10 +1117,6 @@ pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeRun(
         Ok(s) => String::from(s),
         Err(_) => return 2,
     };
-    let key = match env.convert_byte_array(key) {
-        Ok(k) => k,
-        Err(_) => return 2,
-    };
     let result = std::panic::catch_unwind(|| {
         run(
             fd,
@@ -1090,7 +1124,6 @@ pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeRun(
             &dir,
             &executable,
             &firmware,
-            &key,
             &authority,
             capture != 0,
         )
@@ -1203,28 +1236,65 @@ fn whole_transfer_framing_is_complete_and_negotiated_size_bounded() {
 #[cfg(test)]
 mod module_tests {
     use super::*;
+    #[test]
+    fn fresh_interface_sends_discovery_membership_and_leave_without_tcp() {
+        use smoltcp::wire::{IgmpPacket, IpProtocol, Ipv4Address, Ipv4Packet};
+        let mut device = smoltcp::phy::Loopback::new(Medium::Ethernet);
+        let config = Config::new(EthernetAddress([2, 1, 2, 3, 4, 5]).into());
+        let mut iface = Interface::new(config, &mut device, Instant::from_millis(0));
+        iface.update_ip_addrs(|a| {
+            a.push(IpCidr::new(IpAddress::v4(192, 168, 171, 30), 24))
+                .unwrap();
+        });
+        let group = IpAddress::v4(225, 1, 1, 1);
+        let mut sockets = SocketSet::new(vec![]);
+        assert!(!iface.has_multicast_group(group));
+        join_discovery(&mut iface).unwrap();
+        iface.poll(Instant::from_millis(0), &mut device, &mut sockets);
+        let (rx, _) = device.receive(Instant::from_millis(0)).unwrap();
+        let report = rx.consume(|f| f.to_vec());
+        assert_eq!(&report[..6], &[1, 0, 0x5e, 1, 1, 1]);
+        let ip = Ipv4Packet::new_checked(&report[14..]).unwrap();
+        assert_eq!(ip.next_header(), IpProtocol::Igmp);
+        assert_eq!(ip.hop_limit(), 1);
+        assert_eq!(ip.dst_addr(), Ipv4Address::new(225, 1, 1, 1));
+        let igmp = IgmpPacket::new_checked(ip.payload()).unwrap();
+        assert!(igmp.verify_checksum());
+        assert_eq!(ip.payload()[0], 0x16); // RFC2236 membership report.
+        assert_eq!(&ip.payload()[4..8], &[225, 1, 1, 1]);
+        assert!(iface.has_multicast_group(group));
+        iface.leave_multicast_group(group).unwrap();
+        iface.poll(Instant::from_millis(1), &mut device, &mut sockets);
+        let (rx, _) = device.receive(Instant::from_millis(1)).unwrap();
+        let leave = rx.consume(|f| f.to_vec());
+        let ip = Ipv4Packet::new_checked(&leave[14..]).unwrap();
+        assert_eq!(ip.dst_addr(), Ipv4Address::new(224, 0, 0, 2));
+        let igmp = IgmpPacket::new_checked(ip.payload()).unwrap();
+        assert!(igmp.verify_checksum());
+        assert_eq!(ip.payload()[0], 0x17); // RFC2236 leave group.
+        assert_eq!(&ip.payload()[4..8], &[225, 1, 1, 1]);
+        assert!(!iface.has_multicast_group(group));
+        assert!(sockets.iter().next().is_none());
+    }
     fn temporary() -> PathBuf {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let p = std::env::temp_dir().join(format!(
-            "opensaab-mdi-module-{}-{}",
+            "opensaab-mdi-module-{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&p).unwrap();
         p
     }
     #[test]
-    fn unsupported_modes_and_credentials_rejected_before_usb_or_files() {
+    fn unsupported_modes_and_authorities_rejected_before_usb_or_files() {
         let missing = Path::new("/unprovisioned-mdimodule-test");
-        for (mode, key, authority) in [
-            (0, vec![0; 56], "full"),
-            (6, vec![0; 55], "full"),
-            (6, vec![0; 56], "read"),
-        ] {
-            let error =
-                run(-1, mode, missing, missing, missing, &key, authority, false).unwrap_err();
+        for (mode, authority) in [(0, "full"), (6, "read")] {
+            let error = run(-1, mode, missing, missing, missing, authority, false).unwrap_err();
             assert!(error.contains("configuration"));
         }
     }

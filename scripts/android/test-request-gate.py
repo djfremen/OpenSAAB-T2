@@ -59,6 +59,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/IgnitionStatusText.java'),
         str(repo/'android/tests/IgnitionStatusTextTest.java'),
         str(repo/'android/tests/RequestGateTest.java'),
+        str(repo/'android/adapters/mdi/com/opensaab/usb/MdiUsbConfiguration.java'),
+        str(repo/'android/tests/MdiUsbConfigurationTest.java'),
         str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NativeCommandGate.java'),
         str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoNativeStopGate.java'),
         str(repo/'android/tests/NanoKeyStatusGateTest.java'),
@@ -69,6 +71,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.MdiUsbConfigurationTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareCatalogTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.EmulatorArchitectureTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.CompatibilityCheckTest'],check=True)

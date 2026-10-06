@@ -139,11 +139,11 @@ public final class MdiUsbActivity extends Activity {
         if(SecurityAccessView.workflowBusy()||FirmwareGate.sessionActive()||VlinkerVehicleConnection.active()||sessionActive()){
             setMessage("Finish the current session before connecting MDI");return;
         }
-        if(!MdiProfile.packaged(this)){setMessage("MDI support is unavailable for this app architecture");return;}
+        if(!MdiAdapter.packaged(this)){setMessage("MDI support is unavailable for this app architecture");return;}
         String path=getIntent().getStringExtra("usb_device_name");selected=null;
         for(UsbDevice d:manager.getDeviceList().values()){
             if(path!=null&&!path.equals(d.getDeviceName()))continue;
-            if(!MdiProfile.candidate(AdapterCatalog.identify(d.getVendorId(),d.getProductId())))continue;
+            if(!MdiAdapter.candidate(AdapterCatalog.identify(d.getVendorId(),d.getProductId())))continue;
             if(selected!=null){setMessage("Multiple MDI candidates · select one adapter");selected=null;return;}selected=d;
         }
         if(selected==null){setMessage("Selected adapter disconnected · return and Refresh");return;}
@@ -163,10 +163,10 @@ public final class MdiUsbActivity extends Activity {
     }
     private void execute(UsbDevice device){
         UsbDeviceConnection connection=null;UsbInterface control=null,data=null;boolean cc=false,dc=false;
-        FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed",setup="";MdiProfile profile=null;
+        MdiUsbConfiguration.Trace configuration=new MdiUsbConfiguration.Trace();
+        FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed",setup="";
         try{
             lease=FirmwareGate.use();
-            try{profile=MdiProfile.read(this);}catch(IOException missing){/* Identify first; prompt after USB release. */}
             directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());
             nativeDirectory=new File(directory,"native");Files.createDirectories(nativeDirectory.toPath());
             File card=new File(getFilesDir(),"firmware/card.bin");
@@ -191,13 +191,41 @@ public final class MdiUsbActivity extends Activity {
             if(stopping)throw new IOException("Stopped before USB open");
             attempt.stage(ConnectionAttempt.Stage.USB_OPEN);connection=manager.openDevice(device);
             if(connection==null)throw new IOException("MDI USB open failed");
-            if(!connection.setConfiguration(cfg))throw new IOException("MDI configuration selection failed");
+            attempt.stage(ConnectionAttempt.Stage.USB_CONFIGURATION);
+            final UsbDeviceConnection opened=connection;
+            MdiUsbConfiguration.select(new MdiUsbConfiguration.Port(){
+                public int configuration()throws IOException{
+                    byte[] value=new byte[1];
+                    if(opened.controlTransfer(0x80,8,0,0,value,1,1000)!=1)throw new IOException("MDI USB configuration read unavailable");
+                    return value[0]&255;
+                }
+                private UsbConfiguration configuration(int id){
+                    for(int n=0;n<device.getConfigurationCount();n++)if(device.getConfiguration(n).getId()==id)return device.getConfiguration(n);
+                    return null;
+                }
+                private UsbInterface usbInterface(int id){
+                    UsbConfiguration active=configuration(configuration.before);
+                    if(active!=null)for(int n=0;n<active.getInterfaceCount();n++)if(active.getInterface(n).getId()==id)return active.getInterface(n);
+                    return null;
+                }
+                public int select(int id){return configuration(id)==null?22:MdiNative.nativeSelectConfiguration(opened.getFileDescriptor(),id);}
+                public int[] interfaces(int id)throws IOException{
+                    UsbConfiguration active=configuration(id);if(active==null)throw new IOException("MDI active USB configuration unavailable");
+                    int[] ids=new int[active.getInterfaceCount()];for(int n=0;n<ids.length;n++)ids[n]=active.getInterface(n).getId();return ids;
+                }
+                public boolean claim(int id){UsbInterface x=usbInterface(id);return x!=null&&opened.claimInterface(x,true);}
+                public int release(int id){return usbInterface(id)==null?22:MdiNative.nativeReleaseForConfiguration(opened.getFileDescriptor(),id);}
+                public boolean stopped(){return stopping;}
+            },2,configuration,true);
+            if(stopping)throw new IOException("Stopped before MDI interface claim");
             attempt.stage(ConnectionAttempt.Stage.INTERFACE_CLAIM);
             cc=connection.claimInterface(control,true);if(!cc)throw new IOException("MDI control interface unavailable");
+            if(stopping)throw new IOException("Stopped before MDI interface claim");
             dc=connection.claimInterface(data,true);if(!dc)throw new IOException("MDI data interface unavailable");
+            if(stopping)throw new IOException("Stopped before MDI transport start");
             attempt.stage(ConnectionAttempt.Stage.TRANSPORT_START);
             boolean capture=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0&&getIntent().getBooleanExtra("mdi_capture",false);
-            int result=MdiNative.nativeRun(connection.getFileDescriptor(),profile==null?new byte[0]:profile.key,directory.getAbsolutePath(),
+            int result=MdiNative.nativeRun(connection.getFileDescriptor(),directory.getAbsolutePath(),
                 new File(getApplicationInfo().nativeLibraryDir,"libtech2_mdi.so").getAbsolutePath(),new File(getFilesDir(),"firmware").getAbsolutePath(),authority,capture);
             workflowSucceeded=result==0;
             JSONObject report=json(new File(directory,"result-private.json"),65536);
@@ -211,9 +239,11 @@ public final class MdiUsbActivity extends Activity {
             if(attempt!=null&&!stopping)attempt.failure(error);
         }finally{
             if(attempt!=null)attempt.stage(ConnectionAttempt.Stage.CLEANUP);
-            if(profile!=null)Arrays.fill(profile.key,(byte)0);
+            usbClean&=configuration.releasesOk;
             if(connection!=null){if(dc)usbClean&=connection.releaseInterface(data);if(cc)usbClean&=connection.releaseInterface(control);connection.close();}
-            try{if(directory!=null)FirmwareStore.writeJson(new File(directory,"java-release.json"),new JSONObject().put("data_claimed",dc).put("control_claimed",cc).put("USB_release_ok",usbClean).put("connection_closed",connection!=null));}catch(Exception ignored){}
+            try{if(directory!=null)FirmwareStore.writeJson(new File(directory,"java-release.json"),new JSONObject().put("data_claimed",dc).put("control_claimed",cc).put("USB_release_ok",usbClean).put("connection_closed",connection!=null)
+                .put("configuration_before",configuration.before).put("configuration_after",configuration.after).put("configuration_changed",configuration.changed).put("configuration_reinitialized",configuration.reinitialized).put("active_interfaces_detached",configuration.detached)
+                .put("configuration_selection_attempts",configuration.selectionAttempts).put("configuration_first_errno",configuration.firstError).put("configuration_last_errno",configuration.lastError).put("temporary_release_errno",configuration.releaseError));}catch(Exception ignored){}
             InteractiveKeyPump input=keyPump;if(input!=null)input.close();keyPump=null;
             if(lease!=null)lease.close();OWNED.set(false);running.set(false);
             final String result=end+(usbClean?" · USB closed":" · USB cleanup incomplete");
@@ -221,19 +251,13 @@ public final class MdiUsbActivity extends Activity {
             final boolean released=transportClean&&usbClean;
             if(attempt!=null)attempt.finish(stopping?ConnectionAttempt.Outcome.CANCELLED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
                 stopping?ConnectionAttempt.Reason.USER_STOP:!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
-            ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
+            ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
                 if(!stopping&&foreground&&released&&!requiredSetup.isEmpty())showSetup(requiredSetup);
                 if(pendingTool!=null){Runnable next=pendingTool;pendingTool=null;next.run();}});
         }
     }
-    private void importProfile(){
-        startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/json").addCategory(Intent.CATEGORY_OPENABLE),91);
-    }
     private void showSetup(String required){
-        if("connection_key".equals(required))new AlertDialog.Builder(this).setTitle("MDI connection setup")
-            .setMessage("The MDI serial number was retrieved automatically. Import a connection key profile to finish setup. No serial number entry is needed.")
-            .setNegativeButton("Cancel",null).setPositiveButton("Import profile",(d,w)->importProfile()).show();
-        else if("firmware".equals(required))new AlertDialog.Builder(this).setTitle("Firmware setup needed")
+        if("firmware".equals(required))new AlertDialog.Builder(this).setTitle("Firmware setup needed")
             .setMessage("The MDI serial number was retrieved automatically. Select and download diagnostic software before starting firmware.")
             .setNegativeButton("Cancel",null).setPositiveButton("Firmware selection",(d,w)->startActivity(new Intent(this,FirmwareActivity.class))).show();
     }
@@ -302,18 +326,11 @@ public final class MdiUsbActivity extends Activity {
             Runnable open=()->startActivity(new Intent(this,FirmwareActivity.class));
             if(running.get())new AlertDialog.Builder(this).setTitle("Firmware selection").setMessage("Stop and release MDI before selecting diagnostic software?")
                 .setNegativeButton("Keep running",null).setPositiveButton("Stop and select",(d,w)->{pendingTool=open;stop("Stopping before firmware selection");}).show();else open.run();})
-            .add("MDI connection profile",()->{if(running.get()||permissionPending){setMessage("Stop MDI before changing its connection profile");return;}importProfile();})
             .add("Preferences",controls::showPreferences)
             .add("Report issue",()->{if(!running.get())startActivity(new Intent(this,SupportReportActivity.class));})
             .add("Console",controls::showConsole)
             .add("About / Support",()->ProjectSupport.show(this))
             .add("Firmware controls help",controls::showHelp).show("App menu");
-    }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);
-        if(request==91&&result==RESULT_OK&&data!=null&&data.getData()!=null){
-            try(InputStream input=getContentResolver().openInputStream(data.getData())){MdiProfile.importProfile(this,input);setMessage("MDI connection profile saved · Connect and start");}
-            catch(Exception invalid){setMessage("MDI connection profile could not be imported");}
-        }
     }
     @Override protected void onStart(){super.onStart();foreground=true;}
     @Override protected void onStop(){foreground=false;if(running.get()||permissionPending)stop("App left foreground");super.onStop();}

@@ -296,8 +296,8 @@ public final class MainActivity extends Activity {
             status.setText("Selected adapter disconnected — select again");return;
         }
         com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(current.getVendorId(),current.getProductId());
-        if(com.opensaab.usb.MdiProfile.candidate(match)){
-            if(!com.opensaab.usb.MdiProfile.packaged(this)){status.setText("MDI support is unavailable for this app architecture");return;}
+        if(com.opensaab.usb.MdiAdapter.candidate(match)){
+            if(!com.opensaab.usb.MdiAdapter.packaged(this)){status.setText("MDI support is unavailable for this app architecture");return;}
             android.content.Intent mdi=new android.content.Intent(this,com.opensaab.usb.MdiUsbActivity.class)
                 .putExtra("mdi_security_request",mode.equals("native_seed"))
                 .putExtra("usb_device_name",current.getDeviceName()).putExtra("auto_start",true);

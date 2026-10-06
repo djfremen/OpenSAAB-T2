@@ -1,7 +1,9 @@
 OpenSAAB MDI Android module
 MPL-2.0 source: OpenSAAB-T2/android/adapters/mdi and OpenMDI.
 MDI bridge engine source is separately pinned in the matching-source receipt.
-No vendor library is loaded, and no private connection credential is shipped.
+No vendor library is loaded, and no owner connection credential is shipped.
+The classic-MDI bootstrap contains fixed management protocol material observed
+in the pinned general Windows runtimes; fresh adapter identity is read over USB.
 
 
 

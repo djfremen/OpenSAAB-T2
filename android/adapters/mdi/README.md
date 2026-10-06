@@ -16,22 +16,51 @@ configuration 2, control/data interfaces 0/1, full-speed bulk endpoints 81/02.
 Generic RNDIS USB IDs remain candidates, not model identification. Other models,
 descriptors, physical cold reconnect and other architectures require qualification.
 
-The connection profile is local to `getNoBackupFilesDir()/mdi/connection-profile.json`.
-Schema 2 contains adapter_family `classic_mdi` and a base64-encoded 56-byte
-management base key; no serial is required. Legacy schema-1 profiles are accepted,
-but their saved serial is ignored. After RNDIS initialization and the startup drain,
-the carrier retrieves the fresh serial from the observed IPv4 multicast
-`225.1.1.1:8194` announcement (`0x86d`, version byte 7, LE serial at body offset 9).
-It validates Ethernet/IP/UDP framing, checksums, source address and record bounds.
-Retrieval has an eight-second deadline and remains cancellable; no management or
-vehicle request starts before it succeeds. Generic USB descriptor serials are
-never used as management identity. This is scoped to the observed classic MDI.
+Before claiming the transport interfaces, read the active configuration with the
+standard USB GET_CONFIGURATION request. Reinitialize configuration 2 even when
+it is already active so the bulk data endpoints are reset before a new session.
+If selection fails with EBUSY, force-claim the current configuration's
+interfaces to detach a bound kernel driver, release every successful temporary
+claim without reconnecting the kernel driver, then retry the selection once and
+verify its readback. Android10's Java `releaseInterface` explicitly reconnects
+the driver; temporary releases therefore use the granted descriptor's native
+USBDEVFS_RELEASEINTERFACE ioctl alone. Normal final Android release is unchanged.
+The native configuration ioctl retains errno for the local Console and receipt;
+only EBUSY triggers driver detachment. Linux usbfs rejects
+SET_CONFIGURATION while an interface is owned, including a redundant selection
+of the current configuration. Cancellation and partial failure release temporary
+claims; failed release prevents another selection. No RNDIS or vehicle command
+is sent by this step. Connection reports distinguish `USB_CONFIGURATION` from
+`USB_OPEN`; the local release receipt records configuration IDs and cleanup.
 
-Without a key profile, identity retrieval still runs, then USB is released before
-the app prompts to import the connection key. No serial entry is needed. Import
-is also available in App menu. Firmware setup is checked after identity retrieval.
-Credentials are neither bundled nor logged. The owner fixture was provisioned
-locally; no Windows program, vendor DLL, root or Android network driver is used.
+This change follows Huawei EVR-L29 Android 10 preview.63 evidence: nine successful
+USB opens followed by failed configuration selection, before any interface claim
+or native handshake. Private huawei.1 repeated that failure in the owner's photo.
+The regression model reproduces the Android10 release/reconnect failure; its
+no-reconnect counterpart passes. Private Huawei.6 also passed a fresh install:
+configuration 2 was reinitialized after EBUSY16, two temporary interfaces were
+detached/released, and readback confirmed configuration 2. Fresh serial, automatic
+management login, VIN, original Main Menu and controlled Stop/USB release passed.
+Earlier reuse-only .3/.4 sessions received no announcements; .5's group join
+exposed a bulk OUT timeout. Host tests alone do not qualify hardware.
+
+The shared OpenMDI classic-MDI bootstrap includes the fixed management protocol
+material observed in both pinned Windows J2534/D-PDU runtimes. It is not a
+per-owner password or ECU Security Access key. Android neither reads nor imports
+a connection profile, and the JNI interface accepts no serial or key input.
+No Windows program, vendor DLL, root or Android network driver is used.
+
+After RNDIS initialization with packet filter15 and the startup drain, the carrier
+joins the observed discovery multicast group using IGMP, then retrieves a fresh
+serial from the observed IPv4 multicast `225.1.1.1:8194` announcement (`0x86d`,
+version byte 7, LE serial at body offset 9). It validates Ethernet/IP/UDP framing,
+checksums, source address and record bounds. Retrieval has an eight-second deadline
+and remains cancellable; no management or vehicle request starts before it
+succeeds. Generic USB descriptor serials and saved serials are never used as
+management identity. The shared core derives the adapter-specific Blowfish key
+and requires inventory PDU version 2.5.33.154 before registration/START. Other
+versions and MDI2 remain unqualified. Firmware setup is still required and follows
+the common software-selection/download workflow.
 
 A fresh VIN read and confirmed discovery-channel cleanup precede firmware startup.
 VIN lookup is local in this module; no remote lookup or security processing is
@@ -42,7 +71,8 @@ authority; normal connection uses `full` original-firmware authority.
 
 Stop keeps the carrier available while the guest closes both links and releases
 its owner. It then disables RNDIS filtering, cancels/reaps USB input, sends HALT
-and releases Java interfaces. Cancelled permission callbacks cannot reopen a
+and releases Java interfaces. The carrier leaves the discovery multicast group
+before disabling filtering. Cancelled permission callbacks cannot reopen a
 session. Unexpected firmware termination does not become connection success merely
 because cleanup succeeded. EXIT navigates guest menus; Stop belongs to App menu.
 
