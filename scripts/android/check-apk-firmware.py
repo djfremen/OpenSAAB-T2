@@ -10,12 +10,17 @@ from build_profiles import PROFILES, validate_elf
 
 KOTLIN_RESOURCES = json.loads((Path(__file__).resolve().parents[2] / 'android/shared/kotlin-runtime-resources.json').read_text())
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
-def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None):
+def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None):
     profile = PROFILES[profile_name]
     native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     connection_core = 'lib/arm64-v8a/libopensaab_connection.so'
     if connection_core_sha256 is not None and (profile_name != 'arm64' or not re.fullmatch('[0-9a-f]{64}', connection_core_sha256)):
         raise ValueError('vLinker connection core requires an exact ARM64 SHA-256 pin')
+    mdi_pins = {}
+    if (mdi_module_sha256 is None)!=(mdi_bridge_sha256 is None):raise ValueError('MDI module and bridge pins must be paired')
+    if mdi_module_sha256 is not None:
+        if profile_name!='arm64' or any(not re.fullmatch('[0-9a-f]{64}',p) for p in (mdi_module_sha256,mdi_bridge_sha256)):raise ValueError('MDI ARM64 pins required')
+        mdi_pins={'lib/arm64-v8a/libopensaab_mdi_android.so':mdi_module_sha256,'lib/arm64-v8a/libtech2_mdi.so':mdi_bridge_sha256}
     with zipfile.ZipFile(path) as apk:
         names = apk.namelist()
         if len(names) != len(set(names)):
@@ -66,6 +71,13 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if set(receipt) != {'source_repository','source_commit','version_name','version_code','source_license'} or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
                     raise ValueError('Unexpected source metadata')
                 continue
+            if name in mdi_pins:
+                data=apk.read(name);validate_elf(data[:20],profile)
+                if hashlib.sha256(data).hexdigest()!=mdi_pins[name]:raise ValueError('MDI payload pin mismatch')
+                continue
+            if name=='assets/legal/MDI_NOTICES.txt' and mdi_pins:
+                if apk.read(name)!=(Path(__file__).resolve().parents[2]/'android/adapters/mdi/MDI_NOTICES.txt').read_bytes():raise ValueError('MDI notice mismatch')
+                continue
             if name in native:
                 with apk.open(info) as source:
                     validate_elf(source.read(20), profile)
@@ -82,10 +94,11 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 name.startswith('res/') and PurePosixPath(name).suffix.lower() in {'.xml','.png','.webp','.jpg','.jpeg'} and info.file_size <= 1024*1024)
             if not allowed:
                 raise ValueError(f'Unexpected APK payload (Saab program images must be downloaded/imported): {name}')
+        if mdi_pins and not (set(mdi_pins)|{'assets/legal/MDI_NOTICES.txt'}).issubset(names):raise ValueError('MDI packaged module incomplete')
         if not native.issubset(apk.namelist()):
             raise ValueError('Missing emulator or USB executable')
         if connection_core_sha256 is not None and connection_core not in names:
             raise ValueError('Missing pinned vLinker connection executable')
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256)
+    parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256)

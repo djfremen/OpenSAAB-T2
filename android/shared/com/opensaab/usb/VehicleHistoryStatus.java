@@ -11,20 +11,22 @@ public final class VehicleHistoryStatus {
     public final String connection,auth,timestamp;
     public final String authState,freshness,statusUtc;
     public final int color;
-    public VehicleHistoryStatus(VehicleIdentity vehicle,SecurityAccessStatus receipt,File card,Instant now){
+    public VehicleHistoryStatus(VehicleIdentity vehicle,SecurityAccessStatus receipt,File card,Instant now){this(vehicle,receipt,readCard(card),now,true);}
+    public static VehicleHistoryStatus working(VehicleIdentity vehicle,SecurityAccessStatus receipt,byte[] bytes,Instant now){return new VehicleHistoryStatus(vehicle,receipt,bytes,now,true);}
+    private static byte[] readCard(File card){try(RandomAccessFile f=new RandomAccessFile(card,"r")){byte[] b=new byte[SsaData.SIZE];f.seek(SsaData.OFFSET);f.readFully(b);return b;}catch(Exception unavailable){return null;}}
+    private VehicleHistoryStatus(VehicleIdentity vehicle,SecurityAccessStatus receipt,byte[] bytes,Instant now,boolean selected){
         connection="Last connection · "+time(vehicle==null?null:vehicle.observedUtc);
         String label="auth_status: [N/A]",when="Timestamp unavailable";
         String stateLabel=SsaState.UNAVAILABLE.label,age="Age unknown",utc=null;int tint=SsaState.UNAVAILABLE.color;
         if(vehicle!=null){
-            try(RandomAccessFile f=new RandomAccessFile(card,"r")){
-                byte[] bytes=new byte[SsaData.SIZE];f.seek(SsaData.OFFSET);f.readFully(bytes);
+            try{
                 SsaState state=SsaState.analyze(bytes);
                 // A cleared card has no vehicle association. Do not borrow another vehicle's receipt.
                 if(state==SsaState.INIT_AUTH){stateLabel=state.label;label="auth_status: [INIT_AUTH] · cleared";tint=state.color;}
                 else if(vehicle.vin.equals(SsaData.vin(bytes))){
                     stateLabel=state.label;label="auth_status: "+state.label;tint=state.color;
                     if(receipt!=null&&receipt.matches(vehicle.vin)){
-                        if(state==SsaState.POST_AUTH&&receipt.cardMatches(card)){
+                        if(state==SsaState.POST_AUTH&&receipt.ssaMatches(bytes)){
                             age=receipt.freshness(true,now);label+=" · "+age;
                             utc=receipt.data.getProperty("imported_utc");when="Post-auth written · "+time(utc);
                             if("Stale".equals(age))tint=0xffffd77c;

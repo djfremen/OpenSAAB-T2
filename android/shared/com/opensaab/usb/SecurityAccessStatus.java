@@ -37,9 +37,10 @@ public final class SecurityAccessStatus {
     public boolean cardMatches(File card){
         try(RandomAccessFile f=new RandomAccessFile(card,"r")){
             byte[] bytes=new byte[SsaData.SIZE];f.seek(SsaData.OFFSET);f.readFully(bytes);
-            return imported()&&data.getProperty("ssa_hash","").equals(hash(bytes));
+            return ssaMatches(bytes);
         }catch(Exception missing){return false;}
     }
+    public boolean ssaMatches(byte[] bytes){try{return imported()&&bytes!=null&&data.getProperty("ssa_hash","").equals(hash(bytes));}catch(Exception invalid){return false;}}
     public boolean sameSession(File session){return session!=null&&session.getName().equals(data.getProperty("source_session"));}
     private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
     public String freshness(boolean cardMatches,Instant now){

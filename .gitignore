@@ -18,3 +18,8 @@
 /dumps/
 __pycache__/
 .DS_Store
+
+# Local runtime images written by host tests.
+/live.ppm
+/welcome.ppm
+/startup.json

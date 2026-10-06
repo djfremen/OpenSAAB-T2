@@ -12,7 +12,7 @@ import org.json.JSONObject;
 /** Host-scoped rotation state. Affirmative consent is NEVER written to saved state. */
 public final class ReportReviewModel extends AndroidViewModel {
     public ReportArtifacts.Artifact artifact;
-    public boolean consent,reviewOpen,busy;
+    public boolean consent,reviewOpen,busy,deliveryCompleted;
     public String receipt="",notice="";
     public final MutableLiveData<Integer> changes=new MutableLiveData<>(0);
     private boolean initialized,cleared;
@@ -43,7 +43,7 @@ public final class ReportReviewModel extends AndroidViewModel {
     private void remember(){if(artifact!=null)try{ReportArtifacts.remember(getApplication(),artifact,reviewOpen);}catch(Exception failed){notice="Could not save review restoration state. Your report file is still kept locally.";}}
     public void prepare(String description){prepare(description,SupportReports.notesProvided(description));}
     public void prepare(String description,boolean notes){
-        if(busy)return;final ReportArtifacts.Artifact prior=artifact;final String priorReceipt=receipt;busy=true;artifact=null;consent=false;receipt="";reviewOpen=false;notice="Preparing report…";changed();
+        if(busy)return;final ReportArtifacts.Artifact prior=artifact;final String priorReceipt=receipt;busy=true;deliveryCompleted=false;artifact=null;consent=false;receipt="";reviewOpen=false;notice="Preparing report…";changed();
         worker.execute(()->{
             ReportArtifacts.Artifact next=null;String error=null;
             try{JSONObject report=SupportReports.collect(getApplication(),description,notes);String json=report.toString(2);
@@ -72,7 +72,7 @@ public final class ReportReviewModel extends AndroidViewModel {
             catch(Exception e){problem="Could not confirm upload. Your local report is kept; retry explicitly.";}
             final String received=number,error=problem;final boolean persisted=recorded,invalidArtifact=!validated;
             ui.post(()->{if(cleared)return;busy=false;
-                if(received!=null){receipt=received;consent=false;notice="Already sent. Receipt: "+receipt+(persisted?"":"\nCould not save the local delivery record. Keep this receipt; reopening may offer the report again.");}
+                if(received!=null){receipt=received;consent=false;if(persisted){reviewOpen=false;deliveryCompleted=true;remember();}notice="Already sent. Receipt: "+receipt+(persisted?"":"\nCould not save the local delivery record. Keep this receipt; reopening may offer the report again.");}
                 else {notice=error;if(invalidArtifact){artifact=null;reviewOpen=false;consent=false;}}changed();});
         });
     }

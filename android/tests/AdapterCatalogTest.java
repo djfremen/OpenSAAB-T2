@@ -13,6 +13,11 @@ public final class AdapterCatalogTest {
         expect(0x05a0,0x0100,"bosch_etas_vci_candidate");expect(0x05a0,0x0300,"bosch_etas_vci_candidate");expect(0x05a0,0x03ff,"bosch_etas_vci_candidate");expect(0x05a0,0x0400,"unknown");
         expect(0x0525,0xa4a2,"generic_rndis");expect(0x0ca0,0x1501,"bosch_eps_candidate");expect(0x0ca0,0x1504,"unknown");
         expect(0x0bda,0x8153,"unknown");expect(0x05e3,0x0610,"unknown");
+        AdapterCatalog.Match network=AdapterCatalog.identify(0x0525,0xa4a2);
+        if(!AdapterCatalog.adapterCandidate(network))throw new AssertionError("Attached RNDIS candidate hidden from picker");
+        if(AdapterCatalog.supported(network)||network.backend()!=AdapterProfile.Backend.NONE)throw new AssertionError("Generic USB identity cannot select a driver");
+        if(AdapterCatalog.adapterCandidate(AdapterCatalog.identify(0x0ca0,0x1501)))throw new AssertionError("EPS is not MDI");
+        if(AdapterCatalog.adapterCandidate(AdapterCatalog.identify(0x0bda,0x8153)))throw new AssertionError("Unrelated network dongle selected");
         System.out.println("ADAPTER_CATALOG PASS; metadata only, no hardware access");
     }
 }

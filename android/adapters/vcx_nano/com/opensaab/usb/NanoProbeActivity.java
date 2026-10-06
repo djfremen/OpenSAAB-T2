@@ -376,6 +376,7 @@ public class NanoProbeActivity extends Activity {
                 nativeKeyPump=new InteractiveKeyPump(new File(nativeDirectory,"native-key.txt"),e->log("Key input stopped: "+e));
                 nativeLcdPump.setDirectory(nativeDirectory);
                 File firmware=new File(getFilesDir(),"firmware");
+                SecuritySessionData.recordBaseline(nativeDirectory,new File(firmware,"card.bin"));
                 for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(firmware,name).isFile())throw new IOException("Missing original firmware: "+name);
                 builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so",
                     "--test-harness","--harness-target",(nativeFullNative || nativeSecurityCollect || nativeKeyStatus || nativeDtc&&!nativeClearDtc)?"native-manual":nativeDtc?"dtc-link-1367":"security-link-1367","--candi-native-link",

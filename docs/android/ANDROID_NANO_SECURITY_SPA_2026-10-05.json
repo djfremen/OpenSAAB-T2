@@ -4,7 +4,7 @@
   "created_at_utc": "2026-10-05T10:05:50.469801+00:00",
   "scope": "Owner-operated original firmware Get Security Access and Add SPA on live 2004 Saab 9-3 Sport / 9440, Pixel7 direct Nano USB",
   "installed_artifact": {
-    "apk": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/OpenSAAB-T2-nano-init.4-arm64-private.apk",
+    "apk": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/OpenSAAB-T2-nano-init.4-arm64-private.apk",
     "apk_sha256": "94e5ccc30b310a718bbd86c712e6b36500070fea1d962aaf068af3a27ed5e537",
     "source_archive_sha256": "2862a7cc16a5230b4b593c28568b244283ae3c985b9b0c58a2204849bbec3744",
     "source_manifest_sha256": "f35f13714f72bec04e635d79a265de2d4d6dbc5c9a9ab490510d9704c1cbf31d",
@@ -99,51 +99,51 @@
   },
   "retained_evidence": [
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/native-process.log",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/native-process.log",
       "sha256": "eeeed1204a9e365c5a12da957e840f1458547b8b36cace350d1ae06429fe3d66"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/report.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/report.json",
       "sha256": "7a8f77ccca27c703fdb92d593f3007d90c387d29813f54e01aa6119e0605792b"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40c30d40-7d48-413d-95ce-ef2e6233b876/native-security-snapshot.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40c30d40-7d48-413d-95ce-ef2e6233b876/native-security-snapshot.json",
       "sha256": "da9241e89d571a19cc70094564909957dbf362edb7bfa5bcc6013c9efee8d6eb"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40c30d40-7d48-413d-95ce-ef2e6233b876/security-api-caf78597-6677-419b-b8a0-362459a81687/result.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40c30d40-7d48-413d-95ce-ef2e6233b876/security-api-caf78597-6677-419b-b8a0-362459a81687/result.json",
       "sha256": "6e7f133ff075a8f4751eefc25acdb38857128eb3b5c49cb69be088f561d2e07f"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/logcat-cleanup-private.txt",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/logcat-cleanup-private.txt",
       "sha256": "8a1f23a711087cdd546a22531d53afe017f031eb69173333cf172011ac0527e1"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/live.ppm",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/live.ppm",
       "sha256": "6dfa1235b73a8ed23b6e8cc18ae7eadfccdb75d1ba98348c546d102ad2f79608"
     }
   ],
   "source_reviews": [
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/java-preparation-v3.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/java-preparation-v3.json",
       "sha256": "5eeec5f676bd76578b2597a4a8247f2ab69fef21512f197e76d309888b1b8e35"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/rust-preparation-v2.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/rust-preparation-v2.json",
       "sha256": "57e13ad33af34a66e64cdbdd328d256ce1d25d00491b6013b3fd9e2b443a79e2"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/independent-java-review.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/independent-java-review.json",
       "sha256": "df9a3ed6a24fcda520b78a3071380a8967e5e24cf065d678cde28abbed1272d3"
     },
     {
-      "path": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/independent-rust-review.json",
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/independent-rust-review.json",
       "sha256": "3de27415704ecccff50b2b2ac9d29b8c868c09aeb8fe65eed3652ac6b455efbb"
     }
   ],
   "responsiveness_followup": {
     "installed_artifact": {
-      "apk": "/Users/mini4/.local/share/opensaab/nano-android-handshake-20261005/OpenSAAB-T2-nano-init.5-arm64-private.apk",
+      "apk": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/OpenSAAB-T2-nano-init.5-arm64-private.apk",
       "apk_sha256": "5a7d93a6d84de10a950958fecc101d2ad7d9ebf6c01643d43e23f695a31932e6",
       "source_archive_sha256": "902c78d56f7be2160e66b193280b3275059172fc720655c3aaf4fac6407f87c9",
       "source_manifest_sha256": "a736119cb98eee960050815e5db603e87863e29ca2b7c91c6b1242f8ee222580",
@@ -227,11 +227,11 @@
     "USB_and_QUIT_confirmed": true,
     "vehicle_programming_repeated_on_init5": false,
     "Java_regressions": {
-      "path": "/Users/mini4/.local/share/opensaab/repo-update-20261005/java-regression.log",
+      "path": "/home/user/.local/share/opensaab/repo-update-20261005/java-regression.log",
       "sha256": "61ede7e68740b628d4bca3aa1469195fbbf7a904e21693691e8b98d552a38a49"
     },
     "actual_build": {
-      "path": "/Users/mini4/.local/share/opensaab/repo-update-20261005/apk-build-init5-final.log",
+      "path": "/home/user/.local/share/opensaab/repo-update-20261005/apk-build-init5-final.log",
       "sha256": "57adf9bc0b549f12fa510ce67988956cad4704cff394fda155a1c71302545800"
     }
   },

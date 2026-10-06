@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-10-05",
+  "artifact_version": "0.1.0-mdi-main.4",
+  "APK_sha256": "eef5526c9af517d62d2ee718ef32c3f6d5ee3a6bea167d7498fab67baf0889ac",
+  "native_pins": {
+    "lib/arm64-v8a/libtech2_emu.so": "4211cb6cd0e531411eac01137bcc8c59ebb5185413a9d5aeaa9f6b9009f8ce73",
+    "lib/arm64-v8a/libnano_probe.so": "67718eaed94cef5eb09d878fe057f1dd63dbde83298e4db6471064a61ad60e7c",
+    "lib/arm64-v8a/libchipsoft_probe.so": "afd3c5527cd7f95f5bcf807dfb5c3d73ca23caf82a7d65f19b1fb6329f112040",
+    "lib/arm64-v8a/libopensaab_connection.so": "deed02b2fb033cdc546f1196d27caeeb72f93f3b2d8aa30de89ad3ad77b4479b",
+    "lib/arm64-v8a/libopensaab_mdi_android.so": "f0dddb25b9907e652809c0b5594ada8c9b2f413ff05e00e208d878140305d1be",
+    "lib/arm64-v8a/libtech2_mdi.so": "b0d46d07b4d8eaf1f3bc4414df90e2db4f472555dbf04f5d1c2c04d1ef616274"
+  },
+  "device": "Pixel7 / Android16 / ARM64",
+  "adapter_scope": "Configured Classic MDI owner fixture; generic RNDIS USB0525:a4a2 is not exact model identification",
+  "operations": {
+    "native_collection_matches_owner_API_input": true,
+    "validated_reply_imported": true,
+    "next_native_session_uses_imported_output_and_processed_card": true,
+    "original_firmware_security_check_OK": true,
+    "SPA_Add_ECU_finished": true,
+    "key_status": "Detected, Working (Added);4 programmed CIM keys;433MHz CIM/key",
+    "DTC_console_positions": 8,
+    "DTC_saved_report_positions": 4,
+    "DTC_saved_report_complete": false
+  },
+  "console_proof": {
+    "full_stdout_lines": 37644,
+    "stdout_sha256": "e6b0fa8562eeb77e7db8e618a24f05641f48f13bb38c9baaa1a0b01033109553",
+    "SPA_completion_stdout_line": 14112,
+    "key_status_stdout_line": 31721
+  },
+  "ending": {
+    "size_boundary_after_completed_operations": true,
+    "whole_session_success": false,
+    "native_and_Java_USB_cleanup_ok": true,
+    "pending_TX": 0,
+    "unconfirmed_tickets": 0
+  },
+  "no_vendor_driver_root_Windows_relay": true,
+  "limits": [
+    "Proof is from the preceding private artifact; new public package qualification is separate",
+    "Separate Remove/CEL action and decoded ECU grant not attested",
+    "Connection profile must be imported locally; no adapter credential is included",
+    "128MiB structured recording boundary can end the session; saved DTC export may be incomplete",
+    "MDI2, other platforms/ABIs/vehicles and physical power-loss cold start remain untested"
+  ],
+  "private_VIN_seed_key_API_payload_firmware_and_raw_capture_published": false
+}

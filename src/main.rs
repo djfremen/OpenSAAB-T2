@@ -678,6 +678,8 @@ pub fn run_headless(
     let mut next_live_frame = std::time::Instant::now();
     let mut live_screen = String::new();
     let mut live_frame = artifacts::LiveFrame::default();
+    let mut working_ssa = artifacts::WorkingSsa::default();
+    let mut collected_ssa = artifacts::WorkingSsa::default();
     let mut next_native_key = std::time::Instant::now();
     let mut next_health_beat = std::time::Instant::now();
     let security_ssa_before = (settings.harness_target
@@ -712,6 +714,15 @@ pub fn run_headless(
                 let capture = (|| -> std::io::Result<()> {
                     live_frame.publish(bus, settings.output_dir)?;
                     let screen = bus.screen_text();
+                    if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
+                        working_ssa.publish(&bus.card, settings.output_dir)?;
+                        let normalized = screen.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+                        if normalized.contains("you need security access from tis2000")
+                            && normalized.contains("disconnect tech 2 from vehicle")
+                            && bus.ssa_flash.as_ref().is_some_and(|flash| flash.erases > 0 && flash.programmed_bytes >= 714) {
+                            collected_ssa.publish_as(&bus.card, settings.output_dir, "collection-ssa.bin")?;
+                        }
+                    }
                     if screen != live_screen {
                         std::fs::write(settings.output_dir.join("screen.txt"), &screen)?;
                         println!(
@@ -1674,7 +1685,12 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
 
     println!("\nREPORT insns={insns} stop={stop}");
     if let Some(before) = &initial_security_ssa {
-        if let Err(e) = artifacts::save_security_snapshot(&bus, before, &opts.output) {
+        if let Err(e) = artifacts::save_security_snapshot(&bus, before, &opts.output).and_then(|()| {
+            if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
+                artifacts::WorkingSsa::default().publish(&bus.card, &opts.output)?;
+            }
+            Ok(())
+        }) {
             outcome = Outcome::OutputFailure;
             stop = format!("{stop}; security memory capture: {e}");
         }

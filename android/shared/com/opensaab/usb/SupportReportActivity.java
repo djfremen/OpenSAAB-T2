@@ -47,6 +47,7 @@ public final class SupportReportActivity extends androidx.fragment.app.FragmentA
     }
     private void renderReportState(){
         if(prepare==null||isFinishing()||isDestroyed())return;
+        if(review.deliveryCompleted){Toast.makeText(this,"Report sent. Receipt: "+review.receipt,Toast.LENGTH_LONG).show();finish();return;}
         prepare.setEnabled(!review.busy);restoreReview.setEnabled(review.artifact!=null&&!review.busy);reportNotice.setText(review.notice);
         if(getSupportFragmentManager().isStateSaved())return;
         androidx.fragment.app.Fragment current=getSupportFragmentManager().findFragmentByTag(ReportReviewDialog.TAG);

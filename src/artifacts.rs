@@ -78,6 +78,26 @@ impl LiveFrame {
     }
 }
 
+/// Atomic, bounded working SSA for desktop status and subsequent session restore.
+/// Contains guest card bytes, never an authorization or freshness assertion.
+#[derive(Default)]
+pub struct WorkingSsa { previous: Vec<u8> }
+impl WorkingSsa {
+    pub fn publish(&mut self, card: &[u8], output: &Path) -> io::Result<bool> {
+        self.publish_as(card, output, "working-ssa.bin")
+    }
+    pub fn publish_as(&mut self, card: &[u8], output: &Path, name: &str) -> io::Result<bool> {
+        let bytes = card.get(crate::ssa_flash::OFFSET..crate::ssa_flash::OFFSET + crate::ssa_flash::SIZE)
+            .ok_or_else(|| io::Error::other("card lacks SSA region"))?;
+        if bytes == self.previous { return Ok(false); }
+        let temporary = output.join(format!("{name}.tmp"));
+        fs::write(&temporary, bytes)?;
+        fs::rename(temporary, output.join(name))?;
+        self.previous = bytes.to_vec();
+        Ok(true)
+    }
+}
+
 /// Evidence only: preserve guest bytes for SSA inspection. A saved block or
 /// VIN-shaped RAM candidate is not proof of fresh seeds or completed collection.
 pub fn save_security_snapshot(bus: &Tech2Bus, before: &[u8], output: &Path) -> io::Result<()> {
@@ -158,6 +178,28 @@ mod tests {
         let changed = fs::read(dir.join("live.ppm")).unwrap();
         assert_eq!(&changed[15..18], &[0xff, 0x20, 0x0a]);
         assert!(!dir.join("live.ppm.tmp").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn working_ssa_publishes_exact_region_atomically_and_preserves_previous_on_error() {
+        let dir = std::env::temp_dir().join(format!("working-ssa-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let mut card = vec![0xff; crate::ssa_flash::OFFSET + crate::ssa_flash::SIZE + 4];
+        let mut checkpoint = WorkingSsa::default();
+        assert!(checkpoint.publish(&card, &dir).unwrap());
+        assert_eq!(fs::read(dir.join("working-ssa.bin")).unwrap(), vec![0xff; 714]);
+        assert!(!checkpoint.publish(&card, &dir).unwrap());
+        card[crate::ssa_flash::OFFSET + 20] = b'Y';
+        fs::create_dir(dir.join("working-ssa.bin.tmp")).unwrap();
+        assert!(checkpoint.publish(&card, &dir).is_err());
+        assert_eq!(fs::read(dir.join("working-ssa.bin")).unwrap()[20], 0xff);
+        fs::remove_dir(dir.join("working-ssa.bin.tmp")).unwrap();
+        assert!(checkpoint.publish(&card, &dir).unwrap());
+        let saved = fs::read(dir.join("working-ssa.bin")).unwrap();
+        assert_eq!(saved.len(), 714);
+        assert_eq!(saved[20], b'Y');
+        assert!(checkpoint.publish(&[], &dir).is_err());
         fs::remove_dir_all(dir).unwrap();
     }
 

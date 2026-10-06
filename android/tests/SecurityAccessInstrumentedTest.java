@@ -55,7 +55,7 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             });waitForIdleSync();sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);waitForIdleSync();
             main(()->check(!a.running.get()&&!SecurityAccessView.workflowBusy(),"Dismissing security dialog initiated work"));
             // Reload a local processing receipt into a later firmware session. No API or card changes.
-            VehicleIdentity vehicle=new VehicleIdentity("YS3TEST1A41000001",java.time.Instant.now().toString(),"synthetic test",2004,"unavailable","","","","","");
+            VehicleIdentity vehicle=new VehicleIdentity("YS3FD49Y041000000",java.time.Instant.now().toString(),"synthetic test",2004,"unavailable","","","","","");
             VehicleSession.save(new File(run,VehicleSession.FILE),vehicle);
             SecurityAccessStatus receipt=new SecurityAccessStatus(vehicle.vin,"previous-collection",java.time.Instant.now());
             receipt.processed("OpenSAAB","OSSEC-00000000000000000000000000000001",java.time.Instant.now());receipt.save(receiptFile);
@@ -69,6 +69,10 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
                 View exit=a.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect r=new Rect();check(exit.getGlobalVisibleRect(r)&&r.height()==exit.getHeight(),"Persistent status hid EXIT");
             });
             // Enter security access naturally in a full-control run; do not start another activity/session.
+            byte[] seeds=new byte[SsaData.SIZE];java.util.Arrays.fill(seeds,(byte)255);seeds[0]=(byte)177;
+            System.arraycopy(vehicle.vin.getBytes("US-ASCII"),0,seeds,0x14,17);
+            seeds[0x132]=1;seeds[0x133]=2;seeds[0x134]=3;seeds[0x135]=1;seeds[0x136]=0;seeds[0x137]=4;
+            Files.write(new File(run,"working-ssa.bin").toPath(),seeds);
             Files.write(screen.toPath(),"Checking Security Access\nReading all vehicle VINs OK\nReading all vehicle Seed Working".getBytes("UTF-8"));
             final java.util.ArrayList<Integer> sent=new java.util.ArrayList<>();
             main(()->{a.running.set(true);a.securityAccess.setMenuKey(k->{sent.add(k);return true;});});

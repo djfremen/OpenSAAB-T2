@@ -4,9 +4,9 @@
 
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
-**Public Android beta: v0.1.0-preview.56.**
+**Public Android beta: v0.1.0-preview.62.**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.56) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.62) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
 **Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
 
@@ -16,6 +16,7 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 - Direct Chipsoft Pro USB connection, VIN/session identification, ECU information and DTC reading.
 - Saved DTC reports grouped by module, user-reviewed sharing, and an optional donation link.
 - Guided security-data collection and processing through the OpenSAAB API.
+- Experimental Classic MDI USB transport in the main app, without a running Windows relay or standalone helper. A local connection profile is required.
 - First-run software download, extraction, verification and local storage; English Saab NAO is the default.
 
 **Security access requires internet access to the OpenSAAB security-access API. It cannot be processed offline.** Installed firmware, local USB diagnostics and saved reports work without internet. Online VIN enrichment, downloads and sending email also need connectivity.
@@ -28,7 +29,7 @@ Android 8+ with a 64-bit ARM Android system is required. Pixel 7 is the current 
 |---|---|
 | Chipsoft Pro | Current test path; original-firmware ECU information, DTC and selected security/configuration workflows previously exercised on project vehicles |
 | VCX Nano | Public beta includes fresh session initialization, security collection and responsive firmware controls; Pixel 7 / firmware 1.9.4.2 milestone and exact release testing are recorded separately |
-| MDI / other adapters | No supported Android backend yet |
+| Classic GM MDI | Experimental native USB transport in the main app; configured Pixel7 fixture completed original SPA Add and key-status reading. MDI2 and universal setup are untested |
 | Live data and module programming | Incomplete coverage; success on one vehicle is not general compatibility |
 
 Use **Run in emulation mode** to explore menus without connecting to a vehicle. Start physical testing with VIN/ECU information and DTC reading. A displayed DTC list is not proof every module was scanned. This preview does not promise universal module programming or configuration recovery.
@@ -67,6 +68,26 @@ Thanks to **[Erik Fuller (erik683)](https://github.com/erik683)** and
 initialization code into the Rust backend; that work supplied the missing
 session handshake. The complete attribution, original copyright and LGPL/GPL
 texts accompany both the APK and matching source.
+
+### MDI main-app milestone — October 5, 2026
+
+The owner-operated Pixel7 `mdi-main.4` app collected fresh native security data,
+processed and imported it, then completed original SPA Add through **ECU finished**.
+Service read the key as **Working (Added)**, with four programmed CIM keys and
+433MHz. That is a key-status read, not a new key-programming claim. All eight DTC
+list positions appear in the console; the saved report captured only four.
+
+Preview.62 packages the same six native payloads in a signed nondebuggable ARM64
+app and fixes report dismissal plus manual/stale security-data workflows. Read
+[the MDI guide](docs/adapters/MDI_ANDROID_PREVIEW.md) before trying it. No adapter
+credential is bundled: import your own connection profile locally. The configured
+Classic MDI fixture does not establish MDI2 or general adapter compatibility.
+The 128MiB structured-recorder boundary can end a session; report completeness,
+ending-state propagation and longer uninterrupted sessions remain tracked gaps.
+
+The [reviewed milestone receipt](docs/android/MDI_OWNER_MILESTONE_2026-10-05.json)
+keeps owner-development proof separate from exact public-package checks. Raw VINs,
+seed/key material, API payloads and firmware/context backups remain private.
 
 ## Software and source
 

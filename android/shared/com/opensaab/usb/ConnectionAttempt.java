@@ -10,7 +10,7 @@ import org.json.*;
 
 /** Small, private connection records. No USB payloads, VIN, serial, key or exception message. */
 public final class ConnectionAttempt {
-    public enum Adapter { SELECTION, CHIPSOFT, NANO }
+    public enum Adapter { SELECTION, CHIPSOFT, NANO, MDI }
     public enum Stage { DETECTION, PERMISSION, USB_OPEN, INTERFACE_CLAIM, TRANSPORT_START,
         IDENTIFICATION, CHANNEL_OPEN, VIN_REQUEST, FIRMWARE_START, SESSION, CLEANUP }
     public enum Outcome { IN_PROGRESS, COMPLETED, FAILED, CANCELLED }

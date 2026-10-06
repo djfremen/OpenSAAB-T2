@@ -90,7 +90,8 @@ public final class MainActivity extends Activity {
         }
         // Public builds use visible user actions; legacy ADB auto-start hooks are development-only.
         if((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)==0)return;
-        if(getIntent().getBooleanExtra("nano_security_collect",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("nano_security_collect",true).putExtra("auto_start",true),27));
+        if(getIntent().getBooleanExtra("mdi_native",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.MdiUsbActivity.class).putExtras(getIntent()).putExtra("auto_start",true),27));
+        else if(getIntent().getBooleanExtra("nano_security_collect",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("nano_security_collect",true).putExtra("auto_start",true),27));
         else if(getIntent().getBooleanExtra("nano_full_native",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("nano_full_native",true).putExtra("auto_start",true),27));
         else if(getIntent().getBooleanExtra("native_key_status",false))ui.post(()->startActivityForResult(new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtras(getIntent()).putExtra("native_key_status",true).putExtra("auto_start",true),27));
         else if(getIntent().getBooleanExtra("chipsoft_vin",false))ui.post(()->startActivity(new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("auto_start",true).putExtra("vin_check",true)));
@@ -159,7 +160,7 @@ public final class MainActivity extends Activity {
             vehicleSummary.setText("VIN: "+vehicle.optString("vin")+"\n"+description+extra+"\n"+vehicle.optString("adapter_label")+" · "+vehicle.optString("adapter_voltage"));
             connectionDate.setText("Observed connection · "+vehicle.optString("observed_utc"));
             com.opensaab.usb.VehicleIdentity last=com.opensaab.usb.VehicleSession.read(new File(getFilesDir(),"last-vehicle.json"));
-            com.opensaab.usb.VehicleHistoryStatus history=new com.opensaab.usb.VehicleHistoryStatus(last,com.opensaab.usb.SecurityAccessStatus.read(new File(getNoBackupFilesDir(),"security-processing-status.properties")),new File(getFilesDir(),"firmware/card.bin"),java.time.Instant.now());
+            com.opensaab.usb.VehicleHistoryStatus history=com.opensaab.usb.VehicleHistoryStatus.working(last,com.opensaab.usb.SecurityAccessStatus.read(new File(getNoBackupFilesDir(),"security-processing-status.properties")),com.opensaab.usb.SecuritySessionData.savedBytes(getFilesDir(),last),java.time.Instant.now());
             authStatus.setText(history.auth);authDate.setText(history.timestamp+"\nSaved emulator data · Vehicle access not verified");
             vehicleDetails=vehicleSummary.getText()+"\n"+connectionDate.getText()+"\n"+snapshot.optString("message");
         }
@@ -184,7 +185,7 @@ public final class MainActivity extends Activity {
             .add("App menu",this::showAppMenu).show("Actions");
     }
     public android.app.Dialog showHscanProbe(){
-        if(running||simulatorConnection.busy||(hscanProbe!=null&&hscanProbe.busy))return null;
+        if(com.opensaab.usb.MdiUsbActivity.sessionActive()||running||simulatorConnection.busy||(hscanProbe!=null&&hscanProbe.busy))return null;
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);
         content.addView(label("ECM-only reads · 500 kbit/s · fresh VIN per probe. Software identifiers are separate from adapter firmware. Codes retain raw status and are not cleared.",13));
         TextView result=label("No HS-CAN probe started.",13);result.setTag("hscan-result");result.setTypeface(android.graphics.Typeface.MONOSPACE);
@@ -221,6 +222,7 @@ public final class MainActivity extends Activity {
             .add("Firmware controls help",controls::showHelp).show("App menu");
     }
     private boolean idleTool(){
+        if(com.opensaab.usb.MdiUsbActivity.sessionActive())return false;
         if((simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy))return false;
         if(!running&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy())return true;
         Toast.makeText(this,"Stop the current session before opening this tool",Toast.LENGTH_LONG).show();return false;
@@ -237,7 +239,7 @@ public final class MainActivity extends Activity {
         start.setText(label);
     }
     private void selectAdapter(String mode,boolean allowEmulation) {
-        if(com.opensaab.usb.VlinkerVehicleConnection.active()){status.setText("Finish the current connection first");return;}
+        if(com.opensaab.usb.MdiUsbActivity.sessionActive()||com.opensaab.usb.VlinkerVehicleConnection.active()){status.setText("Finish the current connection first");return;}
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
         if(!missing.isEmpty()){status.setText("Firmware setup needed: "+missing);startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));return;}
@@ -252,7 +254,7 @@ public final class MainActivity extends Activity {
             com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(device.getVendorId(),device.getProductId());
             if(!com.opensaab.usb.AdapterCatalog.adapterCandidate(match))continue;
             devices.add(device);
-            String label=match.profile!=null?match.profile.candidateLabel():match.label+" — not supported yet";
+            String label=match.profile!=null?match.profile.candidateLabel():match.family.equals("generic_rndis")?match.label+" · identity unverified":match.label+" — not supported yet";
             labels.add(label+"\nUSB "+device.getDeviceName());
         }
         boolean localMac=allowEmulation&&com.opensaab.usb.SimulatorVehicleConnection.available(this);
@@ -294,6 +296,18 @@ public final class MainActivity extends Activity {
             status.setText("Selected adapter disconnected — select again");return;
         }
         com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(current.getVendorId(),current.getProductId());
+        if(com.opensaab.usb.MdiProfile.candidate(match)){
+            if(!com.opensaab.usb.MdiProfile.packaged(this)){status.setText("MDI support is unavailable for this app architecture");return;}
+            android.content.Intent mdi=new android.content.Intent(this,com.opensaab.usb.MdiUsbActivity.class)
+                .putExtra("mdi_security_request",mode.equals("native_seed"))
+                .putExtra("usb_device_name",current.getDeviceName()).putExtra("auto_start",true);
+            Runnable begin=()->{clearSimulatorIdentity();status.setText("Opening selected MDI USB adapter…");startActivityForResult(mdi,27);};
+            if(shortcut&&!mode.equals("native_seed"))new android.app.AlertDialog.Builder(this).setTitle("MDI original firmware")
+                .setMessage("Use the original firmware menus for this MDI operation. Automatic menu shortcuts are not available yet.")
+                .setNegativeButton("Cancel",null).setPositiveButton("Connect and start",(dialog,which)->begin.run()).show();
+            else begin.run();
+            return;
+        }
         android.content.Intent launch;
         if(mode.equals("dtc_read") || (!shortcut && mode.equals("native_dtc") && match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO)){
             if(match.backend()!=com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){android.widget.Toast.makeText(this,"Direct HS-CAN engine-code reading currently requires Chipsoft",android.widget.Toast.LENGTH_LONG).show();return;}
@@ -333,7 +347,7 @@ public final class MainActivity extends Activity {
         if(line.startsWith("SESSION:")) status.setText(line.substring(8).trim());
     }
     private void startSession() {
-        if(com.opensaab.usb.VlinkerVehicleConnection.active())return;
+        if(com.opensaab.usb.MdiUsbActivity.sessionActive()||com.opensaab.usb.VlinkerVehicleConnection.active())return;
         clearSimulatorIdentity();
         if(running || !foreground || com.opensaab.usb.SecurityAccessView.workflowBusy()) return;
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
@@ -461,7 +475,7 @@ public final class MainActivity extends Activity {
         try{historyWorker.execute(()->{
             com.opensaab.usb.VehicleIdentity last=com.opensaab.usb.VehicleSession.read(new File(getFilesDir(),"last-vehicle.json"));
             com.opensaab.usb.SecurityAccessStatus receipt=com.opensaab.usb.SecurityAccessStatus.read(new File(getNoBackupFilesDir(),"security-processing-status.properties"));
-            com.opensaab.usb.VehicleHistoryStatus history=new com.opensaab.usb.VehicleHistoryStatus(last,receipt,new File(getFilesDir(),"firmware/card.bin"),java.time.Instant.now());
+            com.opensaab.usb.VehicleHistoryStatus history=com.opensaab.usb.VehicleHistoryStatus.working(last,receipt,com.opensaab.usb.SecuritySessionData.savedBytes(getFilesDir(),last),java.time.Instant.now());
             ui.post(()->{
                 historyPending.set(false);if(!foreground||isDestroyed()||(simulatorConnection!=null&&simulatorConnection.busy)||(simulatorSnapshot!=null&&simulatorSnapshot.optJSONObject("vehicle")!=null))return;
                 vehicleSummary.setText(last==null?"Connect an adapter to identify your vehicle":"Last vehicle · "+last.description());
