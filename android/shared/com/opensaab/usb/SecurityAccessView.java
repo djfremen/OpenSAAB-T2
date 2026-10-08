@@ -19,15 +19,23 @@ import org.json.JSONObject;
 public final class SecurityAccessView extends LinearLayout implements AutoCloseable {
     private static final AtomicBoolean WORKFLOW_BUSY=new AtomicBoolean();
     public static boolean workflowBusy(){return WORKFLOW_BUSY.get();}
-    private static final String ENDPOINT="https://relevant-diann-djfremen2-c013cdc3.koyeb.app/api/process";
-    private static final String INTERNET_REQUIRED="Security access requires an internet connection to the OpenSAAB security-access API. It cannot be processed offline.";
+    private static final String INTERNET_REQUIRED="Security access requires internet. OpenSAAB is contacted first; you can allow Bojer as a fallback if OpenSAAB is unavailable. It cannot be processed offline.";
     private final Activity activity;
-    private final boolean collection;
+    private boolean collection;
+    public void returnedToFirmware(){manualCollection=false;collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
     private final Supplier<File> session;
     private final BooleanSupplier running;
     private final Runnable stop,collect,resume;
-    private final TextView message;
+    private IntPredicate menuKey;
+    private SecurityMenuNavigator navigator;
+    private boolean manualNavigation,manualCollection;
+    public void setMenuKey(IntPredicate key){menuKey=key;}
+    public void manualNavigation(){manualNavigation=true;if(navigator!=null)navigator.cancel();}
+    private final TextView message, stateLabel;
+    private final LinearLayout buttons;
+    private SsaState cardState=SsaState.UNAVAILABLE;
     private final Button action;
+    private byte[] selectedSsa;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final AtomicBoolean polling=new AtomicBoolean();
     private volatile boolean busy,closed;
@@ -35,54 +43,134 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private File observed;
     private boolean transferSeen,imported;
     private String failure;
+    private SecurityAccessStatus receipt;
+    private boolean receiptCardMatches,detailsAction;
+    private File receiptFile(){return new File(activity.getNoBackupFilesDir(),"security-processing-status.properties");}
 
     public SecurityAccessView(Activity activity,boolean collection,Supplier<File> session,
             BooleanSupplier running,Runnable stop,Runnable collect,Runnable resume){
         super(activity);this.activity=activity;this.collection=collection;this.session=session;
         this.running=running;this.stop=stop;this.collect=collect;this.resume=resume;
         setOrientation(VERTICAL);
-        message=new TextView(activity);message.setTextSize(14);addView(message);
-        action=new Button(activity);action.setTextSize(13);action.setOnClickListener(v->activate());addView(action);
+        setPadding(SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10));
+        android.graphics.drawable.GradientDrawable panel=new android.graphics.drawable.GradientDrawable();
+        panel.setColor(0xff152432);panel.setCornerRadius(SessionStyle.dp(activity,8));setBackground(panel);
+        stateLabel=new TextView(activity);stateLabel.setTag("security-state");stateLabel.setTextSize(14);stateLabel.setTypeface(null,android.graphics.Typeface.BOLD);addView(stateLabel);
+        message=new TextView(activity);message.setTag("security-message");message.setTextSize(13);message.setTextColor(0xffbdcbd8);
+        LinearLayout.LayoutParams messageParams=new LinearLayout.LayoutParams(-1,-2);messageParams.topMargin=SessionStyle.dp(activity,4);addView(message,messageParams);
+        buttons=new LinearLayout(activity);LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(-1,SessionStyle.dp(activity,48));buttonParams.topMargin=SessionStyle.dp(activity,8);addView(buttons,buttonParams);
+        action=new Button(activity);action.setTag("security-action");action.setOnClickListener(v->activate());buttons.addView(action,new LinearLayout.LayoutParams(0,-1,1));SessionStyle.row(buttons);
+        Button fresh=new Button(activity);fresh.setText("Collect fresh data");fresh.setTag("security-fresh");fresh.setOnClickListener(v->confirmCollection());buttons.addView(fresh,new LinearLayout.LayoutParams(0,-1,1));SessionStyle.row(buttons);
         setVisibility(GONE);
     }
+    public void addResetAction(Runnable reset){
+        Button clear=new Button(activity);clear.setText("Clear offset");clear.setOnClickListener(v->reset.run());
+        clear.setContentDescription("Clear offset — collect fresh security data");buttons.addView(clear);SessionStyle.row(buttons);
+    }
     public boolean busy(){return busy;}
+    public boolean readyToProcess(){return collection&&transferSeen&&!imported&&!busy&&seedsReady();}
+    private boolean seedsReady(){try{SsaData.validateInput(selectedSsa);return true;}catch(Exception invalid){return false;}}
+    public void processCollected(){if(readyToProcess())activate();}
+    public boolean collecting(){return collection&&!imported;}
+    /** Follow collection in this full-control session without rebooting or re-selecting menus. */
+    public void collectInCurrentSession(){
+        observed=session.get();collection=true;manualCollection=true;manualNavigation=true;navigator=null;transferSeen=false;imported=false;failure=null;
+    }
+    public boolean navigating(){return collection&&!busy&&navigator!=null&&navigator.active();}
     public void refresh(){
         if(closed||busy||!polling.compareAndSet(false,true))return;
         final File run=session.get();
         try{worker.execute(()->{
             String text="";
-            try{if(run!=null){File f=new File(run,"native-dtc-screen.txt");if(f.isFile()&&f.length()<8192)text=new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8);}}catch(IOException ignored){}
+            try{if(run!=null){File f=new File(run,"screen.txt");if(!f.isFile())f=new File(run,"native-dtc-screen.txt");if(f.isFile()&&f.length()<8192)text=new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8);}}catch(IOException ignored){}
+            SecurityAccessStatus saved=SecurityAccessStatus.read(receiptFile());
+            VehicleIdentity identity=run==null?null:VehicleSession.read(new File(run,VehicleSession.FILE));
+            try{if(identity==null||saved==null||!saved.matches(identity.vin))saved=null;}catch(Exception invalid){saved=null;}
+            final SecurityAccessStatus current=saved;
+            final VehicleIdentity currentIdentity=identity;
+            final SecuritySessionData working=SecuritySessionData.load(run,new File(activity.getFilesDir(),"firmware/card.bin"),identity);
+            final boolean cardMatches=current!=null&&current.ssaMatches(working.bytes);
             final String screen=text;
+            final SsaState currentState=working.state;
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
-                if(observed!=run){observed=run;transferSeen=false;imported=false;failure=null;}
+                if(observed!=run){if(manualCollection)collection=false;observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
+                    navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
+                    if(navigator!=null&&(manualNavigation||!new FirmwareStore(activity.getFilesDir()).englishNavigation()))navigator.cancel();}
+                receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
+                cardState=currentState;selectedSsa=working.bytes;
+                String age=receipt==null?"Age unknown":receipt.freshness(cardMatches,java.time.Instant.now());
+                stateLabel.setText("Security status  "+cardState.label+(cardState==SsaState.POST_AUTH?" · "+age:""));
+                stateLabel.setTextColor(cardState==SsaState.POST_AUTH&&"Stale".equals(age)?0xffffd77c:cardState.color);
                 boolean prompt=SsaData.needsAccess(screen);
-                if(collection&&prompt&&running.getAsBoolean())transferSeen=true;
-                setVisibility(collection||prompt?VISIBLE:GONE);
-                if(imported){show("Security data loaded. Return to the firmware and repeat your task; the vehicle still verifies access.","Return to firmware");return;}
+                if(!collection&&run!=null&&running.getAsBoolean()&&(SsaData.collectingAccess(screen)||prompt)){
+                    collectInCurrentSession();android.util.Log.i("OpenSaabSecurity","Manual security collection detected in current firmware session");
+                }
+                if(collection&&!transferSeen&&SsaData.collectingAccess(screen)){
+                    stateLabel.setText("Security status · Collecting pre-auth");stateLabel.setTextColor(SsaState.PRE_AUTH.color);
+                }
+                if(run!=null&&working.completed&&currentState==SsaState.PRE_AUTH){collection=true;manualCollection=true;transferSeen=true;}
+                if(collection&&prompt&&running.getAsBoolean()&&seedsReady())transferSeen=true;
+                if(!seedsReady())transferSeen=false;
+                if(collection&&transferSeen){stateLabel.setText("Security status · Ready to process");stateLabel.setTextColor(SsaState.PRE_AUTH.color);}
+                setVisibility(VISIBLE);
+                imported=!manualCollection&&cardState==SsaState.POST_AUTH&&receipt!=null&&receipt.imported()&&cardMatches;
+                if(imported){show(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Continue firmware");message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
+                if(!collection&&!prompt&&cardState==SsaState.POST_AUTH){show(cardState.explanation+("Stale".equals(age)?"\nData age is a reminder; fresh collection remains available.":""),"Continue firmware");imported=true;return;}
+                if(!collection&&!prompt&&receipt!=null){
+                    show(receipt.summary(receipt.sameSession(run),running.getAsBoolean(),cardMatches),"Details");
+                    detailsAction=true;return;
+                }
+                if(!collection&&!prompt){show(cardState.explanation,"Details");detailsAction=true;return;}
                 if(!collection){show("This task needs security access. Collect fresh data using the original firmware.\n\n"+INTERNET_REQUIRED,"Get security access");return;}
-                if(transferSeen){show("Firmware reached the TIS transfer prompt. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,"Process security data");return;}
-                String hint="Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
+                if(transferSeen){show("Firmware completed security collection. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,running.getAsBoolean()?"Process security data":"Process existing data");return;}
+                String hint=manualNavigation&&manualCollection?"Security collection detected in this session. Follow the firmware’s ignition-key prompts.":"Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
+                if(navigator!=null){
+                    long now=SystemClock.elapsedRealtime();
+                    if(running.getAsBoolean()&&menuKey!=null){Integer key=navigator.next(screen,now);if(key!=null&&menuKey.test(key))navigator.sent(now);}
+                    hint=navigator.hint();
+                }
                 if(screen.contains("LOCK position"))hint="Follow the firmware prompt to turn the key to LOCK.";
                 if(screen.contains("Remove Ignition"))hint="Follow the firmware prompt to remove the key.";
                 show(hint+"\n\n"+INTERNET_REQUIRED,"Waiting for collection");action.setEnabled(false);
             });
         });}catch(RejectedExecutionException e){polling.set(false);}
     }
-    private void show(String text,String label){message.setText(text);action.setText(label);action.setEnabled(true);}
+    private void show(String text,String label){message.setText(text);message.setOnClickListener(null);action.setText(label);action.setEnabled(true);}
+    private void showReceipt(){new AlertDialog.Builder(activity).setTitle("Security status · "+cardState.label)
+        .setMessage(cardState.explanation+"\n\n"+(receipt==null?"No processing history for this vehicle. Data age is unknown.":receipt.details(running.getAsBoolean(),receiptCardMatches)))
+        .setPositiveButton("Done",null).show();}
+    /** Actions opens the workflow even when the startup card contains old POST-AUTH. */
+    public void requestAccess(){
+        if(closed||busy)return;
+        if(readyToProcess()){detailsAction=false;activate();}else confirmCollection();
+    }
+    private void confirmCollection(){
+        if(closed||busy)return;
+        new AlertDialog.Builder(activity).setTitle("Collect fresh security data")
+            .setMessage(INTERNET_REQUIRED+"\n\nStart a new original-firmware collection. This replaces the selected seeds only after new data is collected. Follow Diagnostics → All → Get Security Access and the physical ignition-key prompts. Stale is a data-age reminder and does not block collection.")
+            .setNegativeButton("Continue firmware",null).setPositiveButton("Start collection",(d,w)->begin(false,false)).show();
+    }
     private void activate(){
         if(closed||busy)return;
+        if(detailsAction){showReceipt();return;}
         if(imported){resume.run();return;}
         if(!collection||!transferSeen){
-            new AlertDialog.Builder(activity).setTitle("Collect security data")
-                .setMessage(INTERNET_REQUIRED+"\n\nEnd this session and start original-firmware security collection. Select your vehicle, then Diagnostics → All → Get Security Access. The app will offer API processing at the transfer prompt.")
-                .setNegativeButton("Later",null).setPositiveButton("Start collection",(d,w)->begin(false)).show();
-        }else begin(true);
+            confirmCollection();
+        }else{
+            if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity,this::activate);return;}
+            new AlertDialog.Builder(activity).setTitle("Share VIN and process security data")
+                .setMessage("Your VIN will be shared with OpenSAAB along with the collected 714-byte security file. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\n")
+                .setNegativeButton("Cancel",null)
+                .setNeutralButton("OpenSAAB only",(d,w)->begin(true,false))
+                .setPositiveButton("Allow fallback",(d,w)->begin(true,true)).show();
+        }
     }
-    private void begin(boolean process){
+    private void begin(boolean process,boolean allowFallback){
         if(!WORKFLOW_BUSY.compareAndSet(false,true))return;
-        final File run=session.get();busy=true;failure=null;action.setEnabled(false);
+        final File run=session.get();final byte[] selection=selectedSsa==null?null:selectedSsa.clone();busy=true;failure=null;action.setEnabled(false);
+        SessionDiagnostics.record(run,process?SessionDiagnostics.Event.SECURITY_PROCESS_REQUESTED:SessionDiagnostics.Event.SECURITY_COLLECTION_REQUESTED);
         message.setText("Closing the firmware session…");stop.run();
         worker.execute(()->{
             boolean released=false;
@@ -94,8 +182,19 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(session.get()!=run)throw new IOException("Session changed; collect again.");
                 if(!process){WORKFLOW_BUSY.set(false);released=true;activity.runOnUiThread(()->{busy=false;if(!closed)collect.run();});return;}
                 if(run==null)throw new IOException("No collected session");
-                try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run);}
-                activity.runOnUiThread(()->{busy=false;imported=true;if(!closed)refresh();});
+                try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run,allowFallback,selection);}
+                SessionDiagnostics.record(run,SessionDiagnostics.Event.SECURITY_IMPORTED);
+                // Release the image lease and workflow gate before the new emulator opens the card.
+                WORKFLOW_BUSY.set(false);released=true;
+                activity.runOnUiThread(()->{
+                    busy=false;manualCollection=false;imported=true;
+                    if(!closed&&session.get()==run){
+                        SessionDiagnostics.record(run,SessionDiagnostics.Event.RESTART_REQUESTED);
+                        show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
+                        android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
+                        resume.run();
+                    }
+                });
             }catch(Exception e){
                 SupportReports.recordError(activity,e,false);
                 String reason=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
@@ -104,47 +203,71 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             }finally{if(!released)WORKFLOW_BUSY.set(false);}
         });
     }
-    private void process(File run)throws Exception{
-        JSONObject snapshot=new JSONObject(new String(readBounded(new File(run,"native-security-snapshot.json"),8192),StandardCharsets.UTF_8));
-        if(!"original-guest-memory".equals(snapshot.getString("origin")) || snapshot.getInt("card_offset")!=SsaData.OFFSET || snapshot.getInt("bytes")!=SsaData.SIZE
-                || !snapshot.getBoolean("ssa_memory_flash_enabled") || snapshot.getLong("ssa_erases")<1 || snapshot.getLong("ssa_programmed_bytes")<SsaData.SIZE)
-            throw new IOException("Firmware has not written fresh SSA data. Collect again and follow all key prompts.");
-        byte[] before=readBounded(new File(run,"ssa-card-before.bin"),SsaData.SIZE);
-        byte[] input=readBounded(new File(run,"ssa-card-after.bin"),SsaData.SIZE);
-        if(Arrays.equals(before,input))throw new IOException("SSA unchanged; fresh collection required.");
-        SsaData.validateInput(input);
+    private void process(File run,boolean allowFallback,byte[] selection)throws Exception{
+        VehicleIdentity identity=VehicleSession.read(new File(run,VehicleSession.FILE));
+        if(identity==null)throw new IOException("No verified vehicle identity; collect again.");
+        SecurityAccessStatus attempt=new SecurityAccessStatus(identity.vin,run.getName(),java.time.Instant.now());
+        attempt.save(receiptFile());
+        try{processAttempt(run,allowFallback,identity,attempt,selection);}
+        catch(Exception failure){
+            attempt.failed(java.time.Instant.now());
+            try{attempt.save(receiptFile());}catch(Exception persistence){failure.addSuppressed(persistence);}
+            throw failure;
+        }
+    }
+    private void processAttempt(File run,boolean allowFallback,VehicleIdentity identity,SecurityAccessStatus attempt,byte[] selection)throws Exception{
         File card=new File(activity.getFilesDir(),"firmware/card.bin");
-        SsaCardImport.verifyBaseline(card,before);
+        byte[] input=SecuritySessionData.processingInput(run,card,identity,selection);
+        byte[] before=SecuritySessionData.read(new File(run,"ssa-card-before.bin"),SsaData.SIZE);
+        attempt.collected(java.time.Instant.now());attempt.save(receiptFile());
         String originalHash=SsaCardImport.hash(card);
         File evidence=new File(run,"security-api-"+UUID.randomUUID());if(!evidence.mkdir())throw new IOException("Cannot save security evidence");
         Files.write(new File(evidence,"pre-auth.bin").toPath(),input);
         JSONObject request=new JSONObject().put("REQUEST_VERSION",1).put("SSA_DATA",Base64.getEncoder().encodeToString(input));
         byte[] payload=request.toString().getBytes(StandardCharsets.UTF_8);
         Files.write(new File(evidence,"request.json").toPath(),payload);
-        activity.runOnUiThread(()->{if(!closed)message.setText("Contacting the OpenSAAB security-access API… Keep your internet connection active.");});
-        if(closed)throw new IOException("Security processing cancelled");
-        HttpURLConnection http=(HttpURLConnection)new URL(ENDPOINT).openConnection();connection=http;
-        byte[] raw;
-        try{
-            http.setConnectTimeout(15000);http.setReadTimeout(30000);http.setInstanceFollowRedirects(false);
-            http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
-            try(OutputStream out=http.getOutputStream()){out.write(payload);}
-            int status=http.getResponseCode();if(status!=200)throw new IOException("OpenSAAB returned HTTP "+status+"; data not imported.");
-            try(InputStream in=http.getInputStream()){raw=bounded(in,1024*1024);}
-        }catch(IOException e){
-            throw new IOException("Couldn’t complete the request to the OpenSAAB security-access API. Check your internet connection and try again. If it persists, the service may be unavailable. No security data was imported. "+e.getMessage(),e);
-        }finally{http.disconnect();connection=null;}
+        SecurityApiClient.Result result=SecurityApiClient.process(payload,allowFallback,
+            ()->closed||session.get()!=run,this::postSecurityData);
+        byte[] raw=result.body;
         Files.write(new File(evidence,"response.json").toPath(),raw);
         JSONObject reply=new JSONObject(new String(raw,StandardCharsets.UTF_8));
         byte[] after=Base64.getDecoder().decode(reply.getString("SSA_DATA"));SsaData.validateReply(input,after);
+        attempt.processed(SecurityApiClient.FALLBACK.equals(result.endpoint)?"Bojer":"OpenSAAB",reply.optString("request_id",""),java.time.Instant.now());
+        attempt.save(receiptFile());
         Files.write(new File(evidence,"post-auth.bin").toPath(),after);
         // Only the original guest SSA data region changes, with a verified backup.
         String updatedHash=SsaCardImport.apply(card,before,after,originalHash,evidence,
             ()->!closed&&!running.getAsBoolean()&&session.get()==run);
-        JSONObject report=new JSONObject().put("status","security_data_imported").put("endpoint",ENDPOINT).put("bytes",SsaData.SIZE)
+        attempt.imported(after,java.time.Instant.now());attempt.save(receiptFile());
+        JSONObject report=new JSONObject().put("started_utc",attempt.data.getProperty("started_utc"))
+            .put("server_reply_validated_utc",attempt.data.getProperty("processed_utc"))
+            .put("imported_utc",attempt.data.getProperty("imported_utc"))
+            .put("request_id",attempt.data.getProperty("request_id",""))
+            .put("vehicle_access_granted_utc",JSONObject.NULL)
+            .put("status","security_data_imported").put("endpoint",result.endpoint)
+            .put("fallback_allowed",allowFallback).put("fallback_reason",result.fallbackReason).put("bytes",SsaData.SIZE)
             .put("source_session",run.getName()).put("original_card_sha256",originalHash).put("working_card_sha256",updatedHash)
             .put("ssa_input_sha256",sha(input)).put("ssa_output_sha256",sha(after)).put("vehicle_access_verified",false);
         Files.write(new File(evidence,"result.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
+    }
+    private SecurityApiClient.Response postSecurityData(String endpoint,byte[] payload)throws IOException{
+        boolean fallback=SecurityApiClient.FALLBACK.equals(endpoint);
+        activity.runOnUiThread(()->{if(!closed)message.setText(fallback
+            ?"OpenSAAB is unavailable. Contacting Bojer using the fallback you allowed…"
+            :"Contacting the OpenSAAB security-access API… Keep your internet connection active.");});
+        if(closed)throw new IOException("Security processing cancelled");
+        HttpURLConnection http=(HttpURLConnection)new URL(endpoint).openConnection();connection=http;
+        try{
+            if(closed)throw new IOException("Security processing cancelled");
+            http.setConnectTimeout(15000);http.setReadTimeout(30000);http.setInstanceFollowRedirects(false);
+            if(!fallback){http.setRequestProperty("Authorization","Bearer "+SecurityAuthorization.bearer(activity));http.setRequestProperty("X-OpenSAAB-Consent","security-storage-24h-v1");}
+            http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
+            try(OutputStream out=http.getOutputStream()){out.write(payload);}
+            int status=http.getResponseCode();
+            if(!fallback&&status==401){SecurityAuthorization.forget(activity);throw new IOException("Incorrect security access password. Tap Retry processing to enter it again; case matters.");}
+            if(status!=200)return new SecurityApiClient.Response(status,new byte[0]);
+            try(InputStream in=http.getInputStream()){return new SecurityApiClient.Response(status,bounded(in,1024*1024));}
+        }finally{http.disconnect();connection=null;}
     }
     private static byte[] readBounded(File file,int maximum)throws IOException{
         try(InputStream in=new FileInputStream(file)){return bounded(in,maximum);}

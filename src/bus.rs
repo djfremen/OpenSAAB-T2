@@ -227,6 +227,9 @@ impl Ata {
 
 pub struct Tech2Bus {
     pub candi_link: Option<crate::candi::native_link::NativeLink>,
+    pub pending_candi: Option<crate::candi::demand::Pending>,
+    pub demand_boot_complete: bool,
+    pub demand_guest_init: Option<crate::candi::demand::GuestInit>,
     pub execution_mode: ExecutionMode,
     pub flash: Vec<u8>,
     pub ram: Vec<u8>,
@@ -319,6 +322,9 @@ impl Tech2Bus {
     /// Complete guest state; the live host trace is intentionally not copied.
     pub fn recovery_snapshot(&self) -> Self {
         Self {
+            pending_candi: self.pending_candi.clone(),
+            demand_boot_complete: self.demand_boot_complete,
+            demand_guest_init: self.demand_guest_init.clone(),
             candi_link: None, // Checkpoint::capture copies the virtual link separately and handles errors.
             execution_mode: self.execution_mode,
             flash: self.flash.clone(),
@@ -532,6 +538,9 @@ impl Tech2Bus {
         f[..n].copy_from_slice(&flash[..n]);
         let mut s = Self {
             candi_link: None,
+            pending_candi: None,
+            demand_boot_complete: false,
+            demand_guest_init: None,
             execution_mode,
             flash: f,
             ram: vec![0; RAM_SIZE as usize],
@@ -701,7 +710,11 @@ impl Tech2Bus {
         if self.card.is_empty() {
             return None;
         }
-        let bsz = if crate::options::env_flag("BANK_SIZE_128") {
+        #[cfg(feature = "load-test")]
+        let small_bank = { static VALUE: LazyLock<bool> = LazyLock::new(|| crate::options::env_flag("BANK_SIZE_128")); *VALUE };
+        #[cfg(not(feature = "load-test"))]
+        let small_bank = crate::options::env_flag("BANK_SIZE_128");
+        let bsz = if small_bank {
             0x0002_0000
         } else {
             BANK_SIZE
@@ -819,6 +832,37 @@ impl Tech2Bus {
         ((picr >> 8) & 7) as u8
     }
 
+    pub(crate) fn ensure_candi(&mut self, trigger: &str) {
+        let Some(pending) = self.pending_candi.take() else { return; };
+        let began = std::time::Instant::now();
+        println!("CANDI_STARTING: trigger={trigger} pc={:#x} insns={} live_adapter={}", self.current_pc, self.current_insns, pending.has_adapter());
+        // Called before the initiating bus operation. Guest execution is held
+        // here; that operation is neither dropped nor replayed after starting.
+        let result = pending.start();
+        let status = match result {
+            Ok(link) => { self.candi_link = Some(link); "ready" }
+            Err(error) => { self.failure_reason = Some(format!("CANdi initialization failed: {error}")); "failed" }
+        };
+        let report = serde_json::json!({"status":status,"trigger":trigger,"pc":self.current_pc,"instructions":self.current_insns,"initialization_ms":began.elapsed().as_millis(),"live_adapter":pending.has_adapter(),"error":self.failure_reason});
+        let _ = std::fs::write(pending.output.join("candi-startup.json"), report.to_string());
+        println!("CANDI_INITIALIZED: {report}");
+        if pending.transport_trace && !self.trace.has_writer() {
+            match crate::trace::Trace::open(&pending.output.join("trace.jsonl"), false) {
+                Ok(mut trace) => { trace.concise_transport(); self.trace = trace; }
+                Err(error) => self.failure_reason = Some(format!("CANdi trace failed: {error}")),
+            }
+        }
+    }
+
+    /// Offline load-test scheduling only: never skip a native CANdi poll.
+    #[cfg(feature = "load-test")]
+    pub fn load_test_deadline(&self) -> Option<u64> {
+        if self.candi_link.is_some() { return None; }
+        self.pit_next_tick.into_iter()
+            .chain(self.tpu_countdown.next_instruction_deadline())
+            .min()
+    }
+
     /// Timer deadlines advance while the CPU is masked or stopped. PIT clears
     /// on IACK; TPU status remains pending until the guest clears CISR.
     pub fn poll_interrupt(&mut self, insns: u64) -> u8 {
@@ -887,6 +931,9 @@ impl Tech2Bus {
                 }
             }
         }
+        if let Some(pending) = &self.pending_candi {
+            self.tpu_countdown.advance_uart(&mut self.sim, insns, pending.uart.receive_idle());
+        }
         if let Some(period) = self.pit_period() {
             let next = *self
                 .pit_next_tick
@@ -910,6 +957,7 @@ impl Tech2Bus {
             } else {
                 0
             })
+            .max(if self.pending_candi.as_ref().is_some_and(|pending| pending.uart.irq()) { 5 } else { 0 })
             .max(u8::from(self.key_irq_pending()))
             .max(crate::tpu::interrupt(&self.sim).map_or(0, |(level, _)| level))
     }
@@ -980,6 +1028,30 @@ impl Tech2Bus {
     pub fn post_complete(&self) -> bool {
         let r = self.post_results();
         r.len() == 10 && r.iter().all(|(_, ok)| *ok)
+    }
+
+    // ARMv7 load-test build: ordinary RAM/ROM words need one address decode.
+    // Every overlaid byte, device window and cross-region access keeps the
+    // existing byte bus, including CFI status and research compatibility reads.
+    #[cfg(feature = "load-test")]
+    #[inline]
+    fn load_test_plain_read<const N: usize>(&self, address: u32) -> Option<[u8; N]> {
+        let a = address & A24;
+        let end = a + N as u32;
+        if end <= FLASH_SIZE {
+            if self.eprom_cfi_status && (a < 2 || (a < 0x8002 && end > 0x8000)) { return None; }
+            if self.execution_mode.is_research_harness()
+                && ((a <= 0x5ffc && end > 0x5ffc)
+                    || (a < 0x16ef0 && end > 0x16ed2)) { return None; }
+            return self.flash.get(a as usize..end as usize)?.try_into().ok();
+        }
+        if a >= RAM_BASE && end <= RAM_BASE + RAM_SIZE {
+            if self.execution_mode.is_research_harness()
+                && ((a < 0x101282 && end > 0x10127f)
+                    || (a < 0x10eed8 && end > 0x10eeba)) { return None; }
+            return self.ram.get((a-RAM_BASE) as usize..(end-RAM_BASE) as usize)?.try_into().ok();
+        }
+        None
     }
 
     /// Observe backing memory only: never poll MMIO, consume keys, or clear status.
@@ -1279,7 +1351,7 @@ impl Tech2Bus {
     pub fn exit_key(&mut self) {
         // Native CANdi sessions must consume the real keypad EXIT themselves.
         // Never inject the legacy abort flags into an original diagnostic flow.
-        if self.execution_mode.is_research_harness() && self.candi_link.is_none() {
+        if self.execution_mode.is_research_harness() && self.candi_link.is_none() && self.pending_candi.is_none() {
             if self.compatibility_splash {
                 crate::log_info!(
                     "KEY",
@@ -1392,12 +1464,10 @@ impl Tech2Bus {
                     };
                     self.sim[0x0D00 + slot * 2] = 0x00;
                     self.sim[0x0D00 + slot * 2 + 1] = rx_val;
-                } else if pcs & 0x0e == 2 && self.candi_link.is_some() {
-                    let rx = self
-                        .candi_link
-                        .as_mut()
-                        .unwrap()
-                        .adc_transfer(self.cs6[0], u16::from_be_bytes([tx_hi, tx_lo]));
+                } else if pcs & 0x0e == 2 && (self.candi_link.is_some() || self.pending_candi.is_some()) {
+                    let rx = if let Some(pending) = &mut self.pending_candi {
+                        crate::candi::demand::cable_adc(&mut pending.adc_channel, self.cs6[0], u16::from_be_bytes([tx_hi,tx_lo]))
+                    } else { self.candi_link.as_mut().unwrap().adc_transfer(self.cs6[0], u16::from_be_bytes([tx_hi,tx_lo])) };
                     let [hi, lo] = rx.to_be_bytes();
                     self.sim[0x0d00 + slot * 2] = hi;
                     self.sim[0x0d01 + slot * 2] = lo;
@@ -1659,7 +1729,7 @@ impl Tech2Bus {
 
 impl AddressBus for Tech2Bus {
     fn interrupt_acknowledge(&mut self, level: u8) -> u32 {
-        if level == 5 && self.candi_link.as_ref().is_some_and(|link| link.irq()) {
+        if level == 5 && (self.candi_link.as_ref().is_some_and(|link| link.irq()) || self.pending_candi.as_ref().is_some_and(|pending| pending.uart.irq())) {
             return 0x1d;
         }
 
@@ -1683,6 +1753,9 @@ impl AddressBus for Tech2Bus {
         let a = address & A24;
         self.trace_eram_access('R', a, None);
         if (0x400800..0x400810).contains(&a) {
+            if let Some(pending) = &mut self.pending_candi {
+                return pending.uart.read(a, &mut Vec::new());
+            }
             if let Some(link) = &mut self.candi_link {
                 return link.read(a);
             }
@@ -1889,6 +1962,13 @@ impl AddressBus for Tech2Bus {
         let a = address & A24;
         self.trace_eram_access('W', a, Some(value));
         if (0x400800..0x400810).contains(&a) {
+            if let Some(pending) = &mut self.pending_candi {
+                if !pending.uart.needs_processor(a, value) {
+                    pending.uart.write(a, value, &mut Vec::new());
+                    return;
+                }
+            }
+            self.ensure_candi("serial-transmit");
             if let Some(link) = &mut self.candi_link {
                 link.write(a, value);
                 return;
@@ -1918,7 +1998,11 @@ impl AddressBus for Tech2Bus {
             if is_cmd {
                 self.lcd.write_cmd(value);
             } else {
-                if crate::options::env_flag("POST_TRACE") && (0x21..0x7f).contains(&value) {
+                #[cfg(feature = "load-test")]
+                let post_trace = { static VALUE: LazyLock<bool> = LazyLock::new(|| crate::options::env_flag("POST_TRACE")); *VALUE };
+                #[cfg(not(feature = "load-test"))]
+                let post_trace = crate::options::env_flag("POST_TRACE");
+                if post_trace && (0x21..0x7f).contains(&value) {
                     static LCD_TRACE_COUNT: std::sync::atomic::AtomicUsize =
                         std::sync::atomic::AtomicUsize::new(0);
                     let n = LCD_TRACE_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2075,6 +2159,7 @@ impl AddressBus for Tech2Bus {
                 self.sim[off] = value;
             }
             if off == OFF_HSRR0 && value & 3 == 1 {
+                if self.demand_boot_complete { self.ensure_candi("presence-probe"); }
                 if let Some(link) = &mut self.candi_link {
                     link.presence_announced = false;
                     self.sim[0xff2] = 0xff;
@@ -2083,7 +2168,7 @@ impl AddressBus for Tech2Bus {
                 }
             }
             if (OFF_HSRR0..=OFF_HSRR1 + 1).contains(&off) {
-                if self.candi_link.is_some() && off == OFF_HSRR1 {
+                if (self.candi_link.is_some() || self.pending_candi.is_some()) && off == OFF_HSRR1 {
                     self.tpu_countdown.uart_host_service(value);
                     self.trace_event("candi_uart_timer", &format!(
                         "host_service={value:#04x} ch4_words={:02x?} ch5_words={:02x?} functions={:02x?} sequence={:02x?} priority={:02x?} external_tx=false",
@@ -2108,23 +2193,43 @@ impl AddressBus for Tech2Bus {
     }
 
     fn read_word(&mut self, address: u32) -> u16 {
+        #[cfg(feature = "load-test")]
+        if let Some(bytes) = self.load_test_plain_read(address) { return u16::from_be_bytes(bytes); }
         let hi = self.read_byte(address) as u16;
         let lo = self.read_byte(address.wrapping_add(1)) as u16;
         (hi << 8) | lo
     }
 
     fn read_long(&mut self, address: u32) -> u32 {
+        #[cfg(feature = "load-test")]
+        if let Some(bytes) = self.load_test_plain_read(address) { return u32::from_be_bytes(bytes); }
         let w0 = self.read_word(address) as u32;
         let w1 = self.read_word(address.wrapping_add(2)) as u32;
         (w0 << 16) | w1
     }
 
     fn write_word(&mut self, address: u32, value: u16) {
+        #[cfg(feature = "load-test")]
+        {
+            let a = address & A24;
+            if (RAM_BASE..=RAM_BASE + RAM_SIZE - 2).contains(&a) {
+                self.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+2) as usize].copy_from_slice(&value.to_be_bytes());
+                return;
+            }
+        }
         self.write_byte(address, (value >> 8) as u8);
         self.write_byte(address.wrapping_add(1), value as u8);
     }
 
     fn write_long(&mut self, address: u32, value: u32) {
+        #[cfg(feature = "load-test")]
+        {
+            let a = address & A24;
+            if (RAM_BASE..=RAM_BASE + RAM_SIZE - 4).contains(&a) {
+                self.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+4) as usize].copy_from_slice(&value.to_be_bytes());
+                return;
+            }
+        }
         self.write_word(address, (value >> 16) as u16);
         self.write_word(address.wrapping_add(2), value as u16);
     }
@@ -2133,6 +2238,61 @@ impl AddressBus for Tech2Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "load-test")]
+    #[test]
+    fn load_test_wide_bus_matches_byte_bus_at_overlays_and_boundaries() {
+        for mode in [ExecutionMode::ResearchHarness, ExecutionMode::Fidelity] {
+            for cfi in [false, true] {
+                let mut bus = Tech2Bus::new(vec![0xa5; 0x40000], vec![0x5a; 0x100000], mode);
+                bus.eprom_cfi_status = cfi;
+                for (i, v) in bus.ram.iter_mut().enumerate() { *v = (i % 251) as u8; }
+                bus.ram[0x127e..0x1282].fill(0);
+                for base in [0, 0x5ffc, 0x8000, 0x16ed2, 0x16eef, 0x40000,
+                    RAM_BASE, 0x10127f, 0x101281, 0x10eeba, 0x10eed6,
+                    RAM_BASE + RAM_SIZE, 0x1000000] {
+                    for offset in -5i64..=5 {
+                        let a = (base as i64 + offset) as u32;
+                        let expected = u32::from_be_bytes(std::array::from_fn(|i| bus.read_byte(a.wrapping_add(i as u32))));
+                        assert_eq!(bus.read_long(a), expected, "read long {a:x}, cfi={cfi}");
+                        assert_eq!(bus.read_word(a), (expected >> 16) as u16, "read word {a:x}");
+                    }
+                }
+                for a in [RAM_BASE, RAM_BASE+1, RAM_BASE+0x127e, RAM_BASE+RAM_SIZE-4] {
+                    bus.write_long(a, 0x9876abcd);
+                    for (i,b) in [0x98,0x76,0xab,0xcd].iter().enumerate() {
+                        assert_eq!(bus.ram[(a-RAM_BASE) as usize+i], *b);
+                    }
+                    bus.write_word(a, 0x1234);
+                    assert_eq!(&bus.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+2) as usize], &[0x12,0x34]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn cleared_ssa_initialization_requires_flash_readback_without_raw_writes() {
+        for enabled in [false, true] {
+            let mut card = vec![0x55; 0x1000000];
+            card[crate::ssa_flash::OFFSET..crate::ssa_flash::OFFSET + crate::ssa_flash::SIZE].fill(0xff);
+            let mut bus = Tech2Bus::new(vec![], card, ExecutionMode::ResearchHarness);
+            if enabled { bus.ssa_flash = Some(crate::ssa_flash::SsaFlash::default()); }
+            bus.bank_raw = false;
+            bus.bank = 0x3f;
+            let ssa = CARD_BASE + 0xe0000;
+            // A cleared card still needs the guest's program/status/read-array sequence.
+            bus.write_word(ssa, 0x4040);
+            bus.write_word(ssa, 0xb1ff);
+            bus.write_word(CARD_BASE, 0x7070);
+            if enabled { assert_eq!(bus.read_word(CARD_BASE), 0x8080); }
+            bus.write_word(CARD_BASE, 0xffff);
+            assert_eq!(bus.read_word(ssa), if enabled { 0xb1ff } else { 0xffff });
+            assert_eq!(bus.card[0xfdffff], 0x55);
+            assert_eq!(bus.card[0xfe02ca], 0x55);
+            assert!(bus.card[0xfe0002..0xfe02ca].iter().all(|b| *b == 0xff));
+            assert!(!bus.card_writes);
+        }
+    }
 
     #[test]
     fn ssa_flash_readback_exposes_filled_and_next_free_seed_slots() {

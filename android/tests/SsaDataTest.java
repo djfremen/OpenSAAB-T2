@@ -11,6 +11,10 @@ public final class SsaDataTest {
         System.arraycopy("YS3FF49Y541000000".getBytes("US-ASCII"),0,input,0x14,17);
         input[0x132]=0;input[0x133]=1;input[0x134]=3;input[0x135]=0x61;input[0x136]=0x12;input[0x137]=0x34;
         if(SsaData.validateInput(input)!=1)throw new AssertionError();
+        byte[] cleared=new byte[714];Arrays.fill(cleared,(byte)255);
+        reject(()->SsaData.validateInput(cleared));
+        byte[] noSeeds=input.clone();Arrays.fill(noSeeds,0x132,714,(byte)255);
+        reject(()->SsaData.validateInput(noSeeds));
         byte[] reply=input.clone();reply[1]=0;Arrays.fill(reply,0x26,0x2e,(byte)'A');reply[0x138]=0x56;reply[0x139]=0x78;
         SsaData.validateReply(input,reply);
         reject(()->SsaData.validateInput(Arrays.copyOf(input,713)));
@@ -32,7 +36,15 @@ public final class SsaDataTest {
             if(!SsaCardImport.hash(new File(evidence,"card-before-security.bin")).equals(before)||!SsaCardImport.hash(card).equals(after))throw new AssertionError("Backup/import mismatch");
             try(RandomAccessFile f=new RandomAccessFile(card,"r")){byte[] b=new byte[714];f.seek(SsaData.OFFSET);f.readFully(b);if(!Arrays.equals(reply,b))throw new AssertionError("SSA import mismatch");}
             try{SsaCardImport.verifyBaseline(card,input);throw new AssertionError("Stale baseline accepted");}catch(IOException expected){}
+            File reset=Files.createDirectory(dir.resolve("reset")).toFile();
+            try{SsaCardReset.clear(card,reset,()->false);throw new AssertionError("Active/cancelled reset applied");}catch(IOException expected){}
+            if(!SsaCardImport.hash(card).equals(after))throw new AssertionError("Cancelled reset modified card");
+            SsaCardReset.clear(card,reset,()->true);
+            try(InputStream current=new BufferedInputStream(new FileInputStream(card));InputStream original=new BufferedInputStream(new FileInputStream(new File(reset,"card-before-security.bin")))){
+                for(int i=0;i<33554432;i++){int value=current.read(),old=original.read();if(value!=(i>=SsaData.OFFSET&&i<SsaData.OFFSET+SsaData.SIZE?255:old))throw new AssertionError("Clear changed wrong byte: "+i);}
+            }
+            if(!SsaCardImport.hash(new File(reset,"card-before-security.bin")).equals(after))throw new AssertionError("Reset backup mismatch");
         }finally{try(java.util.stream.Stream<Path> paths=Files.walk(dir)){paths.sorted(Comparator.reverseOrder()).forEach(p->{try{Files.delete(p);}catch(IOException e){throw new RuntimeException(e);}});}}
-        System.out.println("PASS: SSA contract, changed-VIN/seed/metadata/partial-key rejection, prompt detection, cancelled import, full-card backup and SSA-only transaction; no network or vehicle");
+        System.out.println("PASS: SSA contract, changed-VIN/seed/metadata/partial-key rejection, prompt detection, cancelled import, full-card backup and SSA-only transaction; NoMoreGlobal reset clears exactly 714 bytes with unchanged surrounding bytes and backup; no network or vehicle");
     }
 }

@@ -16,6 +16,8 @@ pub mod can_mmio;
 pub mod gocan_bridge;
 pub mod link;
 pub mod native_link;
+pub mod demand;
+pub mod uart;
 pub mod worker;
 
 pub use worker::{maybe_start, CandiConfig};

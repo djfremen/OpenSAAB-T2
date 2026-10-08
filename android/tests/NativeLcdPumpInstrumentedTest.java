@@ -26,7 +26,7 @@ public final class NativeLcdPumpInstrumentedTest extends Instrumentation {
     }
     private int color() {
         int[] result={0};
-        runOnMainSync(()->{if(view.getDrawable() instanceof BitmapDrawable)result[0]=((BitmapDrawable)view.getDrawable()).getBitmap().getPixel(0,0);});
+        runOnMainSync(()->{if(view.getDrawable() instanceof BitmapDrawable&&((BitmapDrawable)view.getDrawable()).getBitmap()!=null)result[0]=((BitmapDrawable)view.getDrawable()).getBitmap().getPixel(0,0);});
         return result[0];
     }
     private long awaitColor(int wanted) throws Exception {
@@ -42,6 +42,9 @@ public final class NativeLcdPumpInstrumentedTest extends Instrumentation {
             runOnMainSync(()->{view=new ImageView(getTargetContext());pump=new NativeLcdPump(view);pump.setDirectory(a);});
             ArrayList<Long> latency=new ArrayList<>();
             for(int i=1;i<=8;i++){long began=SystemClock.elapsedRealtime();publish(a,0xff000000|i);awaitColor(0xff000000|i);latency.add(SystemClock.elapsedRealtime()-began);}
+            // The one-second recovery poll must not decode/allocate unchanged frames.
+            android.graphics.Bitmap[] same={null};runOnMainSync(()->same[0]=((BitmapDrawable)view.getDrawable()).getBitmap());
+            Thread.sleep(1200);runOnMainSync(()->{if(same[0]!=((BitmapDrawable)view.getDrawable()).getBitmap())throw new AssertionError("Unchanged frame decoded again");});
             // A fast burst coalesces to the newest complete frame.
             for(int i=20;i<=60;i++)publish(a,0xff000000|i);
             awaitColor(0xff00003c);
@@ -53,9 +56,14 @@ public final class NativeLcdPumpInstrumentedTest extends Instrumentation {
             publish(b,0xff445566);awaitColor(0xff445566);
             publish(a,0xffabcdef);Thread.sleep(150);
             if(color()!=0xff445566)throw new AssertionError("Old session frame applied");
+            // Hold the UI until decode has queued a frame, then invalidate that run.
+            runOnMainSync(()->{try{publish(b,0xff998877);SystemClock.sleep(200);pump.clear();}catch(Exception e){throw new RuntimeException(e);}});
+            Thread.sleep(200);if(color()!=0)throw new AssertionError("Queued frame revived cleared session");
+            publish(b,0xff123456);Thread.sleep(200);if(color()!=0)throw new AssertionError("Late publication revived cleared session");
+            runOnMainSync(()->pump.setDirectory(b));awaitColor(0xff123456);
             runOnMainSync(()->pump.close());publish(b,0xff123456);Thread.sleep(150);
-            if(color()!=0xff445566)throw new AssertionError("Closed observer updated view");
-            result.putString("stream","PASS: atomic publication, burst coalescing, malformed-frame retry, session switch, close. publish_to_view_ms="+latency+"; USB never opened\n");
+            if(color()!=0xff123456)throw new AssertionError("Closed observer updated view");
+            result.putString("stream","PASS: atomic publication, burst coalescing, malformed-frame retry, session switch, queued/late frame rejection after clear, same-directory restart, close. publish_to_view_ms="+latency+"; USB never opened\n");
         } catch(Throwable e) {status=0;result.putString("stream","FAIL: "+e+"\n");}
         finally {if(pump!=null)runOnMainSync(()->pump.close());if(root!=null)remove(root);finish(status,result);}
     }

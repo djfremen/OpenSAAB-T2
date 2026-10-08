@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-10-03T06:46:58.786360+00:00",
+  "status": "private_candidate_not_published",
+  "android": {
+    "version": "0.1.1-preview.37",
+    "version_code": 100037,
+    "abi": "arm64-v8a",
+    "avd_api": 31,
+    "avd": "OpenSAAB_API31_Offline with isolated temporary userdata",
+    "apk_sha256": "3d713dc0ee3862ced255d97b25ed1d328343860ac85560957168af094f8f2a85",
+    "engine_sha256": "f9d651786e884e0806240a94d49001f9ff929bb289df7c839dfbd2f12e60ab7e",
+    "base_revision": "7d8572f3ec0994236860b9c164e6f784558638e8",
+    "source_dirty": true,
+    "workspace_source_sha256_at_receipt": {
+      "Cargo.toml": "0badee2af264fdd458bc2cf1f358db0e4ebdb9514231cb3ee64a0290dd86f041",
+      "Cargo.lock": "834e1ce59d304a4be89e89f97aef5efc41fcbcb7a82be2da57dbda335f5eae77",
+      "src/main.rs": "26e4f712292341484a3d992c7d447157f412b706c31dc5831aa9edab4de57e60",
+      "src/performance.rs": "80553562fa2d14c62389cc317911aa928893283199f790df53f00f9aeb59ebac",
+      "android/tech2-app/com/opensaab/tech2/MainActivity.java": "96e82360d16c3599cea231f6c4abd799f25bfd28fc2904b769387853afcc1c44",
+      "android/shared/com/opensaab/usb/OfflineSessionEvidence.java": "8e83c9e23f1643ace4d4cb3fc5e815cd5fb9b09e15faf3222c041251aa8b9943",
+      "android/shared/com/opensaab/usb/SupportReports.java": "5e5661b986423e4aa192476ded23dc8f51adf287abc535549a7f4e5efe565713",
+      "android/shared/com/opensaab/usb/PerformanceReport.java": "e566b092970cf74b513956cb21837b11816bb34dee9f600e1c06de7fb076a24c",
+      "android/shared/com/opensaab/usb/EmulatorHealthMonitor.java": "1ec924af8e24e360b62ffc4e58549da56ed4bb5ebb8d92286947804073a03ab4",
+      "android/shared/com/opensaab/usb/SupportReportActivity.java": "9c26929426b502246b2fe002327f82fe9a75ad0772f070df82c556b90cb84a74",
+      "android/shared/com/opensaab/usb/ReportReviewModel.java": "c4a7f00503bd319e4d34d9e6a446271e54c10681f8fc596031380de71749070a",
+      "android/tests/OfflineEvidenceInstrumentedTest.java": "1930fcb2ced67f23cb5d767f2ba14f36a7782f46e14774c123242c25c2f47ce2",
+      "android/tests/OfflineSessionRunInstrumentedTest.java": "e47e6dd9f0e468d407ac122694b1e1eb35614406f22eb32173ba62a956caa2cd",
+      "service/support_reports_api.py": "24276dd4328a0e7048286f46ca23f454b69771de0026bc00785a94d3b0e1fc9a",
+      "service/tests/test_offline_evidence.py": "d228ccefdda9e45bc4e546500973f30935534a1b07c0ce4f225855946640b2a9"
+    },
+    "provenance_limit": "APK fingerprint and installed native fingerprint are confirmed; source hashes record the concurrent dirty workspace at receipt time. A clean coupled rebuild is required before release."
+  },
+  "shared": {
+    "base_revision": "c85a01375a07d566decd437a49a120f27b191e72",
+    "source_dirty": true,
+    "crate_sha256": "a16e263b2caf0fce320ac2513f63302d8dbc6d9e4d2e34ddd0c9fc4a44781192",
+    "contract_sha256": "325c131517694d5b1c32d6bbaa290fcd8460988cd6222c3f721521089a14adcf"
+  },
+  "checks": {
+    "build_apk_verification_lint": "passed",
+    "shared_rust_tests": 3,
+    "native_resource_tests": 3,
+    "native_outcome_test": 1,
+    "android_validator_tests": 15,
+    "canonical_new_privacy_corpus_tests": 4,
+    "ios_overlay_new_privacy_corpus_tests": 4,
+    "android_offline_evidence_instrumentation": "passed",
+    "android_reporting_regressions": "passed including frozen review, receipts, rotation, health, LCD, session end",
+    "actual_packaged_offline_run": "passed short frame/input/explicit Stop; no adapter, no upload",
+    "exact_android_collected_bodies_against_three_local_validators": "passed",
+    "arm32_compile_check": "passed, no APK/device qualification",
+    "ios_overlay_existing_compatibility_tests": 13,
+    "packaged_native_fingerprint_matches_installed_run": "passed"
+  },
+  "observed_run": {
+    "host_reason": "user_stop",
+    "native_reason": "operator_or_deadline",
+    "input_count": 1,
+    "frame_count": 10,
+    "elapsed_ms": 6381,
+    "report_bytes": 8164
+  },
+  "unqualified": [
+    "production_schema_deployment",
+    "live_upload_and_storage_receipt",
+    "signed_release_and_upgrade",
+    "physical_handset",
+    "reported_menu_path_and_long_run_failure",
+    "installed_arm32",
+    "desktop_and_ios_collector_forwarding"
+  ],
+  "privacy": "No real submission contents, receipt IDs, raw logs, contact, VIN, screenshots, bus payloads or firmware bytes in this receipt.",
+  "implementation_commits": {
+    "android": "09ca979",
+    "shared": "237e57d"
+  }
+}

@@ -40,14 +40,26 @@ fn parse(text: &str) -> io::Result<Command> {
     }
 }
 
+// Arrow navigation cannot enter an operation. Capture immediately before an
+// action instead of copying the entire guest/card for every highlighted row.
+fn needs_checkpoint(command: &Command) -> bool {
+    !matches!(
+        command,
+        Command::Stop | Command::Key(crate::bus::KEY_UP | crate::bus::KEY_DOWN)
+    )
+}
+
 pub struct Session<'a> {
     dir: &'a Path,
     started: Instant,
     next: Instant,
+    next_frame: Instant,
+    next_limits: Instant,
     screen: String,
     frame: artifacts::LiveFrame,
     checkpoint: Option<recovery::Checkpoint>,
     waiting: Option<Instant>,
+    connection_wait: Option<Instant>,
 }
 impl<'a> Session<'a> {
     pub fn new(dir: &'a Path) -> Self {
@@ -55,10 +67,13 @@ impl<'a> Session<'a> {
             dir,
             started: Instant::now(),
             next: Instant::now(),
+            next_frame: Instant::now(),
+            next_limits: Instant::now(),
             screen: String::new(),
             frame: artifacts::LiveFrame::default(),
             checkpoint: None,
             waiting: None,
+            connection_wait: None,
         }
     }
     pub fn poll(&mut self, cpu: &mut CpuCore, bus: &mut Tech2Bus) -> io::Result<Poll> {
@@ -74,29 +89,41 @@ impl<'a> Session<'a> {
                 Poll::Continue
             });
         }
-        self.next = now + Duration::from_millis(100);
-        for name in ["tech2.log", "trace.jsonl"] {
-            if fs::metadata(self.dir.join(name)).is_ok_and(|m| m.len() > 16 * 1024 * 1024) {
-                println!("SESSION: Log size limit reached; restart to continue");
-                return Ok(Poll::Stop);
+        self.next = now + Duration::from_millis(10);
+        if now >= self.next_limits {
+            self.next_limits = now + Duration::from_secs(1);
+            for name in ["tech2.log", "trace.jsonl"] {
+                if fs::metadata(self.dir.join(name)).is_ok_and(|m| m.len() > 16 * 1024 * 1024) {
+                    println!("SESSION: Log size limit reached; restart to continue");
+                    return Ok(Poll::Stop);
+                }
             }
         }
-        // Publish by rename so a reader never sees a partially written PPM.
-        self.frame.publish(bus, self.dir)?;
-        let screen = bus.screen_text();
-        if screen != self.screen {
-            fs::write(self.dir.join("screen.txt.tmp"), &screen)?;
-            fs::rename(self.dir.join("screen.txt.tmp"), self.dir.join("screen.txt"))?;
-            println!(
-                "LCD: {}",
-                screen.split_whitespace().collect::<Vec<_>>().join(" ")
-            );
-            self.screen = screen;
-        }
-        if self.waiting.is_none() {
-            if let Some(reason) = recovery::unavailable_reason(&self.screen) {
-                println!("SESSION: {reason} Returning to previous menu in 5 seconds.");
-                self.waiting = Some(now);
+        // Input is polled independently from rendering and log housekeeping.
+        if now >= self.next_frame {
+            self.next_frame = now + Duration::from_millis(if bus.pending_candi.is_some() && !bus.demand_boot_complete { 150 } else { 33 });
+            // Publish by rename so a reader never sees a partially written PPM.
+            self.frame.publish(bus, self.dir)?;
+            let screen = bus.screen_text();
+            if screen != self.screen {
+                fs::write(self.dir.join("screen.txt.tmp"), &screen)?;
+                fs::rename(self.dir.join("screen.txt.tmp"), self.dir.join("screen.txt"))?;
+                println!(
+                    "LCD: {}",
+                    screen.split_whitespace().collect::<Vec<_>>().join(" ")
+                );
+                self.screen = screen;
+            }
+            if self.waiting.is_none() {
+                if let Some(reason) = recovery::unavailable_reason(&self.screen) {
+                    let checking = self.screen.to_ascii_lowercase().contains("checking") && self.screen.to_ascii_lowercase().contains("working");
+                    let demand = bus.pending_candi.is_some() || bus.demand_boot_complete;
+                    let give_connection_time = checking && demand && (bus.demand_guest_init.is_some() || now.duration_since(*self.connection_wait.get_or_insert(now)) < Duration::from_secs(30));
+                    if !give_connection_time {
+                        println!("SESSION: {reason} Returning to previous menu in 5 seconds.");
+                        self.waiting = Some(now);
+                    }
+                }
             }
         }
         let path = self.dir.join("interactive-key.txt");
@@ -109,8 +136,17 @@ impl<'a> Session<'a> {
                     ));
                 }
                 let text = fs::read_to_string(&path)?;
+                let command = parse(&text)?;
+                // Preserve the mailbox until the prior down/up pair is consumed.
+                // STOP and paused recovery must remain responsive regardless of guest state.
+                if command != Command::Stop
+                    && self.waiting.is_none()
+                    && (!bus.key_queue.is_empty() || bus.key_active.is_some())
+                {
+                    return Ok(Poll::Continue);
+                }
                 fs::remove_file(path)?;
-                Some(parse(&text)?)
+                Some(command)
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => None,
             Err(e) => return Err(e),
@@ -125,6 +161,7 @@ impl<'a> Session<'a> {
                 if let Some(saved) = self.checkpoint.take() {
                     saved.restore(cpu, bus);
                     self.waiting = None;
+                    self.connection_wait = None;
                     self.screen.clear();
                     println!("SESSION: Operation cancelled; restored previous guest menu (offline recovery)");
                 } else {
@@ -135,7 +172,7 @@ impl<'a> Session<'a> {
             return Ok(Poll::Paused);
         }
         if let Some(command) = command {
-            if recovery::can_checkpoint(bus) {
+            if needs_checkpoint(&command) && recovery::can_checkpoint(bus) {
                 self.checkpoint =
                     Some(recovery::Checkpoint::capture(cpu, bus).map_err(io::Error::other)?);
             }
@@ -145,7 +182,13 @@ impl<'a> Session<'a> {
                 Command::Key(code) => code,
                 Command::Stop => unreachable!(),
             };
-            println!("KEYPAD: encoder={code:#04x} source=interactive-frontend");
+            println!(
+                "KEYPAD: encoder={code:#04x} source=interactive-frontend wall_ms={}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            );
             bus.trace_event("native_operator_key", &format!("encoder={code:#04x}"));
             if code == crate::bus::KEY_EXIT {
                 bus.exit_key();
@@ -160,6 +203,50 @@ impl<'a> Session<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn busy_guest_keeps_mailbox_and_stop_bypasses_backpressure() {
+        let dir = std::env::temp_dir().join(format!("opensaab-input-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let mailbox = dir.join("interactive-key.txt");
+        let mut bus = Tech2Bus::new(
+            vec![0; 0x40000],
+            vec![],
+            crate::bus::ExecutionMode::Fidelity,
+        );
+        let mut cpu = CpuCore::new();
+        bus.press_key(crate::bus::KEY_DOWN);
+        let depth = bus.key_queue.len();
+        let mut session = Session::new(&dir);
+        session.next_frame = Instant::now() + Duration::from_secs(10);
+        session.next_limits = session.next_frame;
+        fs::write(&mailbox, "0x09\n").unwrap();
+        assert!(matches!(
+            session.poll(&mut cpu, &mut bus).unwrap(),
+            Poll::Continue
+        ));
+        assert!(mailbox.exists());
+        assert_eq!(bus.key_queue.len(), depth);
+        fs::write(&mailbox, "stop\n").unwrap();
+        session.next = Instant::now();
+        assert!(matches!(
+            session.poll(&mut cpu, &mut bus).unwrap(),
+            Poll::Stop
+        ));
+        assert!(!mailbox.exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn navigation_does_not_replace_recovery_but_actions_do() {
+        for code in 0..32 {
+            assert_eq!(
+                needs_checkpoint(&Command::Key(code)),
+                code != crate::bus::KEY_UP && code != crate::bus::KEY_DOWN
+            );
+        }
+        assert!(needs_checkpoint(&Command::Enter));
+        assert!(!needs_checkpoint(&Command::Stop));
+    }
     #[test]
     fn mailbox_rejects_multiple_keys_and_invalid_encoder_values() {
         assert_eq!(parse("enter\n").unwrap(), Command::Enter);

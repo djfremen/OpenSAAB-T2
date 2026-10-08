@@ -21,11 +21,62 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
         for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text))if(node.isClickable()&&node.performAction(AccessibilityNodeInfo.ACTION_CLICK))return true;
         return false;
     }
+    boolean reviewActionsVisible(){
+        AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();if(root==null)return false;
+        android.graphics.Rect window=new android.graphics.Rect();root.getBoundsInScreen(window);
+        for(String text:new String[]{"Send to OpenSAAB","Other options","Keep private"}){
+            boolean found=false;
+            for(AccessibilityNodeInfo n:root.findAccessibilityNodeInfosByText(text)){
+                android.graphics.Rect r=new android.graphics.Rect();n.getBoundsInScreen(r);
+                if(n.isClickable()&&n.isVisibleToUser()&&r.height()>=40&&window.contains(r))found=true;
+            }
+            if(!found)return false;
+        }
+        return true;
+    }
+    static final class UploadConnection extends java.net.HttpURLConnection {
+        final ByteArrayOutputStream body=new ByteArrayOutputStream();
+        int status=201;String reply="{\"stored\":true,\"report_id\":\"OS-0123456789abcdef01234567\"}";boolean closed;
+        UploadConnection()throws Exception{super(new java.net.URL(SupportUpload.ENDPOINT));}
+        public void connect(){} public boolean usingProxy(){return false;}
+        public void disconnect(){closed=true;}
+        public OutputStream getOutputStream(){return body;}
+        public int getResponseCode(){return status;}
+        public InputStream getInputStream(){return new ByteArrayInputStream(reply.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+    }
+    void uploadContract()throws Exception{
+        UploadConnection ok=new UploadConnection();
+        check(SupportUpload.send("{}",ok).equals("OS-0123456789abcdef01234567"),"Missing receipt");
+        check(ok.closed && !ok.getInstanceFollowRedirects() && "POST".equals(ok.getRequestMethod()),"Upload redirected or leaked connection");
+        check("support-report-v1".equals(ok.getRequestProperty("X-OpenSAAB-Consent")) && ok.body.toString("UTF-8").equals("{}"),"Wrong upload body/consent");
+        for(int status:new int[]{301,400,413,429,500,503}){
+            UploadConnection failure=new UploadConnection();failure.status=status;
+            try{SupportUpload.send("{}",failure);throw new AssertionError("HTTP error accepted "+status);}catch(IOException expected){}
+            check(failure.closed,"Failed upload connection left open");
+        }
+        for(String reply:new String[]{"{}","{\"stored\":false,\"report_id\":\"OS-0123456789abcdef01234567\"}","not json",new String(new char[4097])}){
+            UploadConnection failure=new UploadConnection();failure.reply=reply;
+            try{SupportUpload.send("{}",failure);throw new AssertionError("Invalid receipt accepted");}catch(IOException expected){}
+        }
+        UploadConnection oversized=new UploadConnection();
+        try{SupportUpload.send(new String(new char[65537]),oversized);throw new AssertionError("Oversized upload sent");}catch(IOException expected){}
+        check(oversized.body.size()==0,"Oversized body transmitted");
+    }
     public void onStart(){
         Bundle result=new Bundle();int code=-1;Activity activity=null;File dir=null;
         Context c=getTargetContext();File errors=new File(c.getFilesDir(),"last-app-error.json");byte[] old=null;
         File reports=new File(c.getFilesDir(),"support-reports");Set<String> existing=new HashSet<>();if(reports.list()!=null)Collections.addAll(existing,reports.list());
         try{
+            uploadContract();
+            check(!SupportReportActivity.reportDescription("steps",2,"private@example.invalid",false).contains("private@example.invalid"),"Contact included without consent");
+            check(SupportReportActivity.reportDescription("steps",2,"private@example.invalid",true).contains("permission granted"),"Consent not represented");
+            check(SupportReportActivity.reportDescription(new String(new char[3000]),1,new String(new char[300]),true).length()<=2000,"Description exceeds server bound");
+
+            JSONObject rawPerf=new JSONObject().put("performance_schema",1).put("complete",false).put("private_text","SECRET");
+            JSONArray samples=new JSONArray();for(int i=0;i<20;i++)samples.put(new JSONObject().put("elapsed_ms",i*5000).put("cpu_ms",i*4000).put("rss_kib",-1).put("ram_available_kib","SECRET").put("vin","SECRET"));
+            rawPerf.put("samples",samples);JSONObject perf=PerformanceReport.sanitize(rawPerf);
+            check(perf.getJSONArray("samples").length()==12&&!perf.toString().contains("SECRET")&&!perf.toString().contains("rss_kib"),"Performance data not bounded/numeric-only");
+            check(PerformanceReport.sanitize(new JSONObject()).optBoolean("unavailable"),"Missing performance treated as measurements");
             if(errors.exists())old=Files.readAllBytes(errors.toPath());
             dir=new File(c.getFilesDir(),"chipsoft-"+UUID.randomUUID());check(dir.mkdir(),"Fixture directory missing");
             String secret="TEST_VIN_AND_SSA_SECRET_9123456789"; // gitleaks:allow -- synthetic redaction test marker
@@ -35,12 +86,28 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
                 byte[] padding=new byte[300000];Arrays.fill(padding,(byte)'x');out.write(padding);
                 out.write(("\nUSB_OPEN "+secret+"\nUSB_TX "+secret+"\nTIMEOUT\n").getBytes("UTF-8"));
             }
+            File errorLog=new File(dir,"rust.log");
+            Files.write(errorLog.toPath(),("ERROR: Unvalidated Chipsoft firmware version "+secret+"\nERROR: other "+secret).getBytes("UTF-8"));
+            JSONObject classified=SupportReports.logSummary(errorLog);
+            check(classified.getJSONArray("failure_categories").getJSONObject(0).getString("category").equals("adapter_firmware_not_validated")&&!classified.toString().contains(secret),"Failure classification leaks values or loses reason");
+            JSONArray unsafe=new JSONArray();for(int i=0;i<40;i++)unsafe.put(new JSONObject().put("event","PAUSED").put("utc","2026-09-30T00:00:00Z").put("secret",secret));
+            unsafe.put(new JSONObject().put("event",secret).put("utc","2026-09-30T00:00:00Z"));
+            JSONArray safe=SessionDiagnostics.sanitize(unsafe);check(safe.length()==31&&!safe.toString().contains(secret),"Timeline not bounded or sanitized");
+            SessionDiagnostics.record(dir,SessionDiagnostics.Event.START);SessionDiagnostics.record(dir,SessionDiagnostics.Event.EXPECTED_STOP);
+            check(SessionDiagnostics.read(dir).length()==2,"Missing session events");
             JSONObject summary=SupportReports.logSummary(log),counts=summary.getJSONObject("event_counts");
             check(summary.getBoolean("tail_only")&&counts.getInt("USB_OPEN")==1&&counts.getInt("TIMEOUT")==1&&!counts.has("ERROR"),"Bounded tail counts wrong");
             Files.write(new File(dir,"report.json").toPath(),new JSONObject().put("status","incomplete").put("exit_code",3).put("instructions",120000000).put("reason",secret).put("card_image",secret).toString().getBytes("UTF-8"));
-            SupportReports.recordError(c,new IOException(secret),false);
+            FirmwareStore.writeJson(new File(dir,"adapter-identity.json"),new JSONObject().put("firmware_version","1.5.2"));
+            SupportReports.recordError(c,new IOException(secret),false,dir);
             JSONObject report=SupportReports.collect(c,"Tested an adapter timeout");String json=report.toString();
+            check(json.contains("firmware_version")&&json.contains("1.5.2"),"Missing adapter firmware");
+            FirmwareStore.writeJson(new File(dir,"adapter-identity.json"),new JSONObject().put("firmware_version",secret));
+            check(!SupportReports.collect(c,"").toString().contains(secret),"Unsafe adapter identity exported");
+            check(report.getJSONObject("last-app-error.json").getString("session_id").equals(dir.getName()),"Exception lost session association");
             check(!json.contains(secret)&&!json.contains("xxxxxxxx")&&json.contains("java.io.IOException"),"Sensitive log/message exported or error absent");
+            check(report.getJSONObject("security_status").has("auth_status")&&!report.getJSONObject("security_status").getBoolean("vehicle_access_verified"),"Auth snapshot missing or overclaims authorization");
+            check(report.getJSONObject("device_resources").getLong("ram_total_bytes")>0,"Missing RAM context");
             check(report.getJSONArray("recent_sessions").length()>0&&json.contains("emulator_outcome"),"Missing session/outcome");
             File saved=SupportReports.save(c,report);
             try(ZipFile zip=new ZipFile(saved)){
@@ -59,9 +126,16 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             }
             activity=startActivitySync(new Intent().setClassName(c,"com.opensaab.usb.SupportReportActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
             long ready=SystemClock.elapsedRealtime()+5000;boolean prepared=false;while(SystemClock.elapsedRealtime()<ready){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare action missing");long until=SystemClock.elapsedRealtime()+5000;boolean review=false;
-            while(SystemClock.elapsedRealtime()<until){if(click("Keep private")){review=true;break;}SystemClock.sleep(100);}
-            check(review,"Review/keep private action missing");
-            result.putString("stream","PASS: bounded log tails, secret/message exclusion, ZIP allowlist, Android exit metadata, review/keep-private UI, read-only share grants, traversal denial; no vehicle/network/mail\n");
+            while(SystemClock.elapsedRealtime()<until){if(reviewActionsVisible()&&click("Keep private")){review=true;break;}SystemClock.sleep(100);}
+            check(review,"Review actions must all be fully visible and reachable");
+            until=SystemClock.elapsedRealtime()+5000;prepared=false;while(SystemClock.elapsedRealtime()<until){if(click("Prepare report")){prepared=true;break;}SystemClock.sleep(100);}check(prepared,"Prepare report for export");until=SystemClock.elapsedRealtime()+5000;boolean options=false;
+            while(SystemClock.elapsedRealtime()<until){if(click("Other options")){options=true;break;}SystemClock.sleep(100);}check(options,"Copy/save menu missing");
+            until=SystemClock.elapsedRealtime()+5000;boolean saveVisible=false;
+            while(SystemClock.elapsedRealtime()<until){AccessibilityNodeInfo active=getUiAutomation().getRootInActiveWindow();if(active!=null&&!active.findAccessibilityNodeInfosByText("Save ZIP to a file").isEmpty()){saveVisible=true;break;}SystemClock.sleep(100);}check(saveVisible,"Save ZIP fallback missing");
+            check(click("Copy report text"),"Copy report action missing");SystemClock.sleep(300);
+            ClipboardManager clipboard=(ClipboardManager)c.getSystemService(Context.CLIPBOARD_SERVICE);
+            check(clipboard.hasPrimaryClip()&&clipboard.getPrimaryClip().getItemAt(0).coerceToText(c).toString().contains("device_resources"),"Copied report missing new context");
+            result.putString("stream","PASS: upload receipt/errors/size/redirect policy (no network); bounded log tails, secret/message exclusion, ZIP allowlist, Android exit metadata, review/keep-private UI, read-only share grants, traversal denial; no vehicle/network/mail\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{
             if(activity!=null){Activity a=activity;runOnMainSync(a::finish);}

@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "tag": "v0.1.0-preview.29",
+  "published_at": "2026-10-01T21:56:15Z",
+  "release_url": "https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.29",
+  "release_source": "e44c6b64c2cbd4b5cc0e84d01368a74f222dab13",
+  "app_source": "fef93a72eb4db9ad5f9fd8c0f84b8a7e1722d3e5",
+  "apk": {
+    "name": "OpenSAAB-T2-arm64-v8a.apk",
+    "bytes": 10188264,
+    "sha256": "b1c32cb7566e00d2a5e686db5e99b1c373588a7403353b28f6ceb238dfd842ad",
+    "version_code": 100029
+  },
+  "verification": [
+    "APK signing verified; certificate unchanged",
+    "Published APK downloaded and hash matched exact tested candidate",
+    "Payload gate passed: pinned support files; no SAAB diagnostic card"
+  ],
+  "scope": "ARM64 only; unchanged native binaries; Pixel offline/report and bounded Chipsoft HS-CAN bench qualification. Full vehicle, SW-CAN and active-session reports remain pending."
+}

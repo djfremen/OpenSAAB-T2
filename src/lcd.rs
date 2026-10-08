@@ -55,7 +55,7 @@ impl Sed1335 {
     }
 
     pub fn write_cmd(&mut self, v: u8) {
-        let verbose = crate::options::env_flag("LCD_LOG");
+        let verbose = lcd_log_enabled();
         if verbose && !self.params.is_empty() {
             println!(
                 "SED1335 CMD prev {:#04x} params={:02x?}",
@@ -203,7 +203,7 @@ impl Sed1335 {
     }
 
     pub fn write_data(&mut self, v: u8) {
-        let verbose = crate::options::env_flag("LCD_LOG");
+        let verbose = lcd_log_enabled();
         self.data_wr += 1;
         if self.params_left > 0 {
             self.params.push(v);
@@ -260,7 +260,7 @@ impl Sed1335 {
         } else {
             '?'
         };
-        if crate::options::env_flag("LCD_LOG") {
+        if lcd_log_enabled() {
             println!(
                 "VRAM write at {:#06x} (row={}, col={}): {:#04x} ('{}')",
                 i,
@@ -740,4 +740,11 @@ mod display_tests {
         command(&mut lcd, 0x5b, &[1, 0xff]);
         assert_eq!(lcd.cursor, cursor); // excess parameters are not VRAM data
     }
+}
+
+fn lcd_log_enabled() -> bool {
+    #[cfg(feature = "load-test")]
+    { static VALUE: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| crate::options::env_flag("LCD_LOG")); *VALUE }
+    #[cfg(not(feature = "load-test"))]
+    { crate::options::env_flag("LCD_LOG") }
 }

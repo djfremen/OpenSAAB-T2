@@ -21,11 +21,14 @@ mod lcd;
 mod load_binary;
 pub mod logger;
 mod options;
+mod performance;
 mod recovery;
 mod replay;
 mod ssa_flash;
 mod tpu;
 mod trace;
+#[cfg(feature = "load-test")]
+mod load_test;
 
 use artifacts::Outcome;
 use bus::{ExecutionMode, Tech2Bus};
@@ -77,6 +80,7 @@ pub fn service_interrupt(cpu: &mut CpuCore, bus: &mut Tech2Bus, level: u8) {
 }
 
 pub fn step_guest(cpu: &mut CpuCore, bus: &mut Tech2Bus, insns: u64) -> StepResult {
+    if bus.failure_reason.is_some() { return StepResult::Stopped; }
     let pc = cpu.pc;
     bus.current_pc = pc;
     bus.current_insns = insns;
@@ -137,6 +141,10 @@ pub fn step_guest(cpu: &mut CpuCore, bus: &mut Tech2Bus, insns: u64) -> StepResu
             ),
         );
     }
+    candi::demand::guest_dependency(cpu, bus);
+    if bus.failure_reason.is_some() { return StepResult::Stopped; }
+    let pc = cpu.pc;
+    bus.current_pc = pc;
     communication::observe(cpu, bus);
     let research_harness = bus.execution_mode.is_research_harness();
 
@@ -647,6 +655,7 @@ pub fn run_headless(
     settings: RunSettings<'_>,
     pc_counts: &mut std::collections::HashMap<u32, u64>,
 ) -> HeadlessRunResult {
+    let boot_started = std::time::Instant::now();
     let limit_insns = settings.limit_insns;
     let mut interactive = settings
         .interactive
@@ -657,6 +666,11 @@ pub fn run_headless(
     let mut outcome = Outcome::Incomplete;
     let mut stop = String::from("instruction budget exhausted before requested milestone");
     let mut splash_ready = false;
+    #[cfg(feature = "load-test")]
+    let accelerate_load = options::env_flag("LOAD_TEST_ACCELERATE")
+        && (!settings.android_live || bus.pending_candi.is_some())
+        && settings.replay.is_empty()
+        && !bus.trace.enabled() && bus.candi_link.is_none();
     let mut ring: [u32; 64] = [0; 64];
     let mut ring_i: usize = 0;
     let mut fault_reported = false;
@@ -664,7 +678,10 @@ pub fn run_headless(
     let mut next_live_frame = std::time::Instant::now();
     let mut live_screen = String::new();
     let mut live_frame = artifacts::LiveFrame::default();
+    let mut working_ssa = artifacts::WorkingSsa::default();
+    let mut collected_ssa = artifacts::WorkingSsa::default();
     let mut next_native_key = std::time::Instant::now();
+    let mut next_health_beat = std::time::Instant::now();
     let security_ssa_before = (settings.harness_target
         == Some(options::HarnessTarget::SecurityLink1367))
     .then(|| bus.card.get(0xfe0000..0xfe0000 + 714).map(<[u8]>::to_vec))
@@ -681,11 +698,31 @@ pub fn run_headless(
 
     while insns < limit_insns {
         if insns.is_multiple_of(50_000) {
+            if (settings.android_live || settings.interactive)
+                && std::time::Instant::now() >= next_health_beat
+            {
+                next_health_beat = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                // Written by the emulation loop, not an unrelated sampling thread.
+                let temporary = settings.output_dir.join("emulator-heartbeat.tmp");
+                if std::fs::write(&temporary, insns.to_string()).is_ok() {
+                    let _ =
+                        std::fs::rename(temporary, settings.output_dir.join("emulator-heartbeat"));
+                }
+            }
             if settings.android_live && std::time::Instant::now() >= next_live_frame {
                 next_live_frame = std::time::Instant::now() + std::time::Duration::from_millis(100);
                 let capture = (|| -> std::io::Result<()> {
                     live_frame.publish(bus, settings.output_dir)?;
                     let screen = bus.screen_text();
+                    if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
+                        working_ssa.publish(&bus.card, settings.output_dir)?;
+                        let normalized = screen.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+                        if normalized.contains("you need security access from tis2000")
+                            && normalized.contains("disconnect tech 2 from vehicle")
+                            && bus.ssa_flash.as_ref().is_some_and(|flash| flash.erases > 0 && flash.programmed_bytes >= 714) {
+                            collected_ssa.publish_as(&bus.card, settings.output_dir, "collection-ssa.bin")?;
+                        }
+                    }
                     if screen != live_screen {
                         std::fs::write(settings.output_dir.join("screen.txt"), &screen)?;
                         println!(
@@ -724,6 +761,12 @@ pub fn run_headless(
                     }
                 }
             }
+        }
+        #[cfg(feature = "load-test")]
+        if accelerate_load && !splash_ready && load_test::candidate(cpu) {
+            let bound = limit_insns.min((insns / 50_000 + 1) * 50_000);
+            let skipped = load_test::advance(cpu, bus, insns, bound);
+            if skipped != 0 { insns += skipped; continue; }
         }
         let pc = cpu.pc;
         bus.current_pc = pc;
@@ -974,8 +1017,24 @@ pub fn run_headless(
                 }
             }
             if bus.guest_splash_reached() {
+                if !splash_ready {
+                    bus.demand_boot_complete = bus.pending_candi.is_some();
+                    let ready = serde_json::json!({"verified_welcome":true,"native_boot_ms":boot_started.elapsed().as_millis(),"instructions":insns,"candi_started":bus.candi_link.is_some()});
+                    let _ = std::fs::write(settings.output_dir.join("startup.json"), ready.to_string());
+                    // Publish the complete original LCD before announcing readiness.
+                    let _ = artifacts::save_screen(bus, &settings.output_dir.join("welcome.ppm"));
+                    let _ = artifacts::save_screen(bus, &settings.output_dir.join("welcome.tmp"));
+                    let _ = std::fs::rename(settings.output_dir.join("welcome.tmp"), settings.output_dir.join("live.ppm"));
+                    println!("STARTUP_READY: {}", ready);
+                    if settings.interactive && bus.pending_candi.is_some() { bus.trace.enable_console(); }
+                }
                 splash_ready = true;
                 if !settings.interactive && harness.is_none() && settings.replay.is_empty() {
+                    #[cfg(feature = "load-test")]
+                    {
+                        println!("LOAD_TEST_WELCOME: {}", bus.screen_text().split_whitespace().collect::<Vec<_>>().join(" "));
+                        let _ = std::fs::write(settings.output_dir.join("screen.txt"), bus.screen_text());
+                    }
                     stop = String::from("guest splash verified");
                     outcome = Outcome::Success;
                     break;
@@ -1083,6 +1142,7 @@ pub fn run_headless(
 }
 
 fn main() -> std::process::ExitCode {
+    let _performance = performance::start();
     let mut attempt = 0;
     loop {
         match run(attempt) {
@@ -1322,7 +1382,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         );
     }
     let initial_security_ssa =
-        if opts.target == options::HarnessTarget::SecurityLink1367 || opts.candi_chipsoft_seeds {
+        if opts.uses_ssa_flash() {
             Some(
                 card.get(0xfe0000..0xfe0000 + 714)
                     .ok_or_else(|| {
@@ -1340,6 +1400,10 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
     if initial_security_ssa.is_some() {
         bus.ssa_flash = Some(ssa_flash::SsaFlash::default());
     }
+    if opts.candi_on_demand {
+        bus.pending_candi = Some(candi::demand::Pending::from_options(&opts));
+        println!("CANDI_DEFERRED: no CANdi CPU or adapter started; waiting for guest dependency");
+    } else {
     if opts.candi_native_link {
         let path = opts
             .candi_firmware
@@ -1381,16 +1445,21 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         bus.candi_link
             .as_mut()
             .ok_or_else(|| (2, "Missing native CANdi".into()))?
-            .attach_nano_usb(
+            .attach_nano_usb_with_permissions(
                 token,
                 &opts.output,
                 if opts.candi_nano_clear_dtc {
                     tech2_emu::nano_native::Profile::ClearDtc
+                } else if opts.candi_nano_seeds {
+                    tech2_emu::nano_native::Profile::Seeds
                 } else {
                     tech2_emu::nano_native::Profile::collection(
                         opts.target == options::HarnessTarget::SecurityLink1367,
                     )
                 },
+                opts.candi_nano_key_status,
+                opts.candi_nano_full_native,
+                opts.candi_nano_seeds,
             )
             .map_err(|e| (2, e))?;
     }
@@ -1406,10 +1475,11 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
             link.enable_ignition_monitor(&opts.output);
         }
     }
-    if opts.interactive_headless {
+    }
+    if opts.interactive_headless && !opts.candi_on_demand {
         bus.trace.enable_console();
     }
-    if opts.verbose || (opts.candi_native_link && !opts.interactive_headless) {
+    if opts.verbose || (opts.candi_native_link && !opts.interactive_headless && !opts.candi_on_demand) {
         let path = opts.output.join("trace.jsonl");
         bus.trace = trace::Trace::open(&path, opts.trace_calls)
             .map_err(|e| (4, format!("trace {}: {e}", path.display())))?;
@@ -1615,7 +1685,12 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
 
     println!("\nREPORT insns={insns} stop={stop}");
     if let Some(before) = &initial_security_ssa {
-        if let Err(e) = artifacts::save_security_snapshot(&bus, before, &opts.output) {
+        if let Err(e) = artifacts::save_security_snapshot(&bus, before, &opts.output).and_then(|()| {
+            if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
+                artifacts::WorkingSsa::default().publish(&bus.card, &opts.output)?;
+            }
+            Ok(())
+        }) {
             outcome = Outcome::OutputFailure;
             stop = format!("{stop}; security memory capture: {e}");
         }
@@ -1792,6 +1867,10 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
     let report = format!("{{\n  \"candi\": {candi_report},\n  \"status\": {},\n  \"exit_code\": {},\n  \"mode\": {},\n  \"instructions\": {},\n  \"pc\": {},\n  \"reason\": {},\n  \"last_verified\": {},\n  \"boot_image\": {},\n  \"card_image\": {},\n  \"opsys_image\": {},\n  \"host_cancelled_operations\": {}\n}}\n",
         q(outcome.name()), outcome.code(), q(mode), insns, cpu.pc, q(&stop), q(&last_verified),
         q(&boot_path.to_string_lossy()), q(&card_path.to_string_lossy()), q(&opsys_path.to_string_lossy()), bus.host_cancelled_operations);
+    let mut report: serde_json::Value = serde_json::from_str(&report).expect("generated runtime report");
+    report["emulation_evidence"] = opensaab_session_evidence::snapshot(
+        outcome.name(), &stop, &text, report.get("candi"));
+    let report = serde_json::to_string_pretty(&report).expect("serializable runtime report");
     std::fs::write(&report_path, report)
         .map_err(|e| (4, format!("report {}: {e}", report_path.display())))?;
     Ok((outcome.code(), restart))
@@ -1918,6 +1997,57 @@ mod runtime_tests {
             }
         }
         panic!("did not verify year selection highlight");
+    }
+
+    #[test]
+    #[ignore = "requires local proprietary firmware; run with --release and OPENSAAB_FIRMWARE_ROOT"]
+    fn firmware_year_codes_are_not_shortcuts_and_paced_keys_select_target() {
+        let root = std::path::PathBuf::from(std::env::var("OPENSAAB_FIRMWARE_ROOT").unwrap());
+        for (year, key) in [(2004, 0x03), (2008, 0x11)] {
+            let (_, boot) = load_boot(Some(&root.join("extracted/eprom.bin"))).unwrap();
+            let (_, card) = load_nao(Some(&root.join("Saab NAO.bin"))).unwrap();
+            let (_, opsys) = load_opsys(Some(&root.join("extracted/opsys.dwn"))).unwrap();
+            let mut bus = Tech2Bus::new(boot, card, ExecutionMode::ResearchHarness);
+            bus.load_opsys_ram(&opsys);
+            bus.flash[0x8018..0x40000].copy_from_slice(&opsys);
+            restore_rom_modules(&mut bus.flash, &opsys);
+            let mut cpu = CpuCore::new();
+            cpu.set_cpu_type(CpuType::M68EC020);
+            cpu.sr_mask = 0xa71f;
+            cpu.reset(&mut bus);
+            let mut harness = harness::Harness::new(options::HarnessTarget::Menus, 0);
+            let mut selected_at = None;
+            let mut checked = false;
+            let mut numeric_checked = false;
+            for insns in 0..80_000_000 {
+                assert!(matches!(step_guest(&mut cpu, &mut bus, insns), StepResult::Ok { .. }));
+                if insns % 50_000 != 0 { continue; }
+                if let Some(at) = selected_at {
+                    if insns < at + 400_000 { continue; }
+                    let text = bus.screen_text();
+                    assert!(text.contains("Model Year"), "Shortcut unexpectedly left year menu: {text}");
+                    if !numeric_checked {
+                        assert_eq!(bus.highlighted_text().as_deref(), Some("(C) 2012"));
+                        numeric_checked = true;
+                    }
+                    let target = format!("({}) {year}", year % 10);
+                    if bus.highlighted_text().as_deref() != Some(target.as_str()) {
+                        bus.press_key(bus::KEY_DOWN);
+                        selected_at = Some(insns);
+                        continue;
+                    }
+                    assert_eq!(bus.highlighted_text().as_deref(), Some(target.as_str()));
+                    checked = true;
+                    break;
+                } else if let Some(event) = harness.observe(&bus.screen_text(), insns).unwrap() {
+                    if event.capture == "stage3_model_year" {
+                        bus.press_key(key);
+                        selected_at = Some(insns);
+                    } else if let Some(key) = event.key { bus.press_key(key); }
+                }
+            }
+            assert!(checked, "Numeric year shortcut not observed");
+        }
     }
 
     #[cfg(feature = "gui")]

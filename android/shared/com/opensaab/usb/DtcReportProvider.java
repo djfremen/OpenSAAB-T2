@@ -15,7 +15,7 @@ public final class DtcReportProvider extends ContentProvider {
         if(!(getContext().getPackageName()+".dtc-reports").equals(uri.getAuthority()) || uri.getPathSegments().size()!=1)
             throw new FileNotFoundException("Not a DTC report");
         String name=uri.getLastPathSegment();
-        if(!name.matches("android_(chipsoft|nano)_dtc_[0-9T-Z-]+_[a-f0-9-]+\\.(txt|json)"))throw new FileNotFoundException("Not a DTC report");
+        if(!name.matches("hscan_ecm_[A-Za-z0-9_]+\\.(txt|json)")&&!name.matches("android_(chipsoft|nano|vlinker)_dtc_[0-9T-Z-]+_[a-f0-9-]+\\.(txt|json)"))throw new FileNotFoundException("Not a DTC report");
         File parent=new File(getContext().getFilesDir(),"dtc-reports"), f=new File(parent,name);
         try{if(!f.getCanonicalFile().getParentFile().equals(parent.getCanonicalFile()) || !f.isFile())throw new FileNotFoundException();}
         catch(IOException e){throw new FileNotFoundException("Report unavailable");}

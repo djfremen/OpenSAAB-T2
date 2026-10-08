@@ -1,0 +1,25 @@
+{
+  "date_utc": "2026-10-01T22:40:24.503760+00:00",
+  "device": "Pixel 7",
+  "abi": "arm64-v8a",
+  "package": "com.opensaab.tech2",
+  "source_revision": "105d7a238bed8597f6d76c4ea05ba0c58d229135",
+  "version_name": "0.1.0-preview.30",
+  "version_code": 100030,
+  "apk_sha256": "32e36dab7f631361f2437bba3c6a0bf6111be0b369cab8b2fc1db8704ce58f52",
+  "apk_bytes": 10188264,
+  "signing_certificate_sha256": "23dbf0c1c5ba4179e95bda88d6160f97067d601131e260de751e3b8c9c8088b7",
+  "previous_apk_sha256": "b1c32cb7566e00d2a5e686db5e99b1c373588a7403353b28f6ceb238dfd842ad",
+  "native_and_bundled_support_unchanged": true,
+  "update_command": "adb install -r (in-place update; no uninstall or clear-data)",
+  "installed_version_readback": [
+    "versionCode=100030 minSdk=26 targetSdk=36",
+    "versionName=0.1.0-preview.30",
+    "lastUpdateTime=2026-10-01 15:40:25",
+    "firstInstallTime=2026-09-23 20:33:24"
+  ],
+  "launch_succeeded": true,
+  "device_tests_run": false,
+  "public_release": false,
+  "scope": "Owner-authorized Pixel 7 installation for manual testing. No automated firmware/gesture interaction. App-private firmware hashes were not read."
+}

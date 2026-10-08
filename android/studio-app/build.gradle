@@ -3,6 +3,11 @@ plugins { id 'com.android.application' }
 def repo = rootProject.projectDir
 def generated = layout.buildDirectory.dir('generated/opensaab')
 def python = providers.environmentVariable('OPENSAAB_PYTHON').getOrElse('python3')
+def localInputs = new Properties()
+def localFile = rootProject.file('local.properties')
+if (localFile.isFile()) localFile.withInputStream { localInputs.load(it) }
+def supportRoot = providers.environmentVariable('OPENSAAB_SUPPORT_ROOT')
+    .getOrElse(localInputs.getProperty('opensaab.supportRoot', repo.path))
 def bundleSupport = providers.gradleProperty('bundleSupport').map { it.toBoolean() }.getOrElse(true)
 
 tasks.register('buildRust', Exec) {
@@ -13,9 +18,17 @@ tasks.register('buildRust', Exec) {
     environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
     commandLine 'sh', new File(repo, 'scripts/android/build-headless.sh')
 }
-tasks.register('prepareAndroidInputs', Exec) {
-    dependsOn 'buildRust'
+tasks.register('buildVlinkerWorkflow', Exec) {
     workingDir repo
+    environment 'ANDROID_NDK_HOME', providers.environmentVariable('ANDROID_NDK_HOME')
+        .getOrElse(new File(android.sdkDirectory, 'ndk/android-ndk-r29').path)
+    environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
+    commandLine 'sh', new File(repo, 'scripts/android/build-vlinker-workflow.sh')
+}
+tasks.register('prepareAndroidInputs', Exec) {
+    dependsOn 'buildRust', 'buildVlinkerWorkflow'
+    workingDir repo
+    environment 'OPENSAAB_SUPPORT_ROOT', supportRoot
     commandLine python, new File(repo, 'scripts/android/prepare-studio-inputs.py'), generated.get().asFile
     if (bundleSupport) args '--bundle-support'
 }
@@ -27,12 +40,13 @@ android {
         applicationId 'com.opensaab.tech2'
         minSdk 26
         targetSdk 36
-        versionCode 1
-        versionName '0.1-dev'
+        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(1)
+        versionName providers.gradleProperty('appVersionName').getOrElse('0.1-dev')
         ndk { abiFilters 'arm64-v8a' }
     }
     sourceSets.main {
-        java.srcDirs = [new File(repo, 'android/tech2-app'), new File(repo, 'android/shared')]
+        java.srcDirs = [new File(repo, 'android/tech2-app'), new File(repo, 'android/shared'),
+                        new File(repo, 'android/adapters/chipsoft'), new File(repo, 'android/adapters/vcx_nano')]
         java.exclude 'res/**'
         res.srcDirs = [new File(repo, 'android/tech2-app/res')]
         manifest.srcFile generated.map { it.file('AndroidManifest.xml') }.get().asFile
@@ -60,4 +74,27 @@ tasks.register('verifyDebugApk', Exec) {
     commandLine python, new File(repo, 'scripts/android/check-apk-firmware.py'),
         layout.buildDirectory.file('outputs/apk/debug/app-debug.apk').get().asFile
     if (bundleSupport) args '--allow-bundled-support'
+    def connectionCore = providers.environmentVariable('OPENSAAB_VLINKER_CONNECTION_CORE').orElse(providers.environmentVariable('OPENSAAB_SIMULATOR_CONNECTION_CORE')).getOrElse(new File(repo,'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection').path)
+    doFirst { args '--connection-core-sha256', new File(connectionCore).bytes.digest('SHA-256') }
+}
+
+// Native report review/rotation state; versions shared with command-line builds.
+configurations { reportRuntime }
+dependencies {
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.20')
+    reportRuntime platform('org.jetbrains.kotlin:kotlin-bom:1.8.20')
+    implementation 'androidx.fragment:fragment:1.6.2'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.6.2'
+    reportRuntime 'androidx.fragment:fragment:1.6.2'
+    reportRuntime 'androidx.lifecycle:lifecycle-viewmodel:2.6.2'
+}
+tasks.register('exportReportDependencies') {
+    doLast {
+        def destination = file(project.property('reportDependencyOutput'))
+        destination.parentFile.mkdirs()
+        def artifacts = configurations.reportRuntime.resolvedConfiguration.resolvedArtifacts
+            .collect { [coordinate: it.moduleVersion.id.toString(), path: it.file.absolutePath] }
+            .sort { it.coordinate }
+        destination.text = groovy.json.JsonOutput.toJson(artifacts)
+    }
 }

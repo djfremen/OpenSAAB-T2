@@ -69,5 +69,5 @@ public final class FirmwareInstrumentedTest extends Instrumentation {
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(activity!=null){Activity a=activity;main(a::finish);}if(dir!=null)try(java.util.stream.Stream<Path> paths=Files.walk(dir.toPath())){paths.sorted(Comparator.reverseOrder()).forEach(p->{try{Files.delete(p);}catch(IOException ignored){}});}catch(IOException ignored){}finish(code,result);}
     }
-    Spinner findSpinner(android.view.View view){if(view instanceof Spinner)return (Spinner)view;if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++){Spinner s=findSpinner(group.getChildAt(i));if(s!=null)return s;}}return null;}
+    Spinner findSpinner(android.view.View view){if(view instanceof Spinner && "Software version and language".contentEquals(view.getContentDescription()))return (Spinner)view;if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++){Spinner s=findSpinner(group.getChildAt(i));if(s!=null)return s;}}return null;}
 }

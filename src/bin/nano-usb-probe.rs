@@ -7,8 +7,9 @@ use std::{
     net::{SocketAddr, TcpStream},
     time::Duration,
 };
+use tech2_emu::adapters::vcx_nano::init_handshake;
 use tech2_emu::nano_channel::{self, Client, RawCan, UsbTransport};
-use tech2_emu::nano_usb::{identity, Frame, ReplyDeadline};
+use tech2_emu::nano_usb::{Frame, ReplyDeadline};
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect()
@@ -120,20 +121,25 @@ mod tests {
 fn run() -> Result<(), String> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if !(args.len() == 2
-        || (args.len() == 3
+        || ((args.len() == 3 || args.len() == 4)
             && [
                 "--channel-test",
                 "--channel-test-sw",
                 "--receive-test",
                 "--hs-vin-check",
                 "--voltage-check",
+                "--reboot",
+                "--init-handshake",
             ]
-            .contains(&args[2].as_str())))
+            .contains(&args[2].as_str())
+            && (args.len() == 3
+                || (args[3] == "--skip-init"
+                    && ["--channel-test", "--channel-test-sw"].contains(&args[2].as_str())))))
         || args[0].len() != 32
         || !args[0].bytes().all(|b| b.is_ascii_hexdigit())
     {
         return Err(
-            "Usage: nano-usb-probe SESSION_TOKEN NEW_RESULT_PATH [--channel-test|--channel-test-sw|--receive-test|--hs-vin-check|--voltage-check]"
+            "Usage: nano-usb-probe SESSION_TOKEN NEW_RESULT_PATH [--channel-test [--skip-init]|--channel-test-sw [--skip-init]|--receive-test|--hs-vin-check|--voltage-check|--reboot|--init-handshake]"
                 .into(),
         );
     }
@@ -159,6 +165,11 @@ fn run() -> Result<(), String> {
         return Err("USB app did not accept this session".into());
     }
     let hs_vin = args.get(2).map(String::as_str) == Some("--hs-vin-check");
+    let reboot = args.get(2).map(String::as_str) == Some("--reboot");
+    let init_only = args.get(2).map(String::as_str) == Some("--init-handshake");
+    let skip_init = args.get(3).map(String::as_str) == Some("--skip-init");
+    let mut startup = init_handshake::Progress::default();
+    let mut reboot_acknowledged = false;
     let voltage_check = args.get(2).map(String::as_str) == Some("--voltage-check");
     let probe_channel = u8::from(args.get(2).map(String::as_str) == Some("--channel-test-sw"));
     let mut dlc_voltage_mv = None;
@@ -225,13 +236,21 @@ fn run() -> Result<(), String> {
         if client.exchange(&echo, &mut observed)? != echo {
             return Err("Nano echo mismatch".into());
         }
-        let info = identity(&client.exchange(&Frame::command(0x8c, &[]), &mut observed)?)?;
+        let identity_reply = client.exchange(&Frame::command(0x8c, &[]), &mut observed)?;
+        let info = init_handshake::verify_identity(&identity_reply)?;
         println!(
             "IDENTIFIED hardware={} firmware={} vehicle_tx=0",
             info.hardware, info.firmware
         );
         let mut status = "identified";
-        if voltage_check {
+        if reboot {
+            let reply = client.exchange(&Frame::command(0x8d, &[]), &mut observed)?;
+            if reply.payload != [0] {
+                return Err("Nano software reboot status/width rejected".into());
+            }
+            reboot_acknowledged = true;
+            status = "adapter_software_reboot_acknowledged";
+        } else if voltage_check {
             // OEM VCX_DEV_GetDlcVol for OBD pin 16, captured with its decoded log.
             // This queries the adapter ADC; it does not transmit on the vehicle bus.
             let reply = client.exchange(&Frame::command(0x86, &[0x10]), &mut observed)?;
@@ -239,82 +258,96 @@ fn run() -> Result<(), String> {
             dlc_voltage_mv = Some(mv);
             println!("DLC_VOLTAGE pin=16 millivolts={mv} source=adapter-adc vehicle_tx=0");
             status = "dlc_voltage_read";
-        } else if receive_test {
-            for c in 0..if hs_vin { 1 } else { 2 } {
-                attempted[c as usize] = true;
-                for request in nano_channel::setup(c)? {
-                    let reply = client.exchange(&request, &mut observed)?;
-                    if reply.payload != [0] {
-                        return Err(format!(
-                            "Channel {c} opcode {:02X} rejected: {}",
-                            request.header[2],
-                            hex(&reply.payload)
-                        ));
+        } else if args.len() >= 3 {
+            if !skip_init {
+                init_handshake::init_handshake(
+                    &mut client,
+                    &identity_reply,
+                    &mut observed,
+                    &mut startup,
+                )?;
+            }
+            if init_only {
+                return Ok(("init_handshake_completed", info));
+            }
+            if receive_test {
+                for c in 0..if hs_vin { 1 } else { 2 } {
+                    attempted[c as usize] = true;
+                    for request in nano_channel::setup(c)? {
+                        let reply = client.exchange(&request, &mut observed)?;
+                        if reply.payload != [0] {
+                            return Err(format!(
+                                "Channel {c} opcode {:02X} rejected: {}",
+                                request.header[2],
+                                hex(&reply.payload)
+                            ));
+                        }
                     }
+                    println!("RAW_CHANNEL_STARTED channel={c} diagnostic_tx=0 mode=normal-can");
                 }
-                println!("RAW_CHANNEL_STARTED channel={c} diagnostic_tx=0 mode=normal-can");
-            }
-            let deadline = ReplyDeadline::new(Duration::from_secs(if hs_vin { 2 } else { 8 }));
-            while !deadline.expired() {
-                client.receive(&mut observed)?;
-            }
-            status = "channels_receive_test_completed";
-            if hs_vin {
-                vin_frames.borrow_mut().clear();
-                let raw = |seq, data: &[u8]| {
-                    let mut payload = vec![0, 0, 0, 0, 0, (4 + data.len()) as u8, 0, 0, 7, 0xe0];
-                    payload.extend_from_slice(data);
-                    Frame {
-                        header: [0x80, seq, 0, 0],
-                        payload,
-                    }
-                };
-                println!("HOST_PROBE VIN request 7E0: 02 1A 90 00 00 00 00 00; not guest firmware traffic");
-                client
-                    .transport_mut()
-                    .write(&raw(1, &[2, 0x1a, 0x90, 0, 0, 0, 0, 0]).encode()?)?;
-                vehicle_tx += 1;
-                let mut reply = VinReply::default();
-                let deadline = ReplyDeadline::new(Duration::from_secs(4));
+                let deadline = ReplyDeadline::new(Duration::from_secs(if hs_vin { 2 } else { 8 }));
                 while !deadline.expired() {
                     client.receive(&mut observed)?;
-                    for data in vin_frames.borrow_mut().drain(..) {
-                        println!("VIN_WIRE_RX 7E8 {}", hex(&data));
-                        if reply.feed(&data)? {
-                            client
-                                .transport_mut()
-                                .write(&raw(2, &[0x30, 0, 0, 0, 0, 0, 0, 0]).encode()?)?;
-                            vehicle_tx += 1;
+                }
+                status = "channels_receive_test_completed";
+                if hs_vin {
+                    vin_frames.borrow_mut().clear();
+                    let raw = |seq, data: &[u8]| {
+                        let mut payload =
+                            vec![0, 0, 0, 0, 0, (4 + data.len()) as u8, 0, 0, 7, 0xe0];
+                        payload.extend_from_slice(data);
+                        Frame {
+                            header: [0x80, seq, 0, 0],
+                            payload,
                         }
-                        if let Some(vin) = reply.vin()? {
-                            vin_result = Some(vin);
+                    };
+                    println!("HOST_PROBE VIN request 7E0: 02 1A 90 00 00 00 00 00; not guest firmware traffic");
+                    client
+                        .transport_mut()
+                        .write(&raw(1, &[2, 0x1a, 0x90, 0, 0, 0, 0, 0]).encode()?)?;
+                    vehicle_tx += 1;
+                    let mut reply = VinReply::default();
+                    let deadline = ReplyDeadline::new(Duration::from_secs(4));
+                    while !deadline.expired() {
+                        client.receive(&mut observed)?;
+                        for data in vin_frames.borrow_mut().drain(..) {
+                            println!("VIN_WIRE_RX 7E8 {}", hex(&data));
+                            if reply.feed(&data)? {
+                                client
+                                    .transport_mut()
+                                    .write(&raw(2, &[0x30, 0, 0, 0, 0, 0, 0, 0]).encode()?)?;
+                                vehicle_tx += 1;
+                            }
+                            if let Some(vin) = reply.vin()? {
+                                vin_result = Some(vin);
+                                break;
+                            }
+                        }
+                        if vin_result.is_some() {
                             break;
                         }
                     }
-                    if vin_result.is_some() {
-                        break;
-                    }
+                    status = if vin_result.is_some() {
+                        "hs_vin_received"
+                    } else {
+                        "hs_vin_no_reply"
+                    };
+                    println!("HOST_PROBE VIN status={status} diagnostic_tx={vehicle_tx}");
                 }
-                status = if vin_result.is_some() {
-                    "hs_vin_received"
-                } else {
-                    "hs_vin_no_reply"
-                };
-                println!("HOST_PROBE VIN status={status} diagnostic_tx={vehicle_tx}");
+            } else {
+                attempted[probe_channel as usize] = true;
+                let reply = client.exchange(
+                    &nano_channel::control(probe_channel, 0x40, &[0, 0, 0x81, 1]),
+                    &mut observed,
+                )?;
+                if reply.payload != [0] {
+                    return Err(format!(
+                        "Raw channel {probe_channel} OPEN rejected: status {}",
+                        hex(&reply.payload)
+                    ));
+                }
+                status = "channel_open_close_verified";
             }
-        } else if args.len() == 3 {
-            attempted[probe_channel as usize] = true;
-            let reply = client.exchange(
-                &nano_channel::control(probe_channel, 0x40, &[0, 0, 0x81, 1]),
-                &mut observed,
-            )?;
-            if reply.payload != [0] {
-                return Err(format!(
-                    "Raw channel {probe_channel} OPEN rejected: status {}",
-                    hex(&reply.payload)
-                ));
-            }
-            status = "channel_open_close_verified";
         }
         Ok((status, info))
     })();
@@ -363,7 +396,7 @@ fn run() -> Result<(), String> {
         "CAN_RX_SUMMARY hs={} sw={} diagnostic_tx={vehicle_tx}",
         counts[0], counts[1]
     );
-    let json=serde_json::json!({"status":if error.is_some(){"failed"}else{status},"error":error,"hardware":info.map(|v| &v.hardware),"firmware":info.map(|v| &v.firmware),"vehicle_tx":vehicle_tx,"vin":vin_result,"dlc_voltage_mv":dlc_voltage_mv,"request_origin":if hs_vin {"host-transport-probe"}else{"none"},"origin":"android-direct-usb","channel_rx":counts,"channel_ids":ids,"channel_cleanup":cleanup_ok,"cleanup_errors":cleanup_errors,"usb_closed":usb_closed}).to_string()+"\n";
+    let json=serde_json::json!({"status":if error.is_some(){"failed"}else{status},"error":error,"hardware":info.map(|v| &v.hardware),"firmware":info.map(|v| &v.firmware),"vehicle_tx":vehicle_tx,"vin":vin_result,"dlc_voltage_mv":dlc_voltage_mv,"request_origin":if hs_vin {"host-transport-probe"}else{"none"},"origin":"android-direct-usb","channel_rx":counts,"channel_ids":ids,"channel_cleanup":cleanup_ok,"cleanup_errors":cleanup_errors,"usb_closed":usb_closed,"startup_complete":startup.installed_record_verified,"query_record_verified":startup.query_record_verified,"installed_record_verified":startup.installed_record_verified,"fresh_dh_exchanges":startup.fresh_dh_exchanges,"skip_init":skip_init,"reboot_acknowledged":reboot_acknowledged,"physical_cold":false,"physical_cold_start":false}).to_string()+"\n";
     output
         .write_all(json.as_bytes())
         .map_err(|e| e.to_string())?;

@@ -24,7 +24,7 @@ assets = output / 'assets/system'
 assets.mkdir(parents=True, exist_ok=True)
 legal = output / 'assets/legal'
 legal.mkdir(parents=True, exist_ok=True)
-for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt'):
+for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
     shutil.copy2(repo / name, legal / Path(name).name)
 shutil.copy2(manifest_path, assets / 'manifest.json')
 for name, spec in (support.items() if bundle_support else []):
@@ -33,6 +33,12 @@ native = output / 'jniLibs/arm64-v8a'
 native.mkdir(parents=True, exist_ok=True)
 for source, dest in [('tech2-emu', 'libtech2_emu.so'), ('nano-usb-probe', 'libnano_probe.so'), ('chipsoft-usb-probe', 'libchipsoft_probe.so')]:
     shutil.copy2(repo / 'target/aarch64-linux-android/release' / source, native / dest)
+connection_core = os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or str(repo / 'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection')
+if connection_core:
+    data = Path(connection_core).read_bytes()
+    if data[:5] != b'\x7fELF\x02':
+        raise SystemExit('vLinker connection core must be a locally built ELF64 executable')
+    shutil.copy2(connection_core, native / 'libopensaab_connection.so')
 # Keep the existing manifest authoritative; SDK/debug attributes belong to AGP.
 ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
 tree = ET.parse(repo / 'android/tech2-app/AndroidManifest.xml')
