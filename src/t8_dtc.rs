@@ -14,6 +14,8 @@ pub struct Report {
 }
 
 impl Report {
+    pub fn is_complete(&self) -> bool { self.complete }
+
     /// Raw CAN payload (without J2534's four-byte CAN ID prefix).
     /// Only complete, successful receive messages should reach this decoder.
     pub fn receive(&mut self, id: u32, data: &[u8]) -> Result<(), String> {

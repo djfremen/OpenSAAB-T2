@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise permission/cancellation ordering without Android or USB hardware."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -10,14 +11,47 @@ jdk=Path(os.environ.get('JAVA_HOME','/Applications/Android Studio.app/Contents/j
 with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/javac'),'-d',output,
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/FirmwareCatalog.java'),
+        str(repo/'android/tests/FirmwareCatalogTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/AdapterProfile.java'),
+        str(repo/'android/shared/com/opensaab/usb/UsbBridgeCodec.java'),
+        str(repo/'android/tests/UsbBridgeCodecTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/AdapterCatalog.java'),
+        str(repo/'android/adapters/chipsoft/com/opensaab/usb/ChipsoftProfile.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoProfile.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoStartupGate.java'),
+        str(repo/'android/tests/NanoStartupGateTest.java'),
+        str(repo/'android/tests/NanoBridgeEnvelopeTest.java'),
+        str(repo/'android/tests/AdapterCatalogTest.java'),
+        str(repo/'android/tests/AdapterRoutingTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/TransportFailure.java'),
+        str(repo/'android/tests/TransportFailureTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/EmulatorArchitecture.java'),
+        str(repo/'android/tests/EmulatorArchitectureTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/CompatibilityCheck.java'),
+        str(repo/'android/shared/com/opensaab/usb/InstallerChoice.java'),
+        str(repo/'android/tests/CompatibilityCheckTest.java'),
         str(repo/'android/shared/com/opensaab/usb/ReleaseVersion.java'),
         str(repo/'android/tests/ReleaseVersionTest.java'),
         str(repo/'android/shared/com/opensaab/usb/DtcReport.java'),
         str(repo/'android/shared/com/opensaab/usb/VehicleIdentity.java'),
+        str(repo/'android/shared/com/opensaab/usb/SecurityMenuNavigator.java'),
+        str(repo/'android/shared/com/opensaab/usb/FirmwareMenuNavigator.java'),
+        str(repo/'android/tests/FirmwareMenuNavigatorTest.java'),
+        str(repo/'android/tests/SecurityMenuNavigatorTest.java'),
         str(repo/'android/tests/DtcReportTest.java'),
         str(repo/'android/shared/com/opensaab/usb/SsaData.java'),
+        str(repo/'android/shared/com/opensaab/usb/SsaState.java'),
+        str(repo/'android/tests/SsaStateTest.java'),
         str(repo/'android/shared/com/opensaab/usb/SsaCardImport.java'),
+        str(repo/'android/shared/com/opensaab/usb/SsaCardReset.java'),
         str(repo/'android/tests/SsaDataTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/SecurityApiClient.java'),
+        str(repo/'android/tests/SecurityApiClientTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/SecurityAccessStatus.java'),
+        str(repo/'android/shared/com/opensaab/usb/VehicleHistoryStatus.java'),
+        str(repo/'android/tests/VehicleHistoryStatusTest.java'),
+        str(repo/'android/tests/SecurityAccessStatusTest.java'),
         str(repo/'android/shared/com/opensaab/usb/LcdFrame.java'),
         str(repo/'android/tests/LcdFrameTest.java'),
         str(repo/'android/shared/com/opensaab/usb/ReceivePump.java'),
@@ -25,14 +59,28 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/IgnitionStatusText.java'),
         str(repo/'android/tests/IgnitionStatusTextTest.java'),
         str(repo/'android/tests/RequestGateTest.java'),
-        str(repo/'android/shared/com/opensaab/usb/NativeCommandGate.java'),
-        str(repo/'android/shared/com/opensaab/usb/ChipsoftCommandGate.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NativeCommandGate.java'),
+        str(repo/'android/adapters/vcx_nano/com/opensaab/usb/NanoNativeStopGate.java'),
+        str(repo/'android/tests/NanoKeyStatusGateTest.java'),
+        str(repo/'android/tests/NanoFullNativeGateTest.java'),
+        str(repo/'android/tests/NanoSecurityModeTest.java'),
+        str(repo/'android/tests/NanoNativeStopGateTest.java'),
+        str(repo/'android/adapters/chipsoft/com/opensaab/usb/ChipsoftCommandGate.java'),
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareCatalogTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.EmulatorArchitectureTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.CompatibilityCheckTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ReleaseVersionTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ReceivePumpTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NativeCommandGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoKeyStatusGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoFullNativeGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoSecurityModeTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoNativeStopGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoStartupGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoBridgeEnvelopeTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.ChipsoftCommandGateTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.IgnitionStatusTextTest'],check=True)
@@ -40,5 +88,23 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.LcdFrameTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SsaDataTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityApiClientTest'],check=True)
 
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.DtcReportTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityAccessStatusTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.VehicleHistoryStatusTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SecurityMenuNavigatorTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareMenuNavigatorTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SsaStateTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.TransportFailureTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.AdapterCatalogTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.AdapterRoutingTest'],check=True)
+
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.UsbBridgeCodecTest'],check=True)
+
+subprocess.run([sys.executable,str(repo/'scripts/android/test-adapter-boundaries.py')],check=True)

@@ -151,21 +151,24 @@ pub trait Backend {
     fn close(&mut self);
 }
 
-/// Capture-backed electrical route, shared by Windows and direct Nano encoding.
+/// Capture-backed electrical route shared by Chipsoft, VCX Nano and Windows J2534.
 /// Flags are deliberately named by layer; J2534 and VCX wire values differ.
 #[derive(Debug, PartialEq, Eq)]
-pub struct NanoRoute {
+pub struct ElectricalRoute {
     pub channel: u8,
     pub j2534_flags: u32,
     pub wire_flags: u32,
 }
-pub fn nano_route(controller: usize, tx: &CanTransmission) -> Result<NanoRoute, String> {
+pub fn electrical_route(
+    controller: usize,
+    tx: &CanTransmission,
+) -> Result<ElectricalRoute, String> {
     tx.frame.validate()?;
     if tx.frame.extended || tx.frame.rtr {
-        return Err("Native Nano route supports standard data frames only".into());
+        return Err("Native electrical route supports standard data frames only".into());
     }
     match (controller, tx.btr0, tx.btr1, tx.electrical) {
-        (0, 0xc1, 0x36, CanElectricalState::StandardCan) => Ok(NanoRoute {
+        (0, 0xc1, 0x36, CanElectricalState::StandardCan) => Ok(ElectricalRoute {
             channel: 0,
             j2534_flags: 0,
             wire_flags: 0,
@@ -180,12 +183,12 @@ pub fn nano_route(controller: usize, tx: &CanTransmission) -> Result<NanoRoute, 
                 direction,
             },
         ) if direction & 3 == 3 => match latch & 3 {
-            2 if tx.frame.id == 0x100 && tx.frame.dlc == 0 => Ok(NanoRoute {
+            2 if tx.frame.id == 0x100 && tx.frame.dlc == 0 => Ok(ElectricalRoute {
                 channel: 1,
                 j2534_flags: 0x400,
                 wire_flags: 0x1000,
             }),
-            3 => Ok(NanoRoute {
+            3 => Ok(ElectricalRoute {
                 channel: 1,
                 j2534_flags: 0,
                 wire_flags: 0,
@@ -195,3 +198,7 @@ pub fn nano_route(controller: usize, tx: &CanTransmission) -> Result<NanoRoute, 
         _ => Err("Unsupported native CAN controller, timing or electrical route".into()),
     }
 }
+
+// Compatibility aliases for callers using the former adapter-specific names.
+pub use electrical_route as nano_route;
+pub type NanoRoute = ElectricalRoute;

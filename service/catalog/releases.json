@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "releases": [
+    {
+      "abi": "arm64-v8a",
+      "package": "com.opensaab.tech2",
+      "version": "0.1.0-preview.56",
+      "version_code": 100056,
+      "bytes": 11368332,
+      "sha256": "f96f6300c170b5a00a6efb5060c7a04ccb97a52aad1549c8401629d423f1a81d",
+      "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.56/OpenSAAB-T2-arm64-v8a.apk"
+    },
+    {
+      "abi": "armeabi-v7a",
+      "package": "com.opensaab.tech2.headunit32",
+      "version": "0.1.0-headunit.17",
+      "version_code": 100017,
+      "bytes": 3008173,
+      "sha256": "47f3295a3bdcdd4a4f2384b48aefcc2589387295f8215312439a7008d684822f",
+      "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/headunit-v0.1.0-headunit.17/OpenSAAB-T2-headunit-armeabi-v7a.apk"
+    }
+  ]
+}

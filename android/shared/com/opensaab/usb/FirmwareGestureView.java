@@ -12,7 +12,7 @@ public final class FirmwareGestureView extends FrameLayout {
     private final int slop;
     private final float swipeDistance;
     private float startX, startY;
-    private boolean tracking, moved, held;
+    private boolean tracking, moved, held, naturalScrolling;
     private final Runnable hold = () -> {
         if (tracking && !moved && !held) {
             held = true;
@@ -36,6 +36,8 @@ public final class FirmwareGestureView extends FrameLayout {
             case MotionEvent.ACTION_DOWN:
                 cancelGesture();
                 if (event.getPointerCount() != 1) return true;
+                // Read each new stroke so an open session adopts Preferences immediately.
+                naturalScrolling = FirmwareScrollPreferences.natural(getContext());
                 tracking = true;
                 startX = event.getX(); startY = event.getY();
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
@@ -56,7 +58,7 @@ public final class FirmwareGestureView extends FrameLayout {
                     float dx = event.getX()-startX, dy = event.getY()-startY;
                     // One event per stroke, no velocity-based repeat or horizontal shortcuts.
                     if (Math.abs(dy) >= swipeDistance && Math.abs(dy) > Math.abs(dx)*1.5f)
-                        send.accept(dy < 0 ? 0x09 : 0x0c);
+                        send.accept(FirmwareScrollPreferences.swipeKey(dy < 0, naturalScrolling));
                     else if (!moved) performClick(); // A tap never confirms a firmware action.
                 }
                 cancelGesture(); return true;

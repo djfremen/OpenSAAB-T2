@@ -123,7 +123,7 @@ impl Policy {
     fn bcm(controller: usize, tx: &CanTransmission) -> bool {
         controller == 2
             && tx.frame.id == 0x242
-            && crate::can_adapter::nano_route(controller, tx).is_ok_and(|r| r.j2534_flags == 0)
+            && crate::can_adapter::electrical_route(controller, tx).is_ok_and(|r| r.j2534_flags == 0)
     }
     pub fn allows(&self, controller: usize, tx: &CanTransmission) -> bool {
         if self.rejection.is_some() || !Self::bcm(controller, tx) {

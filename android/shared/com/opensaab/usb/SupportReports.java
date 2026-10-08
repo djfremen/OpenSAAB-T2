@@ -13,17 +13,20 @@ import org.json.*;
 public final class SupportReports {
     private static final String[] EVENTS={"USB_OPEN","USB_CLOSED","USB_TX","USB_RX","CAN_TX","CAN_RX","TIMEOUT","DISCONNECT","PANIC","ERROR","FAILED","NEGATIVE RESPONSE"};
     public static JSONObject logSummary(File file)throws Exception{
-        JSONObject out=new JSONObject().put("source",file.getName()).put("file_bytes",file.length());Map<String,Integer> counts=new LinkedHashMap<>();
+        JSONObject out=new JSONObject().put("source",file.getName()).put("file_bytes",file.length());Map<String,Integer> counts=new LinkedHashMap<>();JSONArray failures=new JSONArray();
         long start=Math.max(0,file.length()-262144);out.put("tail_only",start>0);
         try(RandomAccessFile in=new RandomAccessFile(file,"r")){
             in.seek(start);byte[] b=new byte[(int)Math.min(262144,in.length()-start)];in.readFully(b);String text=new String(b,StandardCharsets.UTF_8);if(start>0){int nl=text.indexOf('\n');text=nl<0?"":text.substring(nl+1);}
-            for(String line:text.split("\\n")){String upper=line.toUpperCase(Locale.ROOT);for(String event:EVENTS)if(upper.contains(event))counts.put(event,counts.getOrDefault(event,0)+1);}
+            int lineIndex=0;for(String line:text.split("\\n")){lineIndex++;String category=DiagnosticFailure.classify(line);if(!category.equals("unclassified")&&failures.length()<16)failures.put(new JSONObject().put("category",category).put("tail_line",lineIndex));String upper=line.toUpperCase(Locale.ROOT);for(String event:EVENTS)if(upper.contains(event))counts.put(event,counts.getOrDefault(event,0)+1);}
         }
-        out.put("event_counts",new JSONObject(counts));return out;
+        out.put("event_counts",new JSONObject(counts)).put("failure_categories",failures);return out;
     }
-    public static void recordError(Context context,Throwable error,boolean crash){
+    public static void recordError(Context context,Throwable error,boolean crash){recordError(context,error,crash,null);}
+    public static void recordError(Context context,Throwable error,boolean crash,File session){
         try{
             JSONObject j=new JSONObject().put("utc",java.time.Instant.now().toString()).put("kind",crash?"uncaught_java_exception":"handled_error").put("exception_class",error.getClass().getName());
+            j.put("failure_category",DiagnosticFailure.classify(error.getMessage()));
+            if(!OfflineSessionEvidence.id(session).isEmpty())j.put("session_id",OfflineSessionEvidence.id(session));
             JSONArray stack=new JSONArray();StackTraceElement[] frames=error.getStackTrace();for(int i=0;i<Math.min(frames.length,24);i++)stack.put(frames[i].getClassName()+"."+frames[i].getMethodName()+":"+frames[i].getLineNumber());j.put("stack",stack);
             FirmwareStore.writeJson(new File(context.getFilesDir(),crash?"last-app-crash.json":"last-app-error.json"),j);
         }catch(Throwable ignored){} // Error reporting must never replace the original error handler.
@@ -34,28 +37,75 @@ public final class SupportReports {
         File[] offline=new File(files,"sessions").listFiles();if(offline!=null)for(File f:offline)if(f.isDirectory())out.add(f);
         out.sort((a,b)->Long.compare(b.lastModified(),a.lastModified()));return out.subList(0,Math.min(5,out.size()));
     }
-    public static JSONObject collect(Context c,String description)throws Exception{
+    public static boolean notesProvided(String description){
+        String text=description==null?"":description.trim();
+        String prompt="Emulation stopped or appeared unresponsive. What I was doing:";
+        if(text.startsWith(prompt))text=text.substring(prompt.length()).trim();
+        return !text.isEmpty();
+    }
+    public static JSONObject collect(Context c,String description)throws Exception{return collect(c,description,notesProvided(description));}
+    public static JSONObject collect(Context c,String description,boolean notes)throws Exception{
         JSONObject report=new JSONObject().put("format",1).put("created_utc",java.time.Instant.now().toString()).put("description",description.length()>2000?description.substring(0,2000):description);
         android.content.pm.PackageInfo p=c.getPackageManager().getPackageInfo(c.getPackageName(),0);
+        report.put("submitter_notes_provided",notes);
+        report.put("build_profile",AppBuildProfile.name(c)).put("apk_abi",AppBuildProfile.abi(c));
         report.put("app",c.getPackageName()).put("version",p.versionName==null?"development":p.versionName).put("version_code",p.versionCode).put("android_api",android.os.Build.VERSION.SDK_INT).put("device_model",android.os.Build.MODEL).put("abis",new JSONArray(Arrays.asList(android.os.Build.SUPPORTED_ABIS)));
-        report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts cover bounded log tails only.");
+        report.put("device_resources",PerformanceReport.device(c));
+        File health=new File(c.getFilesDir(),"last-emulator-health.json");
+        if(health.isFile()&&health.length()<4096)try{
+            JSONObject raw=FirmwareStore.json(health),safe=new JSONObject();
+            String reason=raw.optString("reason");
+            if(Arrays.asList("ui_unresponsive","emulator_heartbeat_missing","input_without_display_response","unexpected_emulator_exit","vehicle_network_failure").contains(reason)){
+                safe.put("reason",reason).put("utc",java.time.Instant.parse(raw.getString("utc")).toString());
+                for(String key:new String[]{"elapsed_ms","heartbeat_age_ms","input_wait_ms","ui_delay_ms","orientation_start","orientation_end","pause_count","resume_count"})if(raw.opt(key) instanceof Number)safe.put(key,raw.getLong(key));
+                String sessionId=raw.optString("session_id");if(sessionId.matches("(?:chipsoft|native|offline)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))safe.put("session_id",sessionId);
+                report.put("emulator_health",safe);
+            }
+        }catch(Exception ignored){}
+        report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts and fixed failure categories cover bounded log tails only.");
         JSONArray runs=new JSONArray();File files=c.getFilesDir();
         for(File dir:sessions(files)){
             JSONObject session=new JSONObject().put("adapter",dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":"offline").put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
-            for(String name:new String[]{"usb.log","native-process.log","rust.log","tech2.log"}){File f=new File(dir,name);if(f.isFile()&&f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))try{logs.put(logSummary(f));}catch(IOException e){logs.put(new JSONObject().put("source",name).put("unavailable",true));}}
+            for(String name:new String[]{"usb.log","native-process.log","rust.log","tech2.log","console.log"}){File f=new File(dir,name);if(f.isFile()&&f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))try{logs.put(logSummary(f));}catch(IOException e){logs.put(new JSONObject().put("source",name).put("unavailable",true));}}
             File outcome=new File(dir,"report.json");
             if(outcome.isFile()&&outcome.length()<1048576)try{
                 JSONObject raw=FirmwareStore.json(outcome),safe=new JSONObject();
                 for(String key:new String[]{"exit_code","instructions","pc","host_cancelled_operations"})
                     if(raw.opt(key) instanceof Number)safe.put(key,raw.opt(key));
                 String status=raw.optString("status");
-                if(Arrays.asList("complete","incomplete","error","failed","success","cancelled").contains(status))safe.put("status",status);
+                if(Arrays.asList("complete","incomplete","error","failed","success","cancelled","guest_failure","output_failure").contains(status))safe.put("status",status);
                 session.put("emulator_outcome",safe);
+                session.put("emulation_evidence",raw.optJSONObject("emulation_evidence")==null?new JSONObject().put("unavailable",true):OfflineSessionEvidence.nativeEvidence(raw.getJSONObject("emulation_evidence")));
             }catch(Exception unavailable){}
+            if(!OfflineSessionEvidence.id(dir).isEmpty())session.put("session_id",OfflineSessionEvidence.id(dir));
+            OfflineSessionEvidence.collect(dir,session);
+            session.put("diagnostic_events",SessionDiagnostics.read(dir));
+            try{File info=new File(dir,"adapter-identity.json");if(info.length()<=512){String version=FirmwareStore.json(info).optString("firmware_version");if(version.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){1,3}(?:[-+][A-Za-z0-9._-]{1,20})?"))session.put("firmware_version",version);}}catch(Exception ignored){}
+            session.put("native_performance",PerformanceReport.session(dir));
             session.put("logs",logs);runs.put(session);
         }
         report.put("recent_sessions",runs);
         report.put("connection_attempts",ConnectionAttempt.collect(c));
+        SecurityAccessStatus security=SecurityAccessStatus.read(new File(c.getNoBackupFilesDir(),"security-processing-status.properties"));
+        java.time.Instant observed=java.time.Instant.now();
+        VehicleHistoryStatus auth=new VehicleHistoryStatus(VehicleSession.read(new File(files,"last-vehicle.json")),security,new File(files,"firmware/card.bin"),observed);
+        JSONObject authSnapshot=new JSONObject().put("auth_status",auth.authState).put("freshness",auth.freshness)
+            .put("observed_utc",observed.toString()).put("vehicle_access_verified",false);
+        if(auth.statusUtc!=null)authSnapshot.put("status_utc",java.time.Instant.parse(auth.statusUtc).toString());
+        report.put("security_status",authSnapshot);
+        if(security!=null)try{
+            JSONObject safe=new JSONObject().put("stage",security.data.getProperty("stage")).put("vehicle_access_verified",false);
+            for(String key:new String[]{"started_utc","processed_utc","imported_utc","failed_utc"})if(security.data.containsKey(key))safe.put(key,java.time.Instant.parse(security.data.getProperty(key)).toString());
+            String provider=security.data.getProperty("provider","");if(provider.equals("OpenSAAB")||provider.equals("Bojer"))safe.put("provider",provider);
+            String request=security.data.getProperty("request_id","");if(request.matches("OSSEC-[a-f0-9]{32}"))safe.put("request_id",request);
+            report.put("security_processing",safe);
+        }catch(Exception ignored){}
+        File reset=new File(c.getNoBackupFilesDir(),"security-reset.json");
+        if(reset.isFile()&&reset.length()<8192)try{
+            String utc=java.time.Instant.parse(FirmwareStore.json(reset).getString("cleared_utc")).toString();
+            report.put("security_reset",new JSONObject().put("cleared_utc",utc));
+        }catch(Exception ignored){}
+
         if(android.os.Build.VERSION.SDK_INT>=30){
             JSONArray exits=new JSONArray();
             try{
@@ -65,15 +115,20 @@ public final class SupportReports {
             }catch(RuntimeException unavailable){}
             report.put("android_process_exits",exits);
         }
-        for(String name:new String[]{"last-app-crash.json","last-app-error.json"}){File f=new File(files,name);if(f.isFile())try{report.put(name,FirmwareStore.json(f));}catch(Exception ignored){}}
+        for(String name:new String[]{"last-app-crash.json","last-app-error.json"}){File f=new File(files,name);if(f.isFile())try{JSONObject error=FirmwareStore.json(f);JSONObject incident=report.optJSONObject("emulator_health");
+            String errorSession=error.optString("session_id"),healthSession=incident==null?"":incident.optString("session_id");
+            error.put("incident_relation",errorSession.isEmpty()||healthSession.isEmpty()?"unknown":errorSession.equals(healthSession)?"same_session":"different_session");
+            report.put(name,error);}catch(Exception ignored){}}
         return report;
     }
-    public static File save(Context c,JSONObject report)throws Exception{
+    public static File save(Context c,JSONObject report)throws Exception{return saveText(c,report.toString(2));}
+    public static File saveText(Context c,String frozenJson)throws Exception{
+        byte[] bytes=frozenJson.getBytes(StandardCharsets.UTF_8);if(bytes.length>ReportArtifacts.MAX_JSON)throw new IOException("Report exceeds the upload limit");
         File root=new File(c.getFilesDir(),"support-reports");Files.createDirectories(root.toPath());
         File file=new File(root,"android_support_"+UUID.randomUUID()+".zip"),tmp=File.createTempFile("report-",".tmp",root);
-        try{try(ZipOutputStream zip=new ZipOutputStream(new FileOutputStream(tmp))){zip.putNextEntry(new ZipEntry("diagnostics.json"));zip.write(report.toString(2).getBytes(StandardCharsets.UTF_8));zip.closeEntry();}Files.move(tmp.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE);}finally{tmp.delete();}
+        try{try(ZipOutputStream zip=new ZipOutputStream(new FileOutputStream(tmp))){zip.putNextEntry(new ZipEntry("diagnostics.json"));zip.write(bytes);zip.closeEntry();}Files.move(tmp.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE);}finally{tmp.delete();}
         File[] old=root.listFiles((d,n)->n.matches("android_support_[a-f0-9-]+\\.zip"));
-        if(old!=null){Arrays.sort(old,Comparator.comparingLong(File::lastModified));for(int i=0;i<old.length-8;i++)old[i].delete();}
+        if(old!=null){Arrays.sort(old,Comparator.comparingLong(File::lastModified));for(int i=0;i<old.length-8;i++)if(old[i].delete())ReportArtifacts.pruneReceipt(c,old[i].getName());}
         return file;
     }
     private SupportReports(){}

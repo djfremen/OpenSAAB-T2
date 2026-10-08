@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "date": "2026-10-05",
+  "status": "public_beta_published_with_scoped_exact_package_checks",
+  "package": {
+    "schema": 1,
+    "version": "0.1.0-preview.56",
+    "version_code": 100056,
+    "source_commit": "e849c67187d035639e31cc354b979fb5634c1445",
+    "package": "com.opensaab.tech2",
+    "architecture": "arm64-v8a",
+    "apk_sha256": "f96f6300c170b5a00a6efb5060c7a04ccb97a52aad1549c8401629d423f1a81d",
+    "apk_bytes": 11368332,
+    "certificate_sha256": "23dbf0c1c5ba4179e95bda88d6160f97067d601131e260de751e3b8c9c8088b7",
+    "nondebuggable": true,
+    "native_pins": {
+      "lib/arm64-v8a/libtech2_emu.so": "4211cb6cd0e531411eac01137bcc8c59ebb5185413a9d5aeaa9f6b9009f8ce73",
+      "lib/arm64-v8a/libnano_probe.so": "67718eaed94cef5eb09d878fe057f1dd63dbde83298e4db6471064a61ad60e7c",
+      "lib/arm64-v8a/libchipsoft_probe.so": "afd3c5527cd7f95f5bcf807dfb5c3d73ca23caf82a7d65f19b1fb6329f112040",
+      "lib/arm64-v8a/libopensaab_connection.so": "deed02b2fb033cdc546f1196d27caeeb72f93f3b2d8aa30de89ad3ad77b4479b"
+    },
+    "nine_legal_assets_retained": true,
+    "OpenVCX_credit": "Erik Fuller (erik683) and OpenVCX contributors; LGPL-3.0-only initializer adaptation",
+    "OpenVCX_source": "https://github.com/erik683/OpenVCX",
+    "OpenVCX_upstream_commit": "d9387049d82232e4d88e236ad2e0c96a48b787ec",
+    "earlier_successful_security_SPA_artifact": "private nano-init.4",
+    "earlier_responsiveness_artifact": "private nano-init.5",
+    "physical_power_loss_cold_start_qualified": false,
+    "uniform_release_qualified": false,
+    "exact_public_artifact_device_checks": {
+      "device": "Pixel 7 / Android16",
+      "in_place_upgrade": true,
+      "installed_APK_sha256_verified": true,
+      "saved_firmware_and_POST_AUTH_state_retained": true,
+      "cold_application_launch": true,
+      "nondebuggable": true,
+      "visible_Connect_and_start_adapter_selection": true,
+      "original_Main_Menu_and_Model_Year_display": true,
+      "actual_keypad_inputs_queued": 5,
+      "fresh_session_handshake_verified": true,
+      "fresh_DH_exchanges": 2,
+      "both_channel_setups_reply_00": true,
+      "menu_only_zero_diagnostic_transmission": true,
+      "six_shutdown_replies_00": true,
+      "native_and_Java_USB_closed": true,
+      "QUIT_received": true,
+      "active_native_workers": [],
+      "session": "native-eff961ee-de99-4b0d-88ec-34bbb0a34408",
+      "no_app_fatal_exception_observed": true,
+      "fresh_vehicle_VIN_security_SPA_on_exact_public_APK": "not repeated; prior private-artifact milestone remains separate"
+    },
+    "matching_source_zip": "OpenSAAB-0.1.0-preview.56-android-matching-source.zip",
+    "matching_source_sha256": "d8ca87f58070bf1587ef5516632d6a3bbd2141bbf1201e2bcc1836e487c44c01",
+    "matching_source_files": 489,
+    "development_milestone_receipt": "ANDROID_NANO_SECURITY_SPA_2026-10-05.json",
+    "release_notes_limits": [
+      "One Nano GM firmware1.9.4.2 / Pixel7 fixture; other variants and vehicles require testing",
+      "Physical removal of both USB and OBD power remains untested",
+      "SPA Add and Service key-status successes are pinned to earlier private development artifacts",
+      "Other targets and original-firmware wireless transport retain their separate scope"
+    ]
+  },
+  "GitHub_publication": {
+    "assets": [
+      {
+        "name": "ANDROID_PREVIEW56_RECEIPT.json",
+        "bytes": 3030,
+        "sha256": "950fb738eb8f48837656779ab8a33dc826bfcf555d94396fb56d520370e6fcfa",
+        "download_verified_byte_identical": true,
+        "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.56/ANDROID_PREVIEW56_RECEIPT.json"
+      },
+      {
+        "name": "OpenSAAB-0.1.0-preview.56-android-matching-source.zip",
+        "bytes": 3784496,
+        "sha256": "d8ca87f58070bf1587ef5516632d6a3bbd2141bbf1201e2bcc1836e487c44c01",
+        "download_verified_byte_identical": true,
+        "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.56/OpenSAAB-0.1.0-preview.56-android-matching-source.zip"
+      },
+      {
+        "name": "OpenSAAB-T2-arm64-v8a.apk",
+        "bytes": 11368332,
+        "sha256": "f96f6300c170b5a00a6efb5060c7a04ccb97a52aad1549c8401629d423f1a81d",
+        "download_verified_byte_identical": true,
+        "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.56/OpenSAAB-T2-arm64-v8a.apk"
+      },
+      {
+        "name": "OpenSAAB_64_05OCT26_v0.1.0-preview.56.apk",
+        "bytes": 11368332,
+        "sha256": "f96f6300c170b5a00a6efb5060c7a04ccb97a52aad1549c8401629d423f1a81d",
+        "download_verified_byte_identical": true,
+        "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.56/OpenSAAB_64_05OCT26_v0.1.0-preview.56.apk"
+      },
+      {
+        "name": "SHA256SUMS.txt",
+        "bytes": 417,
+        "sha256": "c46bcbb1d9e5055c367d1669ca9cb96f3c60c346967a94c32d33075037838d98",
+        "download_verified_byte_identical": true,
+        "url": "https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.56/SHA256SUMS.txt"
+      }
+    ],
+    "isPrerelease": true,
+    "publishedAt": "2026-10-05T10:32:21Z",
+    "tagName": "v0.1.0-preview.56",
+    "url": "https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.56",
+    "verified_download_count": 5
+  },
+  "website_deployment": {
+    "recorded_utc": "2026-10-05T10:36:14.466801+00:00",
+    "deployment_id": "e2866966-9a69-464c-951f-e0f491f0d7ce",
+    "image": "docker.io/djfremen/saab-security-api@sha256:758aeb2cce97a03bdc97210f21a1ef39b7a8c54833a8f12f6dba777ecb1311c3",
+    "base_image": "docker.io/djfremen/saab-security-api@sha256:366c44c3f4f224234507b11a93f377e1168bed13cbcc94c22266645318c4e435",
+    "healthy_active_UI_verified": true,
+    "runtime_instance_region_scaling_environment_count_retained": true,
+    "files": {
+      "index.html": {
+        "url": "https://www.opensaab.com/static/t2/index.html",
+        "http_status": 200,
+        "sha256": "d6104f279d24be496d36a081f03b096602886030586cdbc1928675997732b167",
+        "matches_checked_image": true
+      },
+      "download.html": {
+        "url": "https://www.opensaab.com/static/t2/download.html",
+        "http_status": 200,
+        "sha256": "b20adff2468142871543767bbd1e634e783e8d337fd250fdcc73fcb52d4a3ef2",
+        "matches_checked_image": true
+      },
+      "releases.json": {
+        "url": "https://www.opensaab.com/static/t2/releases.json",
+        "http_status": 200,
+        "sha256": "b0c242774deb8131b7eaf518540ed9135c2b5ac27fb0ca51aa29a8d562695fd5",
+        "matches_checked_image": true
+      }
+    },
+    "API_health": "ok",
+    "ARM32_entry_unchanged": true,
+    "release": "https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.56"
+  },
+  "forum_draft_deployment": {
+    "recorded_utc": "2026-10-05T10:41:57.237188+00:00",
+    "worker": "opensaab-forum-draft",
+    "worker_version": "a113106f-0f0e-4081-9058-0a814e6cc793",
+    "url": "https://post.opensaab.com/",
+    "raw_bbcode_url": "https://post.opensaab.com/forum-post.txt",
+    "revision_date": "5 October 2026",
+    "version": "0.1.0-preview.56",
+    "public_beta": true,
+    "Erik_Fuller_OpenVCX_adapted_code_credit": true,
+    "existing_attachment_references_retained": [
+      322572,
+      322574,
+      322576
+    ],
+    "BBCode_embedded_and_download_identical": true,
+    "BBCode_sha256": "30108e0ba28c0558668660c22430b59d95c6e65e06d7055d2ff46ea83caa78e1",
+    "BBCode_characters": 9683,
+    "copy_button_confirmation_UI_verified": true,
+    "requires_login": false,
+    "robots": "noindex, nofollow, noarchive",
+    "checks": [
+      {
+        "url": "http://post.opensaab.com/",
+        "status": 200,
+        "sha256": "5dc5e4a6aaa704bf37766d6562f8066fc266d21799f8014eae379d6a74b704e9",
+        "source_sha256": "68883b72fef7fe9c1d9028a669997ff795862700909114c06adc15e609f8da0e",
+        "matches_checked_output": true,
+        "comparison": "ignores only existing Cloudflare analytics insertion"
+      },
+      {
+        "url": "http://post.opensaab.com/forum-post.txt",
+        "status": 200,
+        "sha256": "30108e0ba28c0558668660c22430b59d95c6e65e06d7055d2ff46ea83caa78e1",
+        "source_sha256": "30108e0ba28c0558668660c22430b59d95c6e65e06d7055d2ff46ea83caa78e1",
+        "matches_checked_output": true,
+        "comparison": "byte-identical"
+      },
+      {
+        "url": "https://post.opensaab.com/",
+        "status": 200,
+        "sha256": "5dc5e4a6aaa704bf37766d6562f8066fc266d21799f8014eae379d6a74b704e9",
+        "source_sha256": "68883b72fef7fe9c1d9028a669997ff795862700909114c06adc15e609f8da0e",
+        "matches_checked_output": true,
+        "comparison": "ignores only existing Cloudflare analytics insertion"
+      },
+      {
+        "url": "https://post.opensaab.com/forum-post.txt",
+        "status": 200,
+        "sha256": "30108e0ba28c0558668660c22430b59d95c6e65e06d7055d2ff46ea83caa78e1",
+        "source_sha256": "30108e0ba28c0558668660c22430b59d95c6e65e06d7055d2ff46ea83caa78e1",
+        "matches_checked_output": true,
+        "comparison": "byte-identical"
+      }
+    ],
+    "external_SAAB_Central_post_edited": false
+  },
+  "source_CI": {
+    "head": "e849c67187d035639e31cc354b979fb5634c1445",
+    "conclusion": "SUCCESS",
+    "url": "https://github.com/djfremen/OpenSAAB-T2/actions/runs/37296338836/job/111718338764"
+  },
+  "source_pull_request": "https://github.com/djfremen/OpenSAAB-T2/pull/3",
+  "release_qualified_uniform_product": false,
+  "historical_development_receipt_unchanged": "ANDROID_NANO_SECURITY_SPA_2026-10-05.json"
+}

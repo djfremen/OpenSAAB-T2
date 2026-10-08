@@ -20,8 +20,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         if(failure[0]!=null)throw new AssertionError("UI check failed",failure[0]);
     }
     private final ArrayList<Integer> sent = new ArrayList<>();
-    private void exercise(int widthDp, int heightDp) {
-        android.content.Context context = getTargetContext();
+    private void exercise(Activity context,int widthDp, int heightDp) {
         float density = context.getResources().getDisplayMetrics().density;
         ScrollView console = new ScrollView(context); console.addView(new TextView(context));
         Tech2Controls panel = new Tech2Controls(context, new ImageView(context), console, sent::add);
@@ -35,31 +34,24 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         check(body.getVisibility()==View.GONE,"Keypad should start hidden");
         keys.performClick();
         panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));panel.layout(0,0,width,height);
-        check(display.getHeight()<largeDisplayHeight,"Keypad toggle did not resize display");
+        check(display.getHeight()==largeDisplayHeight,"Overlay resized firmware display");
+        View keyRoot=panel.keypadDialog.getWindow().getDecorView();
         String[] labels = {"EXIT","S1","S2","S3","S4","HELP","↑","YES","←","ENTER","→","↓","NO","F0","F1","F2","F3","F4","F5","F6","F7","F8","F9"};
         int[] expected = {1,10,6,7,8,25,9,14,11,16,13,12,20,24,4,19,23,3,18,22,2,17,21};
         sent.clear();
         for (int i=0;i<labels.length;i++) {
             Button key = panel.findViewWithTag("tech2-key-" + expected[i]);
+            if(key==null)key=keyRoot.findViewWithTag("tech2-key-"+expected[i]);
             check(key != null && labels[i].contentEquals(key.getText()), "Missing/wrong key: " + labels[i]);
-            check(key.getHeight() >= Math.round(48 * density), "Small touch target: " + labels[i]);
+            check(key.getMinimumHeight() >= Math.round(48 * density), "Small touch target: " + labels[i]);
             key.performClick();
             check(sent.size() == i+1 && sent.get(i) == expected[i], "Duplicate/wrong callback: " + labels[i]);
         }
-        Button exit=panel.findViewWithTag("tech2-key-1"), toggle=panel.findViewWithTag("tech2-console-toggle");
-        check(console.getVisibility()==View.GONE,"Console should start collapsed");
-        for(int i=0;i<2;i++) {
-            toggle.performClick();
-            panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));panel.layout(0,0,width,height);
-            body.fullScroll(View.FOCUS_DOWN);
-            Rect bounds=new Rect(0,0,exit.getWidth(),exit.getHeight());panel.offsetDescendantRectToMyCoords(exit,bounds);
-            check(bounds.top>=0 && bounds.bottom<=height,"EXIT clipped by scrolling/console");
-            check(body.getHeight()>0,"Console consumed entire body");
-        }
-        check(console.getVisibility()==View.GONE,"Console failed to collapse");
-        keys.performClick();
+        panel.keypadDialog.dismiss();
+        panel.showConsole();panel.consoleDialog.dismiss();
+        keys.performClick();panel.keypadDialog.dismiss();
         panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));panel.layout(0,0,width,height);
-        check(body.getVisibility()==View.GONE && display.getHeight()==largeDisplayHeight,"Large display failed to restore");
+        check(display.getHeight()==largeDisplayHeight,"Overlay changed display size");
         check(sent.size()==expected.length,"Console/scroll/toggle emitted a firmware key");
     }
     private void touch(View v, int action, float x, float y) {
@@ -67,9 +59,10 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         MotionEvent e=MotionEvent.obtain(t,t,action,x,y,0);
         v.dispatchTouchEvent(e);e.recycle();
     }
-    private void gestures(Activity activity) {
+    private void gestures(Activity activity, boolean natural) {
         final FirmwareGestureView[] area={null};
         checkedMain(()->{
+            FirmwareScrollPreferences.storage(activity).edit().putBoolean(FirmwareScrollPreferences.KEY,natural).commit();
             Tech2Controls panel=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
             activity.setContentView(panel);area[0]=panel.findViewWithTag("tech2-gestures");sent.clear();
         });
@@ -83,7 +76,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
             touch(v,MotionEvent.ACTION_DOWN,100*d,40*d);
             touch(v,MotionEvent.ACTION_MOVE,100*d,100*d);
             touch(v,MotionEvent.ACTION_UP,100*d,140*d);
-            check(sent.equals(Arrays.asList(9,12)),"Swipes must emit one directional key each");
+            check(sent.equals(natural?Arrays.asList(12,9):Arrays.asList(9,12)),"Wrong swipe direction or duplicate key; natural="+natural);
             sent.clear();
             // Tap, horizontal swipe, diagonal, interrupted stroke and multiple pointers.
             touch(v,0,100*d,100*d);touch(v,1,100*d,100*d);
@@ -112,10 +105,71 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+180);
         checkedMain(()->check(sent.isEmpty(),"Detached display emitted ENTER"));
     }
+    private void scrollingPreference(Activity activity) {
+        checkedMain(()->{
+            FirmwareScrollPreferences.storage(activity).edit().remove(FirmwareScrollPreferences.KEY).commit();
+            check(!FirmwareScrollPreferences.natural(activity),"New installs must preserve directional scrolling");
+            Tech2Controls panel=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+            activity.setContentView(panel);sent.clear();panel.showPreferences();
+            Switch toggle=panel.preferencesDialog.getWindow().getDecorView().findViewWithTag("tech2-natural-scrolling");
+            check(toggle!=null && !toggle.isChecked(),"Missing default-off preference");
+            toggle.performClick();
+            check(FirmwareScrollPreferences.natural(activity),"Toggle did not save immediately");
+            panel.preferencesDialog.dismiss();
+            Tech2Controls reopened=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+            reopened.showPreferences();
+            Switch restored=reopened.preferencesDialog.getWindow().getDecorView().findViewWithTag("tech2-natural-scrolling");
+            check(restored.isChecked(),"Preference lost after control recreation");
+            restored.performClick();reopened.preferencesDialog.dismiss();
+            check(!FirmwareScrollPreferences.natural(activity),"Could not restore directional scrolling");
+            check(sent.isEmpty(),"Changing preferences sent a firmware key");
+            // The existing surface reads the new preference without recreation/restart.
+            View surface=panel.findViewWithTag("tech2-gestures");
+            float d=activity.getResources().getDisplayMetrics().density;
+            FirmwareScrollPreferences.storage(activity).edit().putBoolean(FirmwareScrollPreferences.KEY,true).commit();
+            touch(surface,0,100*d,140*d);touch(surface,2,100*d,60*d);touch(surface,1,100*d,40*d);
+            check(sent.equals(Arrays.asList(12)),"Existing display did not adopt the saved direction");sent.clear();
+        });
+    }
+    private void firstUseGuide(Activity activity){
+        android.content.SharedPreferences prefs=activity.getSharedPreferences("firmware-controls",0);
+        boolean existed=prefs.contains("guide-v1-dismissed"), old=prefs.getBoolean("guide-v1-dismissed",false);
+        final Tech2Controls[] panel={null};final View[] guide={null};
+        try{
+            checkedMain(()->{
+                prefs.edit().remove("guide-v1-dismissed").commit();sent.clear();
+                panel[0]=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+                activity.setContentView(panel[0]);
+                check(panel[0].findViewWithTag("tech2-first-use-guide")==null,"Guide appears before firmware");
+            });waitForIdleSync();
+            final int height=panel[0].findViewWithTag("tech2-gestures").getHeight();
+            checkedMain(()->{panel[0].showFirstUseGuide();panel[0].showFirstUseGuide();});waitForIdleSync();
+            checkedMain(()->{
+                guide[0]=panel[0].findViewWithTag("tech2-first-use-guide");check(guide[0]!=null,"First frame has no guide");
+                check(panel[0].findViewWithTag("tech2-gestures").getHeight()==height,"Guide resized firmware");
+                // Real touch dispatch through the sibling overlay, including a long press.
+                int x=guide[0].getLeft()+10,y=guide[0].getTop()+10;
+                View surface=(View)guide[0].getParent();touch(surface,0,x,y);
+            });
+            SystemClock.sleep(ViewConfiguration.getLongPressTimeout()+180);
+            checkedMain(()->{
+                View surface=(View)guide[0].getParent();touch(surface,1,guide[0].getLeft()+10,guide[0].getTop()+10);
+                check(sent.isEmpty(),"Guide touch sent a firmware command");
+                panel[0].findViewWithTag("tech2-guide-dismiss").performClick();
+                panel[0].showFirstUseGuide();check(panel[0].findViewWithTag("tech2-first-use-guide")==null,"Dismissed guide reappeared");
+                Tech2Controls reopened=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+                reopened.showFirstUseGuide();check(reopened.findViewWithTag("tech2-first-use-guide")==null,"Dismissal lost after recreation");
+                check(sent.isEmpty(),"Guide dismissal sent a firmware command");
+            });
+        }finally{checkedMain(()->{android.content.SharedPreferences.Editor edit=prefs.edit();if(existed)edit.putBoolean("guide-v1-dismissed",old);else edit.remove("guide-v1-dismissed");edit.commit();});}
+    }
     public void onStart() {
         Bundle result=new Bundle();int status=-1;Activity activity=null;
+        android.content.SharedPreferences preferences=FirmwareScrollPreferences.storage(getTargetContext());
+        boolean hadPreference=preferences.contains(FirmwareScrollPreferences.KEY);
+        boolean oldPreference=FirmwareScrollPreferences.natural(getTargetContext());
         try {
-            checkedMain(()->{exercise(360,440);exercise(800,220);});
+
             for (String name : new String[]{"com.opensaab.tech2.MainActivity","com.opensaab.usb.ChipsoftUsbActivity","com.opensaab.usb.NanoProbeActivity"}) {
                 Intent intent=new Intent().setClassName(getTargetContext(),name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 // Deliberately omit auto_start. These activities stay idle and never claim USB.
@@ -126,14 +180,41 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                 checkedMain(()->{
                     View exit=shown.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect visible=new Rect();
                     check(exit!=null && exit.getGlobalVisibleRect(visible) && visible.height()==exit.getHeight(),"EXIT not fully visible in "+name);
+                    if (AppBuildProfile.isHeadunit32(shown)
+                            && shown.getResources().getConfiguration().screenWidthDp >= 720
+                            && shown.getResources().getConfiguration().screenWidthDp > shown.getResources().getConfiguration().screenHeightDp) {
+                        float d = shown.getResources().getDisplayMetrics().density;
+                        View display = shown.getWindow().getDecorView().findViewWithTag("tech2-gestures");
+                        ScrollView rail = shown.getWindow().getDecorView().findViewWithTag("headunit-actions");
+                        check(rail != null, "Missing landscape action rail in " + name);
+                        check(display.getHeight() >= 280*d && display.getWidth() >= 480*d,
+                            "Firmware display too small in " + name + ": " + display.getWidth()+"x"+display.getHeight());
+                        Rect screen = new Rect();
+                        check(display.getGlobalVisibleRect(screen) && screen.height()==display.getHeight(),
+                            "Firmware display clipped in " + name);
+                        rail.fullScroll(View.FOCUS_DOWN);
+                        check(exit.getGlobalVisibleRect(visible) && visible.height()==exit.getHeight(),
+                            "Side-panel scrolling hid EXIT in " + name);
+                    }
                     if(shown instanceof ChipsoftUsbActivity)check(!((ChipsoftUsbActivity)shown).running.get(),"Unexpected Chipsoft session");
                     if(shown instanceof NanoProbeActivity)check(!((NanoProbeActivity)shown).running.get(),"Unexpected Nano session");
                 });
-                if(name.endsWith("MainActivity"))gestures(activity);
+                if(name.endsWith("MainActivity")){
+                    firstUseGuide(activity);scrollingPreference(activity);
+                    for(boolean natural:new boolean[]{false,true}){
+                        gestures(activity,natural);
+                        checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});
+                    }
+                }
                 checkedMain(shown::finish);activity=null;waitForIdleSync();
             }
-            result.putString("stream","PASS: 23 verified key callbacks; compact/full keypad resizing; 48dp targets; short/wide layouts; persistent EXIT; swipe direction and one-event limit; long-press ENTER; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
+            result.putString("stream","PASS: saved default-off Natural scrolling, immediate adoption, recreation and toggles without firmware keys; both swipe modes and unchanged keypad/hold/tap behavior; first-frame guide, persistent dismissal, unchanged LCD size, guide touches send no firmware keys; 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; one-event limit; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
         }catch(Throwable e){status=0;result.putString("stream","FAIL: "+e+"\n");}
-        finally{if(activity!=null){final Activity a=activity;runOnMainSync(a::finish);}finish(status,result);}
+        finally{
+            android.content.SharedPreferences.Editor restore=preferences.edit();
+            if(hadPreference)restore.putBoolean(FirmwareScrollPreferences.KEY,oldPreference);else restore.remove(FirmwareScrollPreferences.KEY);
+            restore.commit();
+            if(activity!=null){final Activity a=activity;runOnMainSync(a::finish);}finish(status,result);
+        }
     }
 }

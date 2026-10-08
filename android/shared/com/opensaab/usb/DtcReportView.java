@@ -118,10 +118,17 @@ public final class DtcReportView extends Button implements AutoCloseable {
             if(files==null)files=new File[0];
             java.util.Arrays.sort(files,(a,b)->Long.compare(b.lastModified(),a.lastModified()));
             final File[] latest=java.util.Arrays.copyOf(files,Math.min(100,files.length));
-            final String[] names=new String[latest.length];for(int i=0;i<latest.length;i++)names[i]=latest[i].getName();
+            final String[] names=new String[latest.length];for(int i=0;i<latest.length;i++){
+                names[i]=latest[i].getName();
+                if(names[i].startsWith("hscan_ecm_"))try{
+                    File metadata=new File(directory,names[i].replace(".txt",".json"));if(metadata.length()>131072)continue;
+                    org.json.JSONObject report=new org.json.JSONObject(new String(Files.readAllBytes(metadata.toPath()),StandardCharsets.UTF_8));
+                    names[i]=(report.getJSONObject("result").optString("mode").equals("ecm_dtc")?"Engine codes — HS-CAN":"ECM information — HS-CAN")+" · "+report.optString("observed_utc");
+                }catch(Exception unavailable){}
+            }
             activity.runOnUiThread(()->{
                 if(activity.isFinishing() || activity.isDestroyed())return;
-                if(latest.length==0){new AlertDialog.Builder(activity).setTitle("DTC reports").setMessage("Reports are saved automatically when the original firmware displays a numbered DTC Information list. Scroll through the list to capture every position.").setPositiveButton("OK",null).show();return;}
+                if(latest.length==0){new AlertDialog.Builder(activity).setTitle("DTC reports").setMessage("Completed HS-CAN ECM reads and captured original firmware code lists appear here. Saved observations do not establish a current vehicle connection.").setPositiveButton("OK",null).show();return;}
                 new AlertDialog.Builder(activity).setTitle("Saved DTC reports · latest 100").setItems(names,(d,which)->{
                     new Thread(()->{try{
                         File f=latest[which];if(f.length()>2000000)throw new IOException("Report too large");
@@ -132,8 +139,9 @@ public final class DtcReportView extends Button implements AutoCloseable {
                             ScrollView scroll=new ScrollView(activity);scroll.addView(view);
                             new AlertDialog.Builder(activity).setTitle("Saved DTC report").setView(scroll)
                                 .setPositiveButton("Share / email",(dialog,w)->new Thread(()->{try{
-                                    File frozen=new File(f.getParentFile(),reportName(f.getName().contains("chipsoft")?"chipsoft":"nano")+".txt");write(frozen,contents);
-                                    activity.runOnUiThread(()->{if(!activity.isFinishing()&&!activity.isDestroyed())shareFile(activity,frozen,"Original firmware DTC report. See attachment for capture coverage.",f.getName().contains("chipsoft")?"chipsoft":"nano");});
+                                    String adapter=f.getName().startsWith("hscan_ecm_")?"vlinker":f.getName().contains("chipsoft")?"chipsoft":"nano";
+                                    File frozen=new File(f.getParentFile(),reportName(adapter)+".txt");write(frozen,contents);
+                                    activity.runOnUiThread(()->{if(!activity.isFinishing()&&!activity.isDestroyed())shareFile(activity,frozen,"Saved diagnostic observation. See attachment for read time and capture coverage.",adapter);});
                                 }catch(IOException e){activity.runOnUiThread(()->Toast.makeText(activity,"Could not prepare report",Toast.LENGTH_LONG).show());}},"dtc-report-share").start())
                                 .setNegativeButton("Close",null).show();
                         });
