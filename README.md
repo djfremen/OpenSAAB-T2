@@ -43,6 +43,8 @@ This is a clean source export, not a publication of private research history. Le
 
 ## Community
 
+[Join the openSAAB Discord](https://discord.gg/FxnFe8vQht) for releases, help, testing feedback and development. Start in **#welcome** and follow **#releases** for new builds.
+
 [Questions and ideas](https://github.com/djfremen/OpenSAAB-T2/discussions) · [Report an issue](https://github.com/djfremen/OpenSAAB-T2/issues/new) · [Contribute](CONTRIBUTING.md)
 
 Include app version, device/Android version, adapter model, menu path and expected versus actual behavior. Use **Report issue** to prepare a support report and review it before sharing. Do not publish VINs, seeds/keys, SSA files, raw captures, firmware, passwords or private screenshots. Reports are shared by the user, not silently uploaded.
