@@ -1,0 +1,92 @@
+{
+  "scope": [
+    "Android ARM64",
+    "Intel macOS x86_64"
+  ],
+  "android_source": {
+    "source_commit": "809d7b777cc74dcdf57dae835b6c5818293666b0",
+    "source_license": "MPL-2.0 AND LGPL-3.0-only",
+    "source_repository": "https://github.com/djfremen/OpenSAAB-T2",
+    "version_code": 100065,
+    "version_name": "0.1.0-preview.65"
+  },
+  "mac_source": {
+    "version": "0.2.24-reporting.1",
+    "platform": "macos",
+    "architecture": "x86_64",
+    "source_commit": "c946c6bbfe99ced95da9e5f4ba76e0932883831f",
+    "source_dirty": false,
+    "firmware_included": true,
+    "diagnostic_card_included": false,
+    "support_profile": "android-approved",
+    "support_files": {
+      "eprom.bin": {
+        "source": "eprom.bin",
+        "bytes": 262144,
+        "sha256": "57273924277abf9352ad0aa03f571aa2b16a97645f9be14c734f6b813ac2864d"
+      },
+      "opsys.dwn": {
+        "source": "extracted/opsys.dwn",
+        "bytes": 229352,
+        "sha256": "b1be24953eab84e0e8d0235e1b6b84e0c6c38d0043ea2586eddd51f08683ff3e"
+      },
+      "candi.bin": {
+        "source": "dumps/candi/candi.bin",
+        "bytes": 65544,
+        "sha256": "74d8a93a75ec3ddddc4fbd28a436e198a69bb55320a344ae5ee68a95b4bccf8b"
+      }
+    },
+    "signing": "ad-hoc; not notarized",
+    "minimum_macos": "12.0",
+    "rust_target": "x86_64-apple-darwin",
+    "private_candidate": true,
+    "source_shape": "git_checkout",
+    "nano_qualification": "installed-app/hardware pending; CLI predecessor scope remains separate",
+    "interface_contract_sha256": "f355e4ec445d1e32db29f14b25bac324239f62075affc623dfaf972c568870e0",
+    "bluetooth_workflow": {
+      "package": "opensaab-vlinker-workflow",
+      "version": "0.1.3",
+      "source_pin_sha256": "3e312691fe7686f0a82fde847a9e9c4fd5d1812876338282237f530ba1da8ae9"
+    },
+    "apple_ble_source_sha256": "6cc1eb8587451291e82911e35ab82833c0800843c23b81826a3b28c12d0f7b72"
+  },
+  "native_android_payloads_identical_to_preview64": true,
+  "mac_validation": "x86_64 architecture, clean source, ad-hoc signature verified; same-source ARM64 host package self-tests passed; no native Intel execution",
+  "artifacts": {
+    "OpenSAAB-0.2.24-reporting.1-macos-x86_64.dmg": {
+      "bytes": 7250173,
+      "sha256": "08dd0aa635fc738a0c903a8f19aa0b50c56a265dc0e2560da3184dc3bac280f2"
+    },
+    "OpenSAAB-T2-0.1.0-preview.65-arm64-v8a.apk": {
+      "bytes": 15997047,
+      "sha256": "54ce84c36664ed723f0d21c1877ff74e9ecfefa838d970f78c1afc6afadbc893"
+    }
+  },
+  "server": {
+    "http_status": 201,
+    "report_id": "OS-ade50216161b94f78d4aad37",
+    "stored_content_verified": true,
+    "synthetic": true,
+    "body_sha256": "5cbc3839ed46776c66ef75ece7d1297d28539e5f85ea7a7837717501815dcb5c",
+    "deployment": "9fc2f14b-e67c-4fa7-b2a4-b925d5e359dc",
+    "image": "sha256:3de0019f8a66978b731b2628df359b178b83189248c6d0338f8f11d6b7caf3b0",
+    "rollback_image": "djfremen/saab-security-api@sha256:030deabeff0b583e2acafae8dcf365bcf89e2b6f6405ba78ed976419cec15be9"
+  },
+  "tests": {
+    "rust_reporting": 7,
+    "server_host": 14,
+    "server_container": 14,
+    "android_existing_instrumentation_suites": 7,
+    "android_evidence_instrumentation": "passed",
+    "mac_host_packaged_checks": 162
+  },
+  "physical_tests": "Pending Android and Intel Mac exact-candidate reproduction; no claimed repair of prior vehicle crashes",
+  "public_app_release": "Not published",
+  "android_upload": {
+    "report_id": "OS-375426a1ca37fff897432f2e",
+    "stored_content_verified": true,
+    "version": "0.1.0-preview.65",
+    "session_count": 3,
+    "all_sessions_schema2": true
+  }
+}

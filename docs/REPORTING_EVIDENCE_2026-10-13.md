@@ -17,3 +17,11 @@ Rust reporting tests: 7 passed. Android existing seven instrumentation suites pa
 Next reproduction should use the new exact package, include the action being attempted and whether the failure repeated, then review/send the report. Missing artifacts from historical crashes cannot be reconstructed. Original bus payloads, VIN, seed/key material, firmware and raw memory remain local. Additional targeted private captures may still be needed to find the original guest fault.
 
 Physical qualification remains pending: install the candidates on Intel macOS and Android, reproduce startup/no-adapter/cancel/disconnect and any affected read-only vehicle path, confirm the resulting report ID and correlate it to the exact build. Public rollout is not declared complete by compilation or emulator checks. Windows, Linux, ARM32 and Apple Silicon app releases are outside this pass.
+
+## Final package and service checks
+
+Android preview.65 is release-signed from clean source 809d7b7. All six native payloads match preview.64 exactly. Installed and opened in Android Studio; the real review/consent/send flow stored report OS-375426a1ca37fff897432f2e. Its three sessions include evidence schema 2. Cloudflare object content equals the reviewed report.
+
+Intel macOS 0.2.24-reporting.1 is built from clean source c946c6b, x86_64-only, with verified ad-hoc signature and bundled support files. The same-source ARM64 validation package passed 162 checks on M4; this is not an Intel execution pass. Its reporting worker produced synthetic report OS-ade50216161b94f78d4aad37; HTTP 201 and identical R2 content were independently verified.
+
+The support-only server overlay is healthy, based on the previously live pinned image; existing iOS handling is preserved. Fourteen server tests pass both locally and in the deployed image. The image digest, rollback base and exact artifact hashes are in REPORTING_ARTIFACTS_2026-10-13.json. No public APK/DMG catalog was changed. Physical Android and Intel reproduction remains pending.
