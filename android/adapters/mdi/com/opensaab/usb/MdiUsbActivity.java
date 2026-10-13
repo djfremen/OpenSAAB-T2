@@ -252,8 +252,8 @@ public final class MdiUsbActivity extends Activity {
             if(attempt!=null)attempt.cleanup(null,false,connection==null?"not_attempted":usbClean?"succeeded":"failed",transportClean?"succeeded":"unknown");
             if(attempt!=null)attempt.finish(stopping?ConnectionAttempt.Outcome.CANCELLED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
                 stopping?ConnectionAttempt.Reason.USER_STOP:!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
-            if(attempt!=null && attempt.failed())log(ConnectionAttempt.failureSummary(this,directory));
-            ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
+            final String failureDetails=attempt!=null && attempt.failed()?"\n\n"+ConnectionAttempt.failureSummary(this,directory):"";
+            ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result+failureDetails);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
                 if(!stopping&&foreground&&released&&!requiredSetup.isEmpty())showSetup(requiredSetup);
                 if(pendingTool!=null){Runnable next=pendingTool;pendingTool=null;next.run();}});
         }
