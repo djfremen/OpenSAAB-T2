@@ -31,7 +31,7 @@ public final class StartupFlowInstrumentedTest extends Instrumentation {
                 check(!activity.running.get()&&activity.nativeDirectory==null,"Prompt started a vehicle operation");
                 activity.vehicleStartPrompt.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
                 check(!activity.running.get()&&activity.pendingVehicleStart==null,"Cancel must not queue firmware");
-                VehicleIdentity v=new VehicleIdentity("YS3TEST1A41000001","2026-09-16T00:00:00Z","synthetic",2004,"available","9440","B207R","Silver Metallic","","");
+                VehicleIdentity v=new VehicleIdentity("YS3FD49Y041000000","2026-09-16T00:00:00Z","synthetic",2004,"available","9440","B207R","Silver Metallic","","");
                 activity.vehicle=v;activity.showVehicle(false);
                 check(activity.vinSummary.getText().toString().contains("B207R"),"Vehicle details absent");
                 activity.vehicle=VehicleSession.unavailable(v,"not_requested");activity.showVehicle(false);

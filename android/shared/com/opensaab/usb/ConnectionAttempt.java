@@ -10,12 +10,12 @@ import org.json.*;
 
 /** Small, private connection records. No USB payloads, VIN, serial, key or exception message. */
 public final class ConnectionAttempt {
-    public enum Adapter { SELECTION, CHIPSOFT, NANO }
-    public enum Stage { DETECTION, PERMISSION, USB_OPEN, INTERFACE_CLAIM, TRANSPORT_START,
+    public enum Adapter { SELECTION, CHIPSOFT, NANO, MDI }
+    public enum Stage { DETECTION, PERMISSION, USB_OPEN, USB_CONFIGURATION, INTERFACE_CLAIM, TRANSPORT_START,
         IDENTIFICATION, CHANNEL_OPEN, VIN_REQUEST, FIRMWARE_START, SESSION, CLEANUP }
     public enum Outcome { IN_PROGRESS, COMPLETED, FAILED, CANCELLED }
     public enum Reason { NONE, NO_ADAPTER, MULTIPLE_ADAPTERS, PERMISSION_DENIED, DISCONNECTED,
-        TIMEOUT, IO_ERROR, PROTOCOL_OR_PROCESS_ERROR, VIN_UNAVAILABLE, CLEANUP_FAILED, USER_STOP }
+        TIMEOUT, IO_ERROR, PROTOCOL_OR_PROCESS_ERROR, VIN_UNAVAILABLE, SETUP_REQUIRED, CLEANUP_FAILED, USER_STOP }
     private static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r,"connection-reports"));
     private final File root;
     private final String id=UUID.randomUUID().toString(), created=java.time.Instant.now().toString();

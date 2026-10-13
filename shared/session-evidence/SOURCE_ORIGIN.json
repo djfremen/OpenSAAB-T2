@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "export_date": "2026-10-05",
+  "canonical_owner": "OpenSAAB/shared/session-evidence",
+  "purpose": "Standalone public source export of the exact canonical shared crate used by the installed init5 build; no protocol or evidence logic changes",
+  "version": "0.1.0",
+  "license": "MPL-2.0",
+  "files_sha256": {
+    ".gitignore": "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368",
+    "Cargo.lock": "8c4d23030233434e40c36cb2987d5cb38cc60eb2c0b0f83af19eb4c197d39d6e",
+    "Cargo.toml": "5fa024031a727c03e8a8332230c0bfbd354d9b81da7fd2cbf483c8e12a9604e7",
+    "README.md": "1230c37fae9073523ba1feb65c7132ea002e44f1ec98f0c46caf18b67c838e5e",
+    "src/lib.rs": "a16e263b2caf0fce320ac2513f63302d8dbc6d9e4d2e34ddd0c9fc4a44781192"
+  },
+  "maintenance": "Regenerate from the canonical shared source and verify these pins; do not maintain an independent implementation here",
+  "installed_tested_source_manifest_sha256": "a736119cb98eee960050815e5db603e87863e29ca2b7c91c6b1242f8ee222580"
+}

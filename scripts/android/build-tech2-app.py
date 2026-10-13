@@ -15,6 +15,7 @@ from report_dependencies import ReportDependencies
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
+parser.add_argument('--private-release-signing', action='store_true', help='Sign a private debuggable build with the existing app certificate')
 parser.add_argument('--version-name', default='0.1-dev')
 parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
@@ -74,9 +75,17 @@ env = dict(os.environ, JAVA_HOME=str(jdk), PATH=str(jdk / 'bin') + os.pathsep + 
 def run(*args):
     subprocess.run([str(x) for x in args], check=True, env=env)
 
+mdi_module = Path(os.environ['OPENSAAB_MDI_MODULE']) if os.environ.get('OPENSAAB_MDI_MODULE') else None
+mdi_bridge = Path(os.environ['OPENSAAB_MDI_BRIDGE']) if os.environ.get('OPENSAAB_MDI_BRIDGE') else None
+if (mdi_module is None)!=(mdi_bridge is None): raise SystemExit('MDI requires both packaged module and firmware bridge')
+if mdi_module is not None:
+    if profile.abi != 'arm64-v8a': raise SystemExit('MDI module qualification currently covers ARM64 only')
+    for binary in (mdi_module,mdi_bridge):validate_elf(binary.read_bytes()[:20],profile)
 connection_core = None
 if profile.abi == 'arm64-v8a':
-    run('sh', repo / 'scripts/android/build-vlinker-workflow.sh')
+    # Private picker-only build reuses the exact preview.56 native payloads.
+    if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
+        run('sh', repo / 'scripts/android/build-vlinker-workflow.sh')
     connection_core = Path(os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or repo / 'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection')
     validate_elf(connection_core.read_bytes()[:20], profile)
 deps = ReportDependencies(repo, build, env)
@@ -112,9 +121,9 @@ with zipfile.ZipFile(unsigned, 'a') as z:
         if subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip():
             raise SystemExit('Official release builds require a clean source checkout')
         commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
-        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0'},sort_keys=True))
+        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only'},sort_keys=True))
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
-    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt'):
+    for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
     z.write(support_manifest, 'assets/system/manifest.json', compress_type=zipfile.ZIP_DEFLATED)
     for name, spec in (support.items() if bundle_support else []):
@@ -125,6 +134,10 @@ with zipfile.ZipFile(unsigned, 'a') as z:
     z.write(probe, f'lib/{profile.abi}/libnano_probe.so')
     z.write(chipsoft, f'lib/{profile.abi}/libchipsoft_probe.so')
     if connection_core is not None:z.write(connection_core, 'lib/arm64-v8a/libopensaab_connection.so')
+    if mdi_module is not None:
+        z.write(mdi_module,'lib/arm64-v8a/libopensaab_mdi_android.so')
+        z.write(mdi_bridge,'lib/arm64-v8a/libtech2_mdi.so')
+        z.write(repo/'android/adapters/mdi/MDI_NOTICES.txt','assets/legal/MDI_NOTICES.txt')
 aligned = build / 'aligned.apk'
 run(bt / 'zipalign', '-f', '4', unsigned, aligned)
 apk = build / ('OpenSAAB-T2-arm64-v8a.apk' if args.release else 'opensaab-tech2.apk')
@@ -139,8 +152,12 @@ if args.release:
     run(bt / 'apksigner', 'sign', '--ks', keystore, '--ks-key-alias', 'opensaab-release',
         '--ks-pass', 'file:'+password_file, '--out', apk, aligned)
 else:
-    run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
-        '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
+    if args.private_release_signing:
+        run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.local/share/opensaab/release-signing/opensaab-release.p12',
+            '--ks-key-alias', 'opensaab-release', '--ks-pass', 'file:'+str(Path.home() / '.local/share/opensaab/release-signing/password.txt'), '--out', apk, aligned)
+    else:
+        run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
+            '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
-run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []))
+run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
 print(apk)

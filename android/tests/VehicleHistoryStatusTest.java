@@ -5,7 +5,7 @@ public final class VehicleHistoryStatusTest {
  public static void main(String[] args)throws Exception{
   File dir=Files.createTempDirectory("vehicle-history").toFile(),card=new File(dir,"card.bin");
   Instant t=Instant.parse("2026-09-16T12:00:00Z");
-  String vin="YS3FD49YX41000001",other="YS3FD49YX41000002";
+  String vin="YS3FD49YX41000001",other="YS3FH46U681000001";
   VehicleIdentity car=new VehicleIdentity(vin,t.toString(),"test",2004,"available","9440","","","","");
   byte[] data=new byte[SsaData.SIZE];Arrays.fill(data,(byte)255);System.arraycopy(vin.getBytes("US-ASCII"),0,data,0x14,17);data[0x26]=1;
   SecurityAccessStatus receipt=new SecurityAccessStatus(vin,"test",t);receipt.collected(t);receipt.processed("test","",t);receipt.imported(data,t);

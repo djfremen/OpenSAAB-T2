@@ -15,6 +15,38 @@ pub use crate::adapters::common::policy::{
     allowed_for_profile, allowed_for_session, diagnostic_allowed, CommandGate, Profile,
 };
 
+/// Explicit original-firmware control retains the proven physical/frame boundary.
+/// No diagnostic payload is generated or modified here.
+pub(crate) fn full_native_allowed(controller: usize, tx: &CanTransmission) -> bool {
+    electrical_route(controller, tx).is_ok()
+}
+
+/// The original Service > Check Ignition Key Status DeviceControl request.
+/// This permission is local to an explicit Nano session, never a Read rule.
+#[derive(Default)]
+pub(crate) struct KeyStatusGate {
+    enabled: bool,
+    sent: u8,
+}
+impl KeyStatusGate {
+    pub(crate) fn new(enabled: bool) -> Self {
+        Self { enabled, sent: 0 }
+    }
+    pub(crate) fn allowed(&mut self, controller: usize, tx: &CanTransmission) -> bool {
+        if !self.enabled
+            || self.sent >= 3
+            || controller != 2
+            || tx.frame.id != 0x241
+            || tx.frame.data != [3, 0xae, 3, 2, 0, 0, 0, 0]
+            || !electrical_route(controller, tx).is_ok_and(|r| r.channel == 1 && r.wire_flags == 0)
+        {
+            return false;
+        }
+        self.sent += 1;
+        true
+    }
+}
+
 /// Pure encoding. It preserves every original data/padding byte, including
 /// guest ISO-TP headers; no host segmentation, query generation or ECU rewriting.
 pub fn encode(controller: usize, tx: &CanTransmission, sequence: u8) -> Result<Frame, String> {
@@ -103,6 +135,8 @@ pub struct TxLedger {
     sequence: [u8; 3],
     closed: bool,
     gate: CommandGate,
+    key_status: KeyStatusGate,
+    full_native: bool,
 }
 impl Default for TxLedger {
     fn default() -> Self {
@@ -112,10 +146,24 @@ impl Default for TxLedger {
             sequence: [0; 3],
             closed: false,
             gate: CommandGate::default(),
+            key_status: KeyStatusGate::default(),
+            full_native: false,
         }
     }
 }
 impl TxLedger {
+    pub(crate) fn with_key_status(enabled: bool) -> Self {
+        Self {
+            key_status: KeyStatusGate::new(enabled),
+            ..Self::default()
+        }
+    }
+    pub(crate) fn with_full_native() -> Self {
+        Self {
+            full_native: true,
+            ..Self::default()
+        }
+    }
     pub fn close(&mut self) {
         self.closed = true;
         self.gate = CommandGate::default();
@@ -162,6 +210,9 @@ impl TxLedger {
         profile: Profile,
     ) -> Result<Prepared, String> {
         self.check_deadline(now)?;
+        if (self.key_status.enabled || self.full_native) && profile != Profile::Read {
+            return self.fail("Nano explicit native mode cannot combine with seeds or clear mode");
+        }
         // Validate before indexing arrays or mutating any ledger state.
         let sequence = self
             .sequence
@@ -179,7 +230,13 @@ impl TxLedger {
         {
             return self.fail("Stale/reused native Nano transmission ticket");
         }
-        if !self.gate.allowed(controller, tx, profile, now) {
+        let allowed = if self.full_native {
+            full_native_allowed(controller, tx)
+        } else {
+            self.gate.allowed(controller, tx, profile, now)
+                || self.key_status.allowed(controller, tx)
+        };
+        if !allowed {
             return Err("Native Android command/continuation gate rejected request".into());
         }
         let frame = encode_authorized(controller, tx, sequence)?;
@@ -249,6 +306,201 @@ mod tests {
                 }
             },
         }
+    }
+    #[test]
+    fn full_native_preserves_original_protected_and_continuation_payloads() {
+        let now = Instant::now();
+        for (controller, id, data) in [
+            (2, 0x241, vec![4, 0x27, 2, 0x12, 0x34, 0, 0, 0]),
+            (2, 0x244, vec![2, 0x27, 0x0c, 0, 0, 0, 0, 0]),
+            (2, 0x244, vec![4, 0x3b, 0x60, 0x12, 0x34, 0, 0, 0]),
+            (0, 0x7e0, vec![0x10, 0x20, 0x34, 0x12, 0x34, 0x56, 0x78, 0]),
+            (2, 0x244, vec![0x21, 0x27, 2, 0x12, 0x34, 0, 0, 0]),
+            (0, 0x000, vec![]),
+        ] {
+            let request = tx(controller, 1, id, &data);
+            assert!(full_native_allowed(controller, &request));
+            assert!(TxLedger::default().prepare(controller, &request, now).is_err());
+            let mut ledger = TxLedger::with_full_native();
+            let prepared = ledger.prepare(controller, &request, now).unwrap();
+            let frame = crate::nano_usb::Decoder::default().feed(&prepared.wire).unwrap().pop().unwrap();
+            assert_eq!(&frame.payload[10..], data);
+            assert_eq!(&frame.payload[6..10], &id.to_be_bytes());
+            assert_eq!(frame.header[3], if controller == 0 {0} else {1});
+            assert!(ledger.usb_write_finished(controller, 1, Ok(prepared.wire.len()), now).is_ok());
+        }
+    }
+    #[test]
+    fn full_native_physical_boundary_and_write_lifecycle_remain_enforced() {
+        let good = tx(2, 1, 0x244, &[4, 0x27, 2, 0x12, 0x34, 0, 0, 0]);
+        for kind in 0..10 {
+            let mut bad = good.clone();
+            let mut controller = 2;
+            match kind {
+                0 => bad.frame.extended = true,
+                1 => bad.frame.rtr = true,
+                2 => bad.frame.id = 0x800,
+                3 => bad.frame.dlc = 7,
+                4 => { bad.frame.dlc = 9; bad.frame.data.push(0); },
+                5 => bad.btr0 = 0xc1,
+                6 => bad.btr1 = 0x35,
+                7 => bad.electrical = CanElectricalState::SingleWireGpio {latch:2, assignment:0, direction:3},
+                8 => bad.electrical = CanElectricalState::SingleWireGpio {latch:3, assignment:1, direction:3},
+                _ => controller = 1,
+            }
+            assert!(!full_native_allowed(controller, &bad));
+            assert!(TxLedger::with_full_native().prepare(controller, &bad, Instant::now()).is_err());
+        }
+        let mut wake = tx(2, 1, 0x100, &[]);
+        wake.electrical = CanElectricalState::SingleWireGpio {latch:2, assignment:0, direction:3};
+        let mut ledger = TxLedger::with_full_native();
+        let p = ledger.prepare(2, &wake, Instant::now()).unwrap();
+        let frame = crate::nano_usb::Decoder::default().feed(&p.wire).unwrap().pop().unwrap();
+        assert_eq!(&frame.payload[..4], &0x1000u32.to_be_bytes());
+        let now = Instant::now();
+        let mut ledger = TxLedger::with_full_native();
+        let p = ledger.prepare(2, &good, now).unwrap();
+        assert!(ledger.prepare(2, &good, now).is_err());
+        assert!(ledger.usb_write_finished(2, 1, Ok(p.wire.len()-1), now).is_err());
+        assert!(ledger.is_closed());
+        assert!(ledger.prepare(2, &good, now).is_err());
+        let mut ledger = TxLedger::with_full_native();
+        ledger.prepare(2, &good, now).unwrap();
+        assert!(ledger.check_deadline(now+Duration::from_secs(2)).is_err());
+    }
+    #[test]
+    fn full_native_cannot_combine_with_seed_clear_or_key_status_permissions() {
+        let request = tx(2, 1, 0x244, &[4, 0x27, 2, 0x12, 0x34, 0, 0, 0]);
+        for profile in [Profile::Seeds, Profile::ClearDtc] {
+            let mut ledger = TxLedger::with_full_native();
+            assert!(ledger.prepare_for_profile(2, &request, Instant::now(), profile).is_err());
+            assert!(ledger.is_closed());
+        }
+        assert!(!KeyStatusGate::new(true).allowed(2, &request));
+        assert!(TxLedger::with_key_status(true).prepare(2, &request, Instant::now()).is_err());
+    }
+    #[test]
+    fn key_status_requires_exact_standard_sw_route_payload_and_three_request_bound() {
+        let good = tx(2, 1, 0x241, &[3, 0xae, 3, 2, 0, 0, 0, 0]);
+        assert!(!KeyStatusGate::default().allowed(2, &good));
+        let mut gate = KeyStatusGate::new(true);
+        for byte in 0..8 {
+            let mut bad = good.clone();
+            bad.frame.data[byte] ^= 1;
+            assert!(!gate.allowed(2, &bad), "Mutated request byte{byte}");
+        }
+        for id in [0x100, 0x101, 0x240, 0x242, 0x541, 0x7e0] {
+            let mut bad = good.clone();
+            bad.frame.id = id;
+            assert!(!gate.allowed(2, &bad));
+        }
+        for c in [0, 1, 3] {
+            assert!(!gate.allowed(c, &good));
+        }
+        for n in 0..=9 {
+            if n == 8 {
+                continue;
+            }
+            let mut bad = good.clone();
+            bad.frame.data.resize(n, 0);
+            bad.frame.dlc = n as u8;
+            assert!(!gate.allowed(2, &bad));
+        }
+        let mut variants = vec![];
+        let mut bad = good.clone();
+        bad.frame.extended = true;
+        variants.push(bad);
+        let mut bad = good.clone();
+        bad.frame.rtr = true;
+        variants.push(bad);
+        let mut bad = good.clone();
+        bad.frame.dlc = 7;
+        variants.push(bad);
+        let mut bad = good.clone();
+        bad.btr0 = 0xc1;
+        variants.push(bad);
+        let mut bad = good.clone();
+        bad.btr1 = 0x35;
+        variants.push(bad);
+        let mut bad = good.clone();
+        bad.electrical = CanElectricalState::StandardCan;
+        variants.push(bad);
+        for (latch, assignment, direction) in [(2, 0, 3), (3, 1, 3), (3, 0, 0)] {
+            let mut bad = good.clone();
+            bad.electrical = CanElectricalState::SingleWireGpio {
+                latch,
+                assignment,
+                direction,
+            };
+            variants.push(bad);
+        }
+        for bad in variants {
+            assert!(!gate.allowed(2, &bad));
+        }
+        for _ in 0..3 {
+            assert!(gate.allowed(2, &good));
+        }
+        assert!(!gate.allowed(2, &good));
+    }
+    #[test]
+    fn key_status_worker_is_read_based_bounded_and_preserves_original_wire() {
+        let now = Instant::now();
+        let data = [3, 0xae, 3, 2, 0, 0, 0, 0];
+        for profile in [Profile::Read, Profile::Seeds, Profile::ClearDtc] {
+            assert!(!allowed_for_profile(2, &tx(2, 1, 0x241, &data), profile));
+            assert!(TxLedger::default()
+                .prepare_for_profile(2, &tx(2, 1, 0x241, &data), now, profile)
+                .is_err());
+        }
+        let mut ledger = TxLedger::with_key_status(true);
+        for ticket in 1..=3 {
+            let prepared = ledger
+                .prepare_for_profile(2, &tx(2, ticket, 0x241, &data), now, Profile::Read)
+                .unwrap();
+            let mut decoder = crate::nano_usb::Decoder::default();
+            let frames = decoder.feed(&prepared.wire).unwrap();
+            decoder.finish().unwrap();
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].header, [0x80, ticket as u8, 0, 1]);
+            assert_eq!(&frames[0].payload[..4], &[0, 0, 0, 0]);
+            assert_eq!(&frames[0].payload[6..10], &0x241u32.to_be_bytes());
+            assert_eq!(&frames[0].payload[10..], &data);
+            ledger
+                .usb_write_finished(2, ticket, Ok(prepared.wire.len()), now)
+                .unwrap();
+        }
+        assert!(ledger
+            .prepare_for_profile(2, &tx(2, 4, 0x241, &data), now, Profile::Read)
+            .is_err());
+        // Exhausting the exact service permission does not widen or break Read.
+        assert!(ledger
+            .prepare_for_profile(
+                2,
+                &tx(2, 4, 0x241, &[3, 0xaa, 1, 1, 0, 0, 0, 0]),
+                now,
+                Profile::Read
+            )
+            .is_ok());
+    }
+    #[test]
+    fn key_status_worker_cannot_combine_with_seed_clear_or_reuse_closed_session() {
+        let now = Instant::now();
+        let request = tx(2, 1, 0x241, &[3, 0xae, 3, 2, 0, 0, 0, 0]);
+        for profile in [Profile::Seeds, Profile::ClearDtc] {
+            let mut ledger = TxLedger::with_key_status(true);
+            assert!(ledger
+                .prepare_for_profile(2, &request, now, profile)
+                .is_err());
+            assert!(ledger.is_closed());
+        }
+        let mut ledger = TxLedger::with_key_status(true);
+        ledger.close();
+        assert!(ledger
+            .prepare_for_profile(2, &request, now, Profile::Read)
+            .is_err());
+        assert!(TxLedger::with_key_status(true)
+            .prepare_for_profile(2, &request, now, Profile::Read)
+            .is_ok());
     }
     #[test]
     fn engine_multiframe_preserves_payload_and_enforces_transaction_boundaries() {

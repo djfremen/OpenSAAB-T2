@@ -64,3 +64,12 @@ or change the license of the separately hosted OpenSAAB API or other repositorie
 
 Official references: [Mozilla MPL FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/)
 and [MPL-2.0 text](https://www.mozilla.org/en-US/MPL/2.0/).
+
+## Nano initializer exception
+
+The OpenVCX-derived `src/adapters/vcx_nano/init_handshake.rs` is LGPL-3.0-only,
+as declared in that file. Its complete license texts and source attribution
+are retained in the three `licenses/OPENVCX_*.txt` files and described in
+`THIRD_PARTY_NOTICES.md`. These notices accompany binaries and matching source
+that include the initializer. Original OpenSAAB files and the root `LICENSE`
+remain MPL-2.0; the combined Cargo package declares both applicable licenses.

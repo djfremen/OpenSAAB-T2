@@ -25,12 +25,12 @@ public final class AdapterCatalog {
         if(vendor==0x0ca0 && product>=0x1501 && product<=0x153f && (product&3)!=0)
             return new Match("bosch_eps_candidate","Bosch EPS candidate","USB networking (RNDIS)",
                 "No supported diagnostic backend","Bosch INF identifies EPS separately; do not classify as MDI");
-        if(vendor==0x0525 && product==0xa4a2)return new Match("generic_rndis","Generic USB network device","RNDIS candidate",
-            "Adapter identity unknown","Generic Linux USB ID appears in ETAS INF; insufficient to identify MDI");
+        if(vendor==0x0525 && product==0xa4a2)return new Match("generic_rndis","USB network adapter · possible MDI","RNDIS candidate",
+            "Identity unverified; MDI research driver is separate","Generic Linux USB ID appears in ETAS INF; insufficient to identify MDI");
         return new Match("unknown","Unrecognized USB device","Inspect interfaces",
             "No backend selected","No matching adapter profile; vendor/product names are informational only");
     }
-    public static boolean adapterCandidate(Match match){return match.family.endsWith("_candidate") && !match.family.equals("bosch_eps_candidate");}
+    public static boolean adapterCandidate(Match match){return match.family.equals("generic_rndis") || (match.family.endsWith("_candidate") && !match.family.equals("bosch_eps_candidate"));}
     public static boolean supported(Match match){return match.backend()!=AdapterProfile.Backend.NONE;}
     private AdapterCatalog(){}
 }

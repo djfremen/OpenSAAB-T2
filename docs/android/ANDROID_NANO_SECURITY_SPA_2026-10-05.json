@@ -1,0 +1,247 @@
+{
+  "schema": 1,
+  "date": "2026-10-05",
+  "created_at_utc": "2026-10-05T10:05:50.469801+00:00",
+  "scope": "Owner-operated original firmware Get Security Access and Add SPA on live 2004 Saab 9-3 Sport / 9440, Pixel7 direct Nano USB",
+  "installed_artifact": {
+    "apk": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/OpenSAAB-T2-nano-init.4-arm64-private.apk",
+    "apk_sha256": "94e5ccc30b310a718bbd86c712e6b36500070fea1d962aaf068af3a27ed5e537",
+    "source_archive_sha256": "2862a7cc16a5230b4b593c28568b244283ae3c985b9b0c58a2204849bbec3744",
+    "source_manifest_sha256": "f35f13714f72bec04e635d79a265de2d4d6dbc5c9a9ab490510d9704c1cbf31d",
+    "source_files": 352,
+    "native_pins": {
+      "lib/arm64-v8a/libtech2_emu.so": "5cd4fb8522a69fd0b1521de9cdd981ec44a0ad3eaf439d3b5b564b60c9af9de0",
+      "lib/arm64-v8a/libnano_probe.so": "4544373c4fc36022beddad0e10f4202e3e8ffa18ca2a06963cc25c93addaf299",
+      "lib/arm64-v8a/libchipsoft_probe.so": "bd85ea8a951d3ca241e2064b4d5bb493634dfda083325e375cb2520a6cd1af88",
+      "lib/arm64-v8a/libopensaab_connection.so": "deed02b2fb033cdc546f1196d27caeeb72f93f3b2d8aa30de89ad3ad77b4479b"
+    },
+    "legal_assets": [
+      "assets/legal/LICENSE",
+      "assets/legal/LICENSING.md",
+      "assets/legal/THIRD_PARTY_NOTICES.md",
+      "assets/legal/ANDROID_CARGO_NOTICES.txt",
+      "assets/legal/ANDROID_BLUETOOTH_CARGO_NOTICES.txt",
+      "assets/legal/ANDROIDX_APACHE_2_0.txt",
+      "assets/legal/OPENVCX_LGPL_3_0.txt",
+      "assets/legal/OPENVCX_GPL_3_0.txt",
+      "assets/legal/OPENVCX_SOURCE_ORIGIN.txt"
+    ],
+    "version_name": "0.1.0-nano-init.4",
+    "version_code": 100054
+  },
+  "vehicle_identity": {
+    "year": 2004,
+    "model": "Saab 9-3 Sport (9440)",
+    "vin_sha256": "be7d68bbb6b057dd4715d71bb391e59fafde99cf50274e04312e57cf3464af2f",
+    "origin": "Fresh qualified host HS-CAN VIN probe before original firmware collection; not an original guest VIN shortcut"
+  },
+  "adapter": {
+    "model": "GM VXDIAG Nano",
+    "usb_vid_pid": "1A86:55D3",
+    "firmware": "1.9.4.2",
+    "transport": "Android direct USB; no vendor Windows driver loaded"
+  },
+  "sessions": {
+    "collection": "native-40c30d40-7d48-413d-95ce-ef2e6233b876",
+    "full_native_continuation": "native-40e2e23b-708f-41a7-81a5-336cb1862ec3"
+  },
+  "security_collection": {
+    "original_VIN_and_seed_steps": "OK",
+    "physical_key_prompts_followed_by_owner": true,
+    "origin": "original-guest-memory",
+    "ssa_erases": 1,
+    "ssa_programmed_bytes": 828,
+    "bytes": 714,
+    "seed_records": 12,
+    "filled_processed_key_records": 12,
+    "provider": "OpenSAAB",
+    "fallback_allowed": false,
+    "strict_reply_validation_and_atomic_SSA_import": true,
+    "surrounding_card_unchanged": true,
+    "original_card_sha256": "f5bf579cedc878bb62a8829367fd90c002499fe5fb4cf608b9bba145d174291a",
+    "processed_card_sha256": "db54aa942b19b27027959b82ae46a31d8def477b7620340e0452464282fd1266",
+    "API_receipt_vehicle_access_verified": false,
+    "grant_scope": "API/import alone does not establish ECU access. The later original Add SPA task independently reports Checking Security Access OK."
+  },
+  "original_result": {
+    "selected_module": "SPA \u2014 Saab Parking Assistance",
+    "task": "Add",
+    "Checking_Preconditions": "OK",
+    "Checking_SPS": "OK",
+    "Checking_Security_Access": "OK",
+    "Adding_Unit": "OK",
+    "terminal_screen": "Add / Remove ECU finished",
+    "bus_configuration_progress_observed": true,
+    "independent_final_bus_config_or_clear_DTC_OK_rows_retained": false,
+    "passenger_window_anti_pinch": "Not Learned; firmware continued after owner key prompts; no separate learning procedure performed",
+    "evidence_basis": "Original firmware task progress and terminal screen, native adapter TX confirmations. No literal 67/02 wire-grant claim made from bounded trace."
+  },
+  "cleanup": {
+    "six_native_control_replies": "00",
+    "native_USB_closed": true,
+    "Android_USB_closed": true,
+    "QUIT_received": true,
+    "diagnostic_USB_writes": 193,
+    "native_workers_after_Stop": [],
+    "harness_exit": 3,
+    "harness_status": "incomplete/operator_stop; distinct from successfully finished original Add SPA task"
+  },
+  "privacy": {
+    "raw_VIN_seeds_keys_API_payloads_and_firmware": "Retained privately; excluded from repository and public post"
+  },
+  "qualification": {
+    "actual_original_security_check_and_SPA_add_finished": true,
+    "exact_private_Android_ARM64_artifact": true,
+    "physical_USB_and_OBD_power_loss_cold_start": false,
+    "other_vehicle_adapter_architecture_or_platform": false,
+    "public_preview45_includes_changes": false,
+    "uniform_release": false
+  },
+  "retained_evidence": [
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/native-process.log",
+      "sha256": "eeeed1204a9e365c5a12da957e840f1458547b8b36cace350d1ae06429fe3d66"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/report.json",
+      "sha256": "7a8f77ccca27c703fdb92d593f3007d90c387d29813f54e01aa6119e0605792b"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40c30d40-7d48-413d-95ce-ef2e6233b876/native-security-snapshot.json",
+      "sha256": "da9241e89d571a19cc70094564909957dbf362edb7bfa5bcc6013c9efee8d6eb"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40c30d40-7d48-413d-95ce-ef2e6233b876/security-api-caf78597-6677-419b-b8a0-362459a81687/result.json",
+      "sha256": "6e7f133ff075a8f4751eefc25acdb38857128eb3b5c49cb69be088f561d2e07f"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/logcat-cleanup-private.txt",
+      "sha256": "8a1f23a711087cdd546a22531d53afe017f031eb69173333cf172011ac0527e1"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/owner-success/files/native-40e2e23b-708f-41a7-81a5-336cb1862ec3/live.ppm",
+      "sha256": "6dfa1235b73a8ed23b6e8cc18ae7eadfccdb75d1ba98348c546d102ad2f79608"
+    }
+  ],
+  "source_reviews": [
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/java-preparation-v3.json",
+      "sha256": "5eeec5f676bd76578b2597a4a8247f2ab69fef21512f197e76d309888b1b8e35"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/rust-preparation-v2.json",
+      "sha256": "57e13ad33af34a66e64cdbdd328d256ce1d25d00491b6013b3fd9e2b443a79e2"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/independent-java-review.json",
+      "sha256": "df9a3ed6a24fcda520b78a3071380a8967e5e24cf065d678cde28abbed1272d3"
+    },
+    {
+      "path": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/nano-parking-security-20261005/independent-rust-review.json",
+      "sha256": "3de27415704ecccff50b2b2ac9d29b8c868c09aeb8fe65eed3652ac6b455efbb"
+    }
+  ],
+  "responsiveness_followup": {
+    "installed_artifact": {
+      "apk": "/home/user/.local/share/opensaab/nano-android-handshake-20261005/OpenSAAB-T2-nano-init.5-arm64-private.apk",
+      "apk_sha256": "5a7d93a6d84de10a950958fecc101d2ad7d9ebf6c01643d43e23f695a31932e6",
+      "source_archive_sha256": "902c78d56f7be2160e66b193280b3275059172fc720655c3aaf4fac6407f87c9",
+      "source_manifest_sha256": "a736119cb98eee960050815e5db603e87863e29ca2b7c91c6b1242f8ee222580",
+      "source_files": 352,
+      "native_pins": {
+        "lib/arm64-v8a/libtech2_emu.so": "5cd4fb8522a69fd0b1521de9cdd981ec44a0ad3eaf439d3b5b564b60c9af9de0",
+        "lib/arm64-v8a/libnano_probe.so": "4544373c4fc36022beddad0e10f4202e3e8ffa18ca2a06963cc25c93addaf299",
+        "lib/arm64-v8a/libchipsoft_probe.so": "bd85ea8a951d3ca241e2064b4d5bb493634dfda083325e375cb2520a6cd1af88",
+        "lib/arm64-v8a/libopensaab_connection.so": "deed02b2fb033cdc546f1196d27caeeb72f93f3b2d8aa30de89ad3ad77b4479b"
+      },
+      "version_name": "0.1.0-nano-init.5",
+      "version_code": 100055,
+      "successful_security_module_build": "0.1.0-nano-init.4",
+      "performance_build_vehicle_procedure_requalification": false
+    },
+    "implementation": "Use existing shared NativeLcdPump file observer/decode worker and InteractiveKeyPump bounded background mailbox; preserve protocol timing and firmware semantics",
+    "observations": {
+      "app_pid": 14109,
+      "frame_observations": 32,
+      "file_to_ImageView_assignment_ms": {
+        "min": 5,
+        "median": 16.0,
+        "max": 56333
+      },
+      "input_observations": 9,
+      "queue_to_atomic_mailbox_ms": {
+        "min": 0,
+        "median": 1,
+        "max": 2
+      },
+      "raw_frame_delays_ms": [
+        68,
+        5,
+        7,
+        12,
+        14,
+        11,
+        11,
+        71,
+        10,
+        9,
+        30,
+        756,
+        11,
+        66,
+        56333,
+        17,
+        447,
+        12,
+        445,
+        15,
+        17,
+        84,
+        13,
+        46,
+        551,
+        7,
+        441,
+        15,
+        10,
+        80,
+        6,
+        48
+      ],
+      "scope": "Only installed private init5 app PID: actual original Main Menu and Model Year keypad; file publish-to-ImageView assignment, not tap-to-ECU round trip",
+      "distinct_guest_publications": {
+        "count": 19,
+        "min_ms": 5,
+        "median_ms": 11,
+        "max_ms": 68
+      },
+      "repeated_unchanged_guest_publications": {
+        "count": 13,
+        "max_age_ms": 56333
+      },
+      "limitation": "An unrelated .ppm event can republish unchanged live.ppm; raw file-age metric includes that stale image. Distinct-publication timing separately reported; not a tap-to-ECU speed comparison."
+    },
+    "actual_USB_diagnostic_writes": 0,
+    "keypad_test": "Original Main Menu -> Model Year; F0 and four down/four up keys; EXIT and Stop",
+    "six_cleanup_replies": "00",
+    "USB_and_QUIT_confirmed": true,
+    "vehicle_programming_repeated_on_init5": false,
+    "Java_regressions": {
+      "path": "/home/user/.local/share/opensaab/repo-update-20261005/java-regression.log",
+      "sha256": "61ede7e68740b628d4bca3aa1469195fbbf7a904e21693691e8b98d552a38a49"
+    },
+    "actual_build": {
+      "path": "/home/user/.local/share/opensaab/repo-update-20261005/apk-build-init5-final.log",
+      "sha256": "57adf9bc0b549f12fa510ce67988956cad4704cff394fda155a1c71302545800"
+    }
+  },
+  "Facebook": {
+    "status": "published and permalink UI verified",
+    "url": "https://www.facebook.com/permalink.php?story_fbid=pfbid0SVTh2bxje7ac4BZ8iNnX475CjqhPgKcug1aRZWs1HKJLHPyf2YYAvJ87KZ64breXl&id=61594399442395",
+    "page": "Opensaab T2",
+    "created_utc": "2026-10-05T10:03:01.735Z",
+    "audience": "Public",
+    "boost": false,
+    "raw_diagnostic_data_shared": false
+  }
+}

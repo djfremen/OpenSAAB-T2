@@ -98,6 +98,10 @@ impl<T: UsbTransport> Client<T> {
     pub fn transport_mut(&mut self) -> &mut T {
         &mut self.transport
     }
+    /// Adapter-only initialization must end on a complete frame boundary.
+    pub fn finish_frames(&self) -> Result<(), String> {
+        self.decoder.finish()
+    }
     /// The persistent decoder spans reads AND requests. CAN traffic may precede,
     /// follow or share a USB transfer with the outstanding control reply.
     pub fn exchange(

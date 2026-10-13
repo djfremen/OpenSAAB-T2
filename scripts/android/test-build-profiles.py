@@ -7,12 +7,23 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from build_profiles import PROFILES, validate_elf
 
 spec = importlib.util.spec_from_file_location('apk_check', Path(__file__).with_name('check-apk-firmware.py'))
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
+REPO = Path(__file__).resolve().parents[2]
+LEGAL_FIXTURE_FILES = (
+    'LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md',
+    'licenses/ANDROID_CARGO_NOTICES.txt',
+    'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt',
+    'licenses/ANDROIDX_APACHE_2_0.txt',
+    'licenses/OPENVCX_LGPL_3_0.txt',
+    'licenses/OPENVCX_GPL_3_0.txt',
+    'licenses/OPENVCX_SOURCE_ORIGIN.txt',
+)
 
 def header(profile):
     data = bytearray(20)
@@ -43,13 +54,18 @@ class ArchitectureTests(unittest.TestCase):
                         path = Path(folder) / 'test.apk'
                         with zipfile.ZipFile(path, 'w') as apk:
                             apk.writestr('assets/system/manifest.json', json.dumps(checker.SUPPORT))
+                            for relative in LEGAL_FIXTURE_FILES:
+                                apk.writestr('assets/legal/' + Path(relative).name,
+                                             (REPO / relative).read_bytes())
                             for binary in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so'):
                                 if mode == 'missing' and binary == 'libnano_probe.so':
                                     continue
                                 apk.writestr(f'lib/{profile.abi}/{binary}', header(other if mode == 'mislabeled' else profile))
                             if mode == 'extra':
                                 apk.writestr(f'lib/{other.abi}/libtech2_emu.so', header(other))
-                        with contextlib.redirect_stdout(io.StringIO()):
+                        # This fixture isolates native architecture validation;
+                        # dependency-resource integrity is checked on real APKs.
+                        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(checker, 'KOTLIN_RESOURCES', {}):
                             if mode == 'correct':
                                 checker.check(path, profile_name=name)
                             else:

@@ -11,6 +11,12 @@ These default commands and Android Studio's `app` configuration build ARM64. The
 
 Set `ANDROID_HOME` to your SDK and `JAVA_HOME` to your JDK. The custom scripts default to Android Studio's standard macOS locations if omitted. They also support Linux with these variables set.
 
+The standalone source export includes the canonical `opensaab-session-evidence`
+crate under `shared/session-evidence`; no private sibling checkout is required.
+`SOURCE_ORIGIN.json` pins its unchanged files to the shared source used by the
+tested build. Maintain that logic in the canonical OpenSAAB shared crate, then
+regenerate the export and update its pins together.
+
 ## Rust + APK
 
 ```sh

@@ -29,7 +29,7 @@ public final class ReportReviewInstrumentedTest extends Instrumentation {
         long until=SystemClock.elapsedRealtime()+8000;
         while(SystemClock.elapsedRealtime()<until){waitForIdleSync();if(condition.test())return;SystemClock.sleep(50);}throw new AssertionError(why);
     }
-    private ReportReviewModel model(){final ReportReviewModel[] m={null};runOnMainSync(()->m[0]=new ViewModelProvider(current.get()).get(ReportReviewModel.class));return m[0];}
+    private ReportReviewModel model(){if(Looper.myLooper()==Looper.getMainLooper())return new ViewModelProvider(current.get()).get(ReportReviewModel.class);final ReportReviewModel[] m={null};runOnMainSync(()->m[0]=new ViewModelProvider(current.get()).get(ReportReviewModel.class));return m[0];}
     private ReportReviewDialog dialog(){if(Looper.myLooper()==Looper.getMainLooper())return (ReportReviewDialog)current.get().getSupportFragmentManager().findFragmentByTag(ReportReviewDialog.TAG);final ReportReviewDialog[] d={null};runOnMainSync(()->d[0]=(ReportReviewDialog)current.get().getSupportFragmentManager().findFragmentByTag(ReportReviewDialog.TAG));return d[0];}
     private static <T> T field(Object object,String name,Class<T> type)throws Exception {java.lang.reflect.Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return type.cast(f.get(object));}
     private void checkVisibleFooter(){runOnMainSync(()->{try{
@@ -95,28 +95,47 @@ public final class ReportReviewInstrumentedTest extends Instrumentation {
             runOnMainSync(restored::send);check(!restored.busy,"Sent report retransmission started");
             runOnMainSync(()->{restored.closeReview();restored.prepare("Synthetic new incident");});await(()->!restored.busy&&restored.reviewOpen,"New report not prepared");
             check(!restored.artifact.id.equals(a.id)&&restored.receipt.isEmpty()&&!restored.consent,"New incident inherited delivery/consent");
+            // Exercise the actual Send button and Activity completion with a local fake uploader.
+            java.lang.reflect.Field uploadField=ReportReviewModel.class.getDeclaredField("uploader");uploadField.setAccessible(true);
+            final int[] buttonUploads={0};
+            uploadField.set(restored,(ReportReviewModel.Uploader)body->{buttonUploads[0]++;throw new IOException("Synthetic upload failure");});
+            runOnMainSync(()->{restored.confirm(true);try{field(dialog(),"send",Button.class).performClick();}catch(Exception e){throw new AssertionError(e);}});
+            await(()->!restored.busy,"Failed button upload stalled");
+            check(!current.get().isFinishing()&&dialog()!=null&&restored.reviewOpen&&restored.receipt.isEmpty(),"Failed upload dismissed the report");
+            uploadField.set(restored,(ReportReviewModel.Uploader)body->{buttonUploads[0]++;return fake;});
+            SupportReportActivity sentHost=current.get();
+            runOnMainSync(()->{try{field(dialog(),"send",Button.class).performClick();}catch(Exception e){throw new AssertionError(e);}});
+            await(()->sentHost.isFinishing(),"Successful Send did not dismiss report screen");
+            check(buttonUploads[0]==2&&ReportArtifacts.receipt(app,restored.artifact).equals(fake),"Unexpected retry or lost delivery receipt");
+            startActivitySync(new Intent(app,SupportReportActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            await(()->current.get()!=sentHost,"Report reopen failed");
+            check(!model().reviewOpen&&!model().canSend()&&model().receipt.equals(fake),"Reopen offered duplicate send");
+            runOnMainSync(()->model().prepare("Synthetic subsequent incident"));
+            await(()->!model().busy&&model().reviewOpen,"Subsequent report missing");
+            final ReportReviewModel later=model();
             // A lost/failed reply must remain unconfirmed, never "Already sent" with an empty receipt.
             final byte[][] captured={null};final int[] attempts={0};ReportReviewModel[] failed={null},success={null};
             runOnMainSync(()->{failed[0]=new ReportReviewModel(app,body->{captured[0]=body;attempts[0]++;throw new IOException("Synthetic lost response");});
-                failed[0].initialize(restored.artifact.id,restored.artifact.hash,true);failed[0].confirm(true);failed[0].send();});
+                failed[0].initialize(later.artifact.id,later.artifact.hash,true);failed[0].confirm(true);failed[0].send();});
             await(()->!failed[0].busy,"Failed reply test stalled");
             check(failed[0].receipt.isEmpty()&&!failed[0].notice.contains("Already sent")&&failed[0].reviewOpen&&failed[0].canSend(),"Failed reply fabricated delivery or lost explicit retry");
-            check(attempts[0]==1&&Arrays.equals(captured[0],restored.artifact.bytes()),"Body changed or automatic retry");
-            runOnMainSync(()->{success[0]=new ReportReviewModel(app,body->{check(Arrays.equals(body,restored.artifact.bytes()),"Success body changed");return fake;});
-                success[0].initialize(restored.artifact.id,restored.artifact.hash,true);success[0].confirm(true);success[0].send();});
+            check(attempts[0]==1&&Arrays.equals(captured[0],later.artifact.bytes()),"Body changed or automatic retry");
+            runOnMainSync(()->{success[0]=new ReportReviewModel(app,body->{check(Arrays.equals(body,later.artifact.bytes()),"Success body changed");return fake;});
+                success[0].initialize(later.artifact.id,later.artifact.hash,true);success[0].confirm(true);success[0].send();});
             await(()->!success[0].busy,"Confirmed reply test stalled");
-            check(success[0].receipt.equals(fake)&&!success[0].consent&&!success[0].canSend()&&ReportArtifacts.receipt(app,restored.artifact).equals(fake),"Successful model delivery not bound to exact body");
-            ReportArtifacts.pruneReceipt(app,restored.artifact.id);
+            check(!success[0].reviewOpen&&success[0].deliveryCompleted,"Confirmed send did not close review");
+            check(success[0].receipt.equals(fake)&&!success[0].consent&&!success[0].canSend()&&ReportArtifacts.receipt(app,later.artifact).equals(fake),"Successful model delivery not bound to exact body");
+            ReportArtifacts.pruneReceipt(app,later.artifact.id);
             // Changed local bytes invalidate consent before any network call can begin.
-            ReportArtifacts.Artifact changed=restored.artifact;replace(changed.file,changed.text+" ");
-            runOnMainSync(()->{restored.confirm(true);restored.send();});await(()->!restored.busy,"Changed file check stalled");
-            check(!restored.consent&&restored.artifact==null&&!restored.reviewOpen,"Changed file retained consent/review");
+            ReportArtifacts.Artifact changed=later.artifact;replace(changed.file,changed.text+" ");
+            runOnMainSync(()->{later.confirm(true);later.send();});await(()->!later.busy,"Changed file check stalled");
+            check(!later.consent&&later.artifact==null&&!later.reviewOpen,"Changed file retained consent/review");
             // Bounded retention removes the matching receipt, not just the ZIP.
             file.setLastModified(1);ReportArtifacts.recordReceipt(app,a,fake);
             for(int n=0;n<9;n++)SupportReports.saveText(app,"{\"description\":\"Synthetic pruning "+n+"\"}");
             check(!file.exists()&&!new File(root,"uploaded/"+a.id+".json").exists(),"Pruned receipt survived");
             for(String id:new String[]{"../card.bin","android_support_bad.zip"})try{ReportArtifacts.read(app,id,null);throw new AssertionError("Unsafe identity accepted");}catch(IOException expected){}
-            result.putString("stream","PASS: exact UTF-8 JSON, repacked ZIP receipt, altered-file rejection, real portrait/landscape DialogFragment restoration with same ViewModel consent, cold-model consent reset, dismissal/reopen reset, sent cold restore/hidden controls, new incident reset, retention marker pruning, path validation. Synthetic receipts only; no network or adapter.\n");
+            result.putString("stream","PASS: actual Send success dismisses Activity and review with durable receipt; failure stays open and retry remains explicit; cold reopen avoids duplicate send; exact UTF-8 JSON, repacked ZIP receipt, altered-file rejection, real portrait/landscape DialogFragment restoration with same ViewModel consent, cold-model consent reset, dismissal/reopen reset, sent cold restore/hidden controls, new incident reset, retention marker pruning, path validation. Synthetic receipts only; no network or adapter.\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{if(app!=null&&callbacks!=null)app.unregisterActivityLifecycleCallbacks(callbacks);SupportReportActivity a=current.get();if(a!=null)runOnMainSync(a::finish);finish(code,result);}
     }

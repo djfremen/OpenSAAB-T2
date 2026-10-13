@@ -335,6 +335,7 @@ public final class ChipsoftUsbActivity extends Activity {
                         nativeDirectory=run;
                     }
                     nativeDirectory=run;health.begin(run);lcdPump.setDirectory(run);File f=new File(getFilesDir(),"firmware");
+                    SecuritySessionData.recordBaseline(run,new File(f,"card.bin"));
                     for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(f,name).isFile())throw new IOException("Missing original firmware: "+name);
                     builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so","--test-harness","--harness-target",symbolOnly?"dtc-link-1367":"native-manual","--candi-native-link","--candi-chipsoft-usb-token",token,"--candi-firmware",new File(f,"candi.bin").getPath(),"--boot",new File(f,"eprom.bin").getPath(),"--opsys",new File(f,"opsys.dwn").getPath(),"--max-insns","50000000000","--output-dir",run.getPath(),new File(f,(symbolOnly || audible)?"card-authorized.bin":"card.bin").getPath());if(symbolOnly)builder.command().add("--candi-chipsoft-symbol-only");if(seeds)builder.command().add("--candi-chipsoft-seeds");if(audible)builder.command().add("--candi-chipsoft-audible");
                     log("NATIVE_SESSION "+run.getName()+" requests=original-firmware command_policy="+(fullNative?"full-native":"restricted"));
