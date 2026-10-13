@@ -41,7 +41,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private volatile boolean busy,closed;
     private volatile HttpURLConnection connection;
     private File observed;
-    private boolean transferSeen,imported;
+    private boolean transferSeen,imported,navigationWaitingLogged;
     private String failure;
     private SecurityAccessStatus receipt;
     private boolean receiptCardMatches,detailsAction;
@@ -96,8 +96,20 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
                 if(observed!=run){if(manualCollection)collection=false;observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
-                    navigator=collection&&run!=null?new SecurityMenuNavigator(SecurityCollectionMode.navigationIdentity(activity,currentIdentity)):null;
-                    if(navigator!=null&&(manualNavigation||!new FirmwareStore(activity.getFilesDir()).englishNavigation()))navigator.cancel();}
+                    navigator=null;navigationWaitingLogged=false;}
+                // A new native directory can appear before card preparation/VIN publication ends.
+                // Missing context is pending, not a permanent cancellation for this session.
+                if(collection&&!manualCollection&&!manualNavigation&&navigator==null&&run!=null){
+                    if(currentIdentity==null){
+                        if(!navigationWaitingLogged){android.util.Log.i("OpenSaabSecurity","GUIDED_NAV waiting_context=true");navigationWaitingLogged=true;}
+                    }else{
+                        VehicleIdentity target=SecurityCollectionMode.navigationIdentity(activity,currentIdentity);
+                        navigator=new SecurityMenuNavigator(target);
+                        boolean english=new FirmwareStore(activity.getFilesDir()).englishNavigation();
+                        if(!english)navigator.cancel();
+                        android.util.Log.i("OpenSaabSecurity","GUIDED_NAV ready="+navigator.active()+" year="+target.modelYear+" english="+english);
+                    }
+                }
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
                 cardState=currentState;selectedSsa=working.bytes;
                 String age=receipt==null?"Age unknown":receipt.freshness(cardMatches,java.time.Instant.now());
@@ -130,6 +142,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!collection){show("This task needs security access. Collect fresh data using the original firmware.\n\n"+INTERNET_REQUIRED,"Get security access");return;}
                 if(transferSeen){show("Firmware completed security collection. Send the collected security data to OpenSAAB for processing.\n\n"+INTERNET_REQUIRED,running.getAsBoolean()?"Process security data":"Process existing data");return;}
                 String hint=manualNavigation&&manualCollection?"Security collection detected in this session. Follow the firmware’s ignition-key prompts.":"Select Diagnostics → All → Get Security Access. Follow the original key-position prompts.";
+                if(!manualNavigation&&navigator==null)hint="Waiting for verified vehicle details before selecting the security menu.";
                 if(navigator!=null){
                     long now=SystemClock.elapsedRealtime();
                     if(running.getAsBoolean()&&menuKey!=null){Integer key=navigator.next(screen,now);if(key!=null&&menuKey.test(key))navigator.sent(now);}
