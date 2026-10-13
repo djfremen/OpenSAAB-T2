@@ -37,3 +37,14 @@ cross-platform qualification remain pending.
 Exact source, hashes and evidence are recorded in the companion JSON receipt.
 Runtime changes remain in isolated branches; the canonical checkout records
 this candidate without adopting or publishing its runtime.
+
+## Publication — October 13, 2026
+
+The exact preview.66 APK is now public at
+https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.66 .
+The Android updater and https://www.opensaab.com/static/t2/download.html serve
+its full versioned filename and verified hash. Public APK, matching source,
+receipt and checksum downloads were byte-verified. The signing certificate
+matches preview.64. Physical qualification remains pending. The companion
+Intel reporting.2 release is also public; Apple silicon and ARM32 keep their
+separate releases. No runtime bytes were changed during publication.
