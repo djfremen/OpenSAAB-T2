@@ -4,7 +4,7 @@
     "Intel macOS x86_64"
   ],
   "android_source": {
-    "source_commit": "809d7b777cc74dcdf57dae835b6c5818293666b0",
+    "source_commit": "9619156a086469f6285f0d22196b615f35d07106",
     "source_license": "MPL-2.0 AND LGPL-3.0-only",
     "source_repository": "https://github.com/djfremen/OpenSAAB-T2",
     "version_code": 100065,
@@ -59,7 +59,7 @@
     },
     "OpenSAAB-T2-0.1.0-preview.65-arm64-v8a.apk": {
       "bytes": 15997047,
-      "sha256": "54ce84c36664ed723f0d21c1877ff74e9ecfefa838d970f78c1afc6afadbc893"
+      "sha256": "1d21af0c90371d30be2c35beefad73acc955169550085332f72f5c110cf3f861"
     }
   },
   "server": {
@@ -78,11 +78,21 @@
     "server_container": 14,
     "android_existing_instrumentation_suites": 7,
     "android_evidence_instrumentation": "passed",
-    "mac_host_packaged_checks": 162
+    "mac_host_packaged_checks": 162,
+    "android_review_receipt_regression": "passed"
   },
-  "physical_tests": "Pending Android and Intel Mac exact-candidate reproduction; no claimed repair of prior vehicle crashes",
+  "physical_tests": "Android hardware reproduction pending. Intel Mac SSH key and supplied password rejected; x86_64 package execution not tested.",
   "public_app_release": "Not published",
   "android_upload": {
+    "report_id": "OS-0a553a2ea019049cc0d7d9e9",
+    "stored_content_verified": true,
+    "version": "0.1.0-preview.65",
+    "source_commit": "9619156a086469f6285f0d22196b615f35d07106",
+    "session_count": 3,
+    "all_sessions_schema2": true,
+    "last_sent_ui_matches_storage": true
+  },
+  "android_upload_before_receipt_ui_fix": {
     "report_id": "OS-375426a1ca37fff897432f2e",
     "stored_content_verified": true,
     "version": "0.1.0-preview.65",

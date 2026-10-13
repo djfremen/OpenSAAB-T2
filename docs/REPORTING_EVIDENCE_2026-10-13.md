@@ -20,10 +20,12 @@ Physical qualification remains pending: install the candidates on Intel macOS an
 
 ## Final package and service checks
 
-Android preview.65 is release-signed from the clean source recorded in the artifact receipt. All six native payloads match preview.64 exactly. Installed and opened in Android Studio; the real review/consent/send flow stored report OS-375426a1ca37fff897432f2e. Its three sessions include evidence schema 2. Cloudflare object content equals the reviewed report.
+Android preview.65 is release-signed from the clean source recorded in the artifact receipt. All six native payloads match preview.64 exactly. Installed and opened in Android Studio; the real review/consent/send flow stored report OS-0a553a2ea019049cc0d7d9e9. Its three sessions include evidence schema 2. Cloudflare object content equals the reviewed report.
 
 Intel macOS 0.2.24-reporting.1 is built from clean source c946c6b, x86_64-only, with verified ad-hoc signature and bundled support files. The same-source ARM64 validation package passed 162 checks on M4; this is not an Intel execution pass. Its reporting worker produced synthetic report OS-ade50216161b94f78d4aad37; HTTP 201 and identical R2 content were independently verified.
 
 The support-only server overlay is healthy, based on the previously live pinned image; existing iOS handling is preserved. Fourteen server tests pass both locally and in the deployed image. The image digest, rollback base and exact artifact hashes are in REPORTING_ARTIFACTS_2026-10-13.json. No public APK/DMG catalog was changed. Physical Android and Intel reproduction remains pending.
 
 The installed upload check also exposed a stale Android “Last sent report” summary. Confirmed delivery now updates both the per-report receipt and the summary; a newly prepared unsent report does not replace the confirmed receipt. A dedicated real-dialog regression covers both cases.
+
+Final Android package source: 9619156. Installed report OS-0a553a2ea019049cc0d7d9e9 matches both the reopened app’s Last sent report label and the independently read R2 object. Intel SSH was reachable but rejected both key authentication and the previously supplied password; no physical Intel qualification was performed.
