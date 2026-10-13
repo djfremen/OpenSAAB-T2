@@ -154,8 +154,10 @@ impl Bridge {
         let (ready, started) = mpsc::sync_channel(1);
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
+        let diagnostics_dir = directory.to_path_buf();
         let worker = thread::spawn(move || {
             let mut client = Client::new(usb);
+            let mut diagnostics = crate::adapter_diagnostics::Recorder::new(&diagnostics_dir,"nano",if cfg!(target_os="android") {"android_usb"} else {"usb_cdc"});
             let mut opened = [false; 2];
             let started_at = Instant::now();
             let mut rx = 0u64;
@@ -201,6 +203,9 @@ impl Bridge {
                     }
                 })?;
                 let mut startup = init_handshake::Progress::default();
+                let info=crate::nano_usb::identity(&identity_reply)?;
+                diagnostics.nano_reply(&info.firmware);
+                diagnostics.stage("channel_open");
                 init_handshake::init_handshake(
                     &mut client,
                     &identity_reply,
@@ -232,6 +237,7 @@ impl Bridge {
                         }
                     }
                 }
+                diagnostics.ready();
                 ready.try_send(()).map_err(|_| "Native startup cancelled")?;
                 while !cancelled.load(Ordering::Relaxed) {
                     if let Some(error) = session_budget_error(full_native, started_at.elapsed(), 0) {
@@ -294,9 +300,10 @@ impl Bridge {
                     }
                 }
             }
-            if client.transport_mut().command("QUIT").as_deref() != Ok("CLOSED") {
-                cleanup = false;
-            }
+            let protocol_clean = cleanup;
+            let usb_closed = client.transport_mut().command("QUIT").as_deref() == Ok("CLOSED");
+            if !usb_closed {cleanup=false;}
+            diagnostics.finish(result.is_err(),protocol_clean,Some(usb_closed));
             println!("NATIVE_USB_CLOSED cleanup_ok={cleanup} generated_diagnostic_requests=0");
             if let Err(e) = result {
                 let _ = errors.try_send(e);

@@ -168,16 +168,22 @@ impl Bridge {
         let stop = Arc::new(AtomicBool::new(false));
         let cancelled = stop.clone();
         let worker_policy = policy.clone();
+        let diagnostics_dir = directory.to_path_buf();
+        let direct_serial = false;
         let worker = thread::spawn(move || {
             let mut c = Client::new(usb);
             let mut opened = [false; 2];
             let began = Instant::now();
             let mut rx_count = 0u64;
+            let mut diagnostics = crate::adapter_diagnostics::Recorder::new(&diagnostics_dir,"chipsoft",if direct_serial {"usb_cdc"} else {"android_usb"});
             let operation = (|| -> Result<(), String> {
                 let id = c.checked(&command(1, vec![]))?;
-                if !id.payload.starts_with(b"CHIPSOFT J2534 Pro v. 1.5.2") {
+                let accepted = id.payload.starts_with(b"CHIPSOFT J2534 Pro v. 1.5.2");
+                diagnostics.chipsoft_reply(&id.payload,accepted);
+                if !accepted {
                     return Err("Unvalidated Chipsoft firmware version".into());
                 }
+                diagnostics.stage("channel_open");
                 c.checked(&command(8, vec![]))?;
                 for (i, p) in PROTOCOLS.iter().enumerate() {
                     opened[i] = true;
@@ -185,6 +191,7 @@ impl Bridge {
                         c.checked(&f)?;
                     }
                 }
+                diagnostics.ready();
                 ready.try_send(()).map_err(|_| "Native startup cancelled")?;
                 while !cancelled.load(Ordering::Relaxed) {
                     if let Some(error) =
@@ -285,6 +292,7 @@ impl Bridge {
             {
                 clean = false;
             }
+            diagnostics.finish(operation.is_err(),clean,if direct_serial {None} else {Some(clean)});
             println!("NATIVE_USB_CLOSED adapter=chipsoft cleanup_ok={clean} rx={rx_count}");
             if let Err(e) = operation {
                 let _ = failed.try_send(e);

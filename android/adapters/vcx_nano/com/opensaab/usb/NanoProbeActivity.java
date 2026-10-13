@@ -541,6 +541,7 @@ public class NanoProbeActivity extends Activity {
             if(!cleaned && !stoppedByUser){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             else if(requestedQuit && cleaned && resultPublished && resultSucceeded)progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             else if(!stoppedByUser && !resultPublished){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();}
+            if(progress.failed())log(ConnectionAttempt.failureSummary(this,nativeDirectory==null?resultFile.getParentFile():nativeDirectory));
             if(nativeFirmware() && stoppedByUser)log("NATIVE_STOP_RESULT usb_closed="+cleaned+" protocol_cleanup_confirmed="+nativeProtocolCleanupConfirmed+" quit_received="+requestedQuit);
             final boolean startSecurityFirmware=securityVinProbe && requestedQuit && cleaned && resultSucceeded && !stoppedByUser && securityVehicle!=null;
             InteractiveKeyPump endedInput=nativeKeyPump;if(endedInput!=null)endedInput.close();nativeKeyPump=null;

@@ -18,6 +18,7 @@ public final class ConnectionAttempt {
         TIMEOUT, IO_ERROR, PROTOCOL_OR_PROCESS_ERROR, VIN_UNAVAILABLE, SETUP_REQUIRED, CLEANUP_FAILED, USER_STOP }
     private static final ExecutorService IO = Executors.newSingleThreadExecutor(r -> new Thread(r,"connection-reports"));
     private final File root;
+    private final String appVersion,architecture,build;
     private final String id=UUID.randomUUID().toString(), created=java.time.Instant.now().toString();
     private final long began=SystemClock.elapsedRealtime();
     private final Adapter adapter;
@@ -36,6 +37,11 @@ public final class ConnectionAttempt {
 
     public ConnectionAttempt(Context c, Adapter adapter) {
         this.root=new File(c.getFilesDir(),"connection-attempts");this.adapter=adapter;
+        String version="unavailable",abi="unavailable",revision="unavailable";
+        try{version=c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName;
+            try(java.io.InputStream in=c.getAssets().open("build.json")){byte[] bytes=new byte[4096];int count=in.read(bytes);JSONObject meta=new JSONObject(new String(bytes,0,count,java.nio.charset.StandardCharsets.UTF_8));abi=meta.optString("architecture","unavailable");revision=meta.optString("source_commit","unavailable");}
+        }catch(Exception ignored){}
+        appVersion=version;architecture=abi;build=revision;
         stage(Stage.DETECTION);
     }
     public synchronized void device(int vendor,int product) { this.vendor=vendor;this.product=product;save(); }
@@ -63,7 +69,7 @@ public final class ConnectionAttempt {
             if(vendor!=null)j.put("usb_vendor_id",vendor).put("usb_product_id",product);
             String snapshot=j.toString();
             final File bound=evidenceRun;
-            final String evidence=new JSONObject().put("attempt_id",id).put("session_mode",evidenceMode).put("last_operation",operation).put("primary_reason",reason.name()).put("cleanup",cleanupEvidence).toString();
+            final String evidence=new JSONObject().put("attempt_id",id).put("session_mode",evidenceMode).put("last_operation",operation).put("primary_reason",reason.name()).put("cleanup",cleanupEvidence).put("app_version",appVersion).put("architecture",architecture).put("build",build).put("family",adapter.name().toLowerCase(java.util.Locale.ROOT)).put("transport","android_usb").toString();
             IO.execute(()->{try{
                 if(!root.isDirectory()&&!root.mkdirs())return;
                 FirmwareStore.writeJson(new File(root,id+".json"),new JSONObject(snapshot));
@@ -72,6 +78,19 @@ public final class ConnectionAttempt {
                 if(files!=null){Arrays.sort(files,Comparator.comparingLong(File::lastModified).reversed());for(int i=20;i<files.length;i++)files[i].delete();}
             }catch(Exception ignored){} });
         }catch(Exception ignored){} // Reporting must never break a connection.
+    }
+    /** Runs the common passive formatter after cleanup; no transport or vehicle command. */
+    public static String failureSummary(Context c,File run) {
+        if(run==null || !run.isDirectory())return "Failure details unavailable: no session evidence.";
+        java.lang.Process child=null;
+        try {
+            IO.submit(()->{}).get(2,TimeUnit.SECONDS);
+            child=new ProcessBuilder(c.getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so","--crash-details",run.getPath()).redirectErrorStream(true).start();
+            if(!child.waitFor(3,TimeUnit.SECONDS)){child.destroyForcibly();return "Failure details unavailable: formatter timeout.";}
+            if(child.exitValue()!=0)return "Failure details unavailable: formatter failed.";
+            byte[] bytes=new byte[4096];int n=child.getInputStream().read(bytes);
+            return n>0?new String(bytes,0,n,java.nio.charset.StandardCharsets.UTF_8):"Failure details unavailable: empty summary.";
+        }catch(Exception e){if(child!=null)child.destroyForcibly();return "Failure details unavailable: formatter could not run.";}
     }
     /** Worker-thread barrier before freezing a support report; never wait on the UI thread. */
     public static JSONArray collect(Context c) {

@@ -107,6 +107,7 @@ if experimental:
     for provider in app.findall('provider'):
         key = '{'+ns+'}authorities'
         provider.set(key, provider.get(key).replace('com.opensaab.tech2.', profile.package+'.'))
+manifest.getroot().find('application').set('{'+ns+'}label', 'OpenSAAB '+args.version_name+' '+('ARM64' if profile.abi=='arm64-v8a' else 'ARM32'))
 manifest.getroot().set('{'+ns+'}versionName', args.version_name)
 manifest.getroot().set('{'+ns+'}versionCode', str(args.version_code))
 manifest.getroot().find('application').set('{'+ns+'}debuggable', 'false' if args.release else 'true')
@@ -121,7 +122,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
         if subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip():
             raise SystemExit('Official release builds require a clean source checkout')
         commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
-        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only'},sort_keys=True))
+        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only'},sort_keys=True))
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
     for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)

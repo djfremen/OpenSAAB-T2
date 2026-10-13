@@ -399,6 +399,7 @@ public final class ChipsoftUsbActivity extends Activity {
             if(quit && clean && !identifyFirst && (!vinCheck || identified!=null))progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             closeSockets();if(firmwareLease!=null)firmwareLease.close();
             log("USB_CLOSED cleanup_ok="+clean+" session="+run.getName());
+            if(progress.failed())log(ConnectionAttempt.failureSummary(this,run));
             if(vinCheck && identified!=null && !cancelled && generation==vehicleGeneration){
                 if(!onlineDetails)identified=VehicleSession.unavailable(identified,"not_requested");
                 try{synchronized(identityLock){if(!cancelled&&generation==vehicleGeneration){VehicleSession.save(new File(run,VehicleSession.FILE),identified);VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),identified);}}}

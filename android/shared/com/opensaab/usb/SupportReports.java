@@ -86,6 +86,7 @@ public final class SupportReports {
             OfflineSessionEvidence.collect(dir,session);
             session.put("diagnostic_events",SessionDiagnostics.read(dir));
             try{File info=new File(dir,"adapter-identity.json");if(info.length()<=512){String version=FirmwareStore.json(info).optString("firmware_version");if(version.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){1,3}(?:[-+][A-Za-z0-9._-]{1,20})?"))session.put("firmware_version",version);}}catch(Exception ignored){}
+            try{String version=DiagnosticEvidence.read(dir,"crash-diagnostics.json").optString("firmware_version");if(version.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){1,3}(?:[-+][A-Za-z0-9._-]{1,20})?"))session.put("firmware_version",version);}catch(Exception ignored){}
             session.put("diagnostic_evidence",DiagnosticEvidence.collect(dir,session.optString("adapter","unknown")));
             session.put("native_performance",PerformanceReport.session(dir));
             session.put("logs",logs);runs.put(session);

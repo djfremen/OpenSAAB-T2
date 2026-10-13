@@ -21,6 +21,7 @@ pub mod t8_dtc;
 pub use adapters::j2534::connection as vcx;
 pub mod vin_probe;
 
+pub mod adapter_diagnostics;
 pub mod can_adapter;
 pub use adapters::j2534::bridge as candi_nano;
 pub use adapters::vcx_nano::channel as nano_channel;

@@ -24,5 +24,42 @@
   },
   "retention": "Retain error-associated session before other recent sessions when an ID is known; at most 5 sessions and 20 attempts; explicitly label bounded/truncated evidence",
   "privacy": "Review and explicit send consent retained. No raw bus traffic, VIN, seed/key data, credentials or firmware uploaded. Typed artifact availability never includes local paths. Description is user-entered.",
-  "qualification": "Synthetic emulator and package tests do not qualify vehicle functions or diagnose prior crashes. Intel and physical Android follow-up required."
+  "qualification": "Synthetic emulator and package tests do not qualify vehicle functions or diagnose prior crashes. Intel and physical Android follow-up required.",
+  "local_crash_details": {
+    "schema": 1,
+    "title": "CRASH DETAILS",
+    "source": "Shared passive Rust adapter_diagnostics.rs, identical in Android and desktop",
+    "fields": [
+      "packaged app version",
+      "architecture",
+      "source build",
+      "connection attempt UUID",
+      "adapter family",
+      "observed model",
+      "reported firmware",
+      "hardware revision",
+      "driver version when known",
+      "transport",
+      "last observed adapter state and phase",
+      "compatibility result",
+      "first fixed failure category",
+      "session mode",
+      "last operation",
+      "independent USB and protocol cleanup"
+    ],
+    "identification": "Retain model/firmware from GET_INFO before compatibility rejection. Observation never enables an unsupported adapter.",
+    "unknown": "Unavailable or unknown is explicit. Selected family is not a verified model. A transport-close acknowledgement is not an ECU result.",
+    "retention": "The same local snapshot is in Console, crash-diagnostics.json, crash.json and report.json. Android refreshes after host cleanup, including its prebuilt MDI engine; first failure is preserved.",
+    "privacy": "Known model and bounded version tokens only. No serial, VIN, raw identity, bus traffic, security payload or credential in this summary.",
+    "upload": "The existing deployed review/consent schema is preserved. Support uploads include the existing validated firmware_version field plus existing state/failure/cleanup evidence; the full local crash snapshot remains in saved logs.",
+    "targets": {
+      "android-arm64": "source candidate preview.66; packaged/installed synthetic verification pending",
+      "macos-x86_64": "source candidate 0.2.24-reporting.2; native Intel/hardware verification pending",
+      "macos-arm64": "same source host validation only",
+      "android-arm32": "pending",
+      "windows-x64": "pending",
+      "ios-arm64": "pending",
+      "linux-x86_64": "pending"
+    }
+  }
 }

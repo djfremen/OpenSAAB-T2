@@ -1190,6 +1190,11 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
                 .map_err(|_| (2, "arguments must be valid UTF-8".into()))
         })
         .collect::<Result<_, _>>()?;
+    if args.first().is_some_and(|a|a=="--crash-details") {
+        if args.len()!=2 {return Err((2,"Use --crash-details SESSION_DIRECTORY".into()));}
+        let v=tech2_emu::adapter_diagnostics::persist(std::path::Path::new(&args[1])).map_err(|e|(4,e))?;
+        println!("{}",tech2_emu::adapter_diagnostics::console(&v));return Ok((0,false));
+    }
     // Help remains usable even when the environment contains bad settings.
     if args.iter().any(|a| a == "--help" || a == "-help") {
         println!("{}", options::HELP);
@@ -1823,6 +1828,9 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
     for w in runs.iter().take(14) {
         println!("  SCREEN: {w}");
     }
+    let mut crash_diagnostics = tech2_emu::adapter_diagnostics::snapshot(&opts.output);
+    crash_diagnostics["terminal_pc"] = serde_json::json!(cpu.pc);
+    crash_diagnostics["process_exit_code"] = serde_json::json!(outcome.code());
     if outcome == Outcome::GuestFailure {
         let q = artifacts::json_string;
         let stack = bus
@@ -1831,6 +1839,9 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
             .unwrap_or_else(|| "null".into());
         let snapshot = format!("{{\n  \"reason\": {},\n  \"mode\": {},\n  \"instructions\": {},\n  \"pc\": {},\n  \"sp\": {},\n  \"sr\": {},\n  \"d_registers\": {:?},\n  \"a_registers\": {:?},\n  \"recent_pcs\": {:?},\n  \"stack_bytes\": {},\n  \"screen\": {}\n}}\n",
             q(&stop), q(mode), insns, cpu.pc, cpu.sp(), cpu.get_sr(), &cpu.dar[..8], &cpu.dar[8..], bus.recent_pc_history(), stack, q(&text));
+        let mut snapshot: serde_json::Value = serde_json::from_str(&snapshot).expect("generated crash snapshot");
+        snapshot["crash_diagnostics"] = crash_diagnostics.clone();
+        let snapshot = serde_json::to_string_pretty(&snapshot).expect("serializable crash snapshot");
         if let Err(e) = std::fs::write(&crash_path, snapshot) {
             outcome = Outcome::OutputFailure;
             stop = format!("{stop}; crash snapshot: {e}");
@@ -1855,6 +1866,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         stop = format!("{stop}; trace persistence: {e}");
     }
     println!("VERDICT: {} — {}", outcome.name(), stop);
+    if outcome.code() != 0 { println!("{}", tech2_emu::adapter_diagnostics::console(&crash_diagnostics)); }
     let q = artifacts::json_string;
     let candi_report = candi_snapshot.map(|s| format!(
         "{{\"profile\":\"msi-addressed-download\",\"native_uart\":{},\"attempted\":{},\"completed\":{},\"cycles\":{},\"pc\":{},\"reason\":{},\"serial_rx_bytes\":{},\"serial_rx_breaks\":{},\"serial_tx_bytes\":{},\"adapter_tx_confirmations\":{},\"external_tx\":{}}}",
@@ -1868,6 +1880,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         q(outcome.name()), outcome.code(), q(mode), insns, cpu.pc, q(&stop), q(&last_verified),
         q(&boot_path.to_string_lossy()), q(&card_path.to_string_lossy()), q(&opsys_path.to_string_lossy()), bus.host_cancelled_operations);
     let mut report: serde_json::Value = serde_json::from_str(&report).expect("generated runtime report");
+    report["crash_diagnostics"] = crash_diagnostics;
     report["emulation_evidence"] = opensaab_session_evidence::snapshot(
         outcome.name(), &stop, &text, report.get("candi"));
     let report = serde_json::to_string_pretty(&report).expect("serializable runtime report");

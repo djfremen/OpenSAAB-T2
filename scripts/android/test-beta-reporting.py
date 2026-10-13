@@ -9,6 +9,7 @@ import importlib.util
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--serial',required=True)
 p.add_argument('--lifecycle',action='store_true',help='Add real report-screen rotation/recreation/Home tests; use a phone-sized AVD')
+p.add_argument('--crash-details-only',action='store_true')
 p.add_argument('--evidence-only',action='store_true')
 p.add_argument('--review-only',action='store_true')
 a=p.parse_args()
@@ -23,14 +24,15 @@ def run(*args,capture=False):
 suites=['SupportReportInstrumentedTest','EmulatorHealthInstrumentedTest','SecurityAccessInstrumentedTest','SecuritySessionInstrumentedTest']
 if a.lifecycle:suites.append('ReportLifecycleInstrumentedTest')
 suites.extend(['ReportReviewInstrumentedTest','NativeLcdPumpInstrumentedTest','SessionEndInstrumentedTest'])
+if a.crash_details_only:suites=['CrashDetailsInstrumentedTest']
 if a.evidence_only:suites=['DiagnosticEvidenceInstrumentedTest']
 if a.review_only:suites=['ReportReviewInstrumentedTest']
 sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 deps=ReportDependencies(r,out,env)
 ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',ns)
 tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();root.set('package',package)
-root.set('{'+ns+'}versionName','diagnostics-test-only');root.set('{'+ns+'}versionCode','1')
-app=root.find('application');app.set('{'+ns+'}label','OpenSAAB diagnostics TEST ONLY')
+root.set('{'+ns+'}versionName','0.1.0-crash-details-test.1');root.set('{'+ns+'}versionCode','1')
+app=root.find('application');app.set('{'+ns+'}label','OpenSAAB 0.1.0-crash-details-test.1 ARM64 TEST ONLY')
 for e in app.findall('activity'):
  if e.get('{'+ns+'}name')=='com.opensaab.usb.SupportReportActivity':e.set('{'+ns+'}exported','true') # Isolated harness only.
  if e.get('{'+ns+'}name')=='.MainActivity':e.set('{'+ns+'}name','com.opensaab.tech2.MainActivity')
@@ -42,6 +44,10 @@ deps.compile(jdk,jar,classes,sources)
 for test in ['DiagnosticFailureTest','ChipsoftIdentityTest']:run(jdk/'bin/java','-cp',classes,'com.opensaab.usb.'+test)
 deps.dex(bt,jar,classes)
 with zipfile.ZipFile(out/'unsigned.apk','a') as z:
+ if a.crash_details_only:
+  import json
+  z.write(r/'target/aarch64-linux-android/release/tech2-emu','lib/arm64-v8a/libtech2_emu.so')
+  z.writestr('assets/build.json',json.dumps({'architecture':'arm64-v8a','source_commit':subprocess.check_output(['git','-C',r,'rev-parse','HEAD'],text=True).strip()}))
  deps.add_runtime_resources(z)
  for dex in sorted(out.glob('classes*.dex')):z.write(dex,dex.name)
 run(bt/'zipalign','-f','4',out/'unsigned.apk',out/'aligned.apk')

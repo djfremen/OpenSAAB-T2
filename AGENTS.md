@@ -19,3 +19,12 @@ evidence; no inherited pass from ARM64, another adapter or a standalone helper.
 Missing functionality remains an explicit gap, not a cosmetic placeholder pass.
 
 These rules do not require extra approval for already-authorized work.
+
+## Development preview identity
+
+Each changed preview must use a distinct full version with prerelease/revision
+and architecture in its installed program name, displayed identity, main title,
+installer and manifest. Read displayed versions from packaged metadata. Retain
+artifact hashes and historical packages; never rename a running diagnostic app
+or alter a published signed bundle. This candidate explicitly adopts the rule
+on Android ARM64 as well as macOS. Other target adoption remains recorded pending.

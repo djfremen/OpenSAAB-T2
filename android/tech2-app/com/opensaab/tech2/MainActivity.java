@@ -75,7 +75,7 @@ public final class MainActivity extends Activity {
         controls.setActions(this::showActions);
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
         lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{if(frame!=null){if(!running||stopping.get())return;health.frame();offlineEvidence.frame();controls.showFirstUseGuide();}lcd.frame=frame;lcd.invalidate();});
-        workspace=new com.opensaab.usb.SessionWorkspace(this,"OpenSAAB T2",controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
+        workspace=new com.opensaab.usb.SessionWorkspace(this,getApplicationInfo().loadLabel(getPackageManager()).toString(),controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         simulatorConnection=new com.opensaab.usb.SimulatorVehicleConnection(this,this::simulatorChanged);
         connectionStatus=label("",12);connectionStatus.setTag("connection-status");connectionStatus.setVisibility(View.GONE);workspace.addLaunch(connectionStatus);
         cancelConnection=new Button(this);cancelConnection.setText("Cancel");cancelConnection.setTag("cancel-connection");com.opensaab.usb.SessionStyle.button(cancelConnection,false);cancelConnection.setOnClickListener(v->simulatorConnection.stop());cancelConnection.setVisibility(View.GONE);workspace.addLaunch(cancelConnection);
