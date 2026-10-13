@@ -121,8 +121,9 @@ with zipfile.ZipFile(unsigned, 'a') as z:
     if args.release:
         if subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip():
             raise SystemExit('Official release builds require a clean source checkout')
-        commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
-        z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only'},sort_keys=True))
+    commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+    dirty = bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip())
+    z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'source_dirty':dirty,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':not args.release},sort_keys=True))
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
     for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)

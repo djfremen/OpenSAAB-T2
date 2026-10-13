@@ -51,6 +51,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             BooleanSupplier running,Runnable stop,Runnable collect,Runnable resume){
         super(activity);this.activity=activity;this.collection=collection;this.session=session;
         this.running=running;this.stop=stop;this.collect=collect;this.resume=resume;
+        manualNavigation=SecurityCollectionMode.MANUAL.equals(SecurityCollectionMode.from(activity.getIntent()));
         setOrientation(VERTICAL);
         setPadding(SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10));
         android.graphics.drawable.GradientDrawable panel=new android.graphics.drawable.GradientDrawable();
@@ -95,7 +96,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             activity.runOnUiThread(()->{
                 polling.set(false);if(closed||busy||session.get()!=run)return;
                 if(observed!=run){if(manualCollection)collection=false;observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
-                    navigator=collection&&run!=null?new SecurityMenuNavigator(currentIdentity):null;
+                    navigator=collection&&run!=null?new SecurityMenuNavigator(SecurityCollectionMode.navigationIdentity(activity,currentIdentity)):null;
                     if(navigator!=null&&(manualNavigation||!new FirmwareStore(activity.getFilesDir()).englishNavigation()))navigator.cancel();}
                 receipt=current;receiptCardMatches=cardMatches;detailsAction=false;
                 cardState=currentState;selectedSsa=working.bytes;
@@ -106,6 +107,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!collection&&run!=null&&running.getAsBoolean()&&(SsaData.collectingAccess(screen)||prompt)){
                     collectInCurrentSession();android.util.Log.i("OpenSaabSecurity","Manual security collection detected in current firmware session");
                 }
+                if(collection&&!transferSeen){
+                    stateLabel.setText("Security status · Collecting fresh data");stateLabel.setTextColor(SsaState.PRE_AUTH.color);
+                }
                 if(collection&&!transferSeen&&SsaData.collectingAccess(screen)){
                     stateLabel.setText("Security status · Collecting pre-auth");stateLabel.setTextColor(SsaState.PRE_AUTH.color);
                 }
@@ -114,7 +118,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(!seedsReady())transferSeen=false;
                 if(collection&&transferSeen){stateLabel.setText("Security status · Ready to process");stateLabel.setTextColor(SsaState.PRE_AUTH.color);}
                 setVisibility(VISIBLE);
-                imported=!manualCollection&&cardState==SsaState.POST_AUTH&&receipt!=null&&receipt.imported()&&cardMatches;
+                imported=!collection&&!manualCollection&&cardState==SsaState.POST_AUTH&&receipt!=null&&receipt.imported()&&cardMatches;
                 if(imported){show(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Continue firmware");message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
                 if(!collection&&!prompt&&cardState==SsaState.POST_AUTH){show(cardState.explanation+("Stale".equals(age)?"\nData age is a reminder; fresh collection remains available.":""),"Continue firmware");imported=true;return;}
@@ -133,7 +137,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 }
                 if(screen.contains("LOCK position"))hint="Follow the firmware prompt to turn the key to LOCK.";
                 if(screen.contains("Remove Ignition"))hint="Follow the firmware prompt to remove the key.";
-                show(hint+"\n\n"+INTERNET_REQUIRED,"Waiting for collection");action.setEnabled(false);
+                show(hint+"\n\nInternet is needed only after collection, when you choose Process security data.","Waiting for collection");action.setEnabled(false);
             });
         });}catch(RejectedExecutionException e){polling.set(false);}
     }
@@ -148,9 +152,11 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     }
     private void confirmCollection(){
         if(closed||busy)return;
-        new AlertDialog.Builder(activity).setTitle("Collect fresh security data")
-            .setMessage(INTERNET_REQUIRED+"\n\nStart a new original-firmware collection. This replaces the selected seeds only after new data is collected. Follow Diagnostics → All → Get Security Access and the physical ignition-key prompts. Stale is a data-age reminder and does not block collection.")
-            .setNegativeButton("Continue firmware",null).setPositiveButton("Start collection",(d,w)->begin(false,false)).show();
+        SecurityCollectionMode.choose(activity,mode->{
+            activity.getIntent().putExtra(SecurityCollectionMode.EXTRA,mode);
+            manualNavigation=SecurityCollectionMode.MANUAL.equals(mode);
+            begin(false,false);
+        });
     }
     private void activate(){
         if(closed||busy)return;
@@ -218,7 +224,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private void processAttempt(File run,boolean allowFallback,VehicleIdentity identity,SecurityAccessStatus attempt,byte[] selection)throws Exception{
         File card=new File(activity.getFilesDir(),"firmware/card.bin");
         byte[] input=SecuritySessionData.processingInput(run,card,identity,selection);
-        byte[] before=SecuritySessionData.read(new File(run,"ssa-card-before.bin"),SsaData.SIZE);
+        byte[] before=SecurityCollectionCard.beforeImport(run);
         attempt.collected(java.time.Instant.now());attempt.save(receiptFile());
         String originalHash=SsaCardImport.hash(card);
         File evidence=new File(run,"security-api-"+UUID.randomUUID());if(!evidence.mkdir())throw new IOException("Cannot save security evidence");

@@ -13,7 +13,7 @@ public final class SessionWorkspace extends LinearLayout {
     private final Activity activity;
     private boolean expanded;
     public SessionWorkspace(Activity a,String title,Tech2Controls display,Runnable menu,Runnable details){
-        super(a);activity=a;controls=display;setTag("session-workspace");setBackgroundColor(0xff0d1620);
+        super(a);activity=a;controls=display;a.setTitle(AppBuildProfile.programName(a));setTag("session-workspace");setBackgroundColor(0xff0d1620);
         rail=new LinearLayout(a);rail.setOrientation(VERTICAL);rail.setTag("session-header");
         LinearLayout top=new LinearLayout(a);top.setGravity(Gravity.CENTER_VERTICAL);
         top.addView(new BrandHeader(a,title,true),new LayoutParams(0,-2,1));

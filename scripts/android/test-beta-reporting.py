@@ -12,6 +12,7 @@ p.add_argument('--lifecycle',action='store_true',help='Add real report-screen ro
 p.add_argument('--crash-details-only',action='store_true')
 p.add_argument('--evidence-only',action='store_true')
 p.add_argument('--review-only',action='store_true')
+p.add_argument('--security-only',action='store_true')
 a=p.parse_args()
 if not a.serial.startswith('emulator-'):raise SystemExit('Disposable Android emulator required')
 r=Path(__file__).resolve().parents[2];sdk=Path.home()/'Library/Android/sdk';bt=sdk/'build-tools/36.0.0'
@@ -27,11 +28,12 @@ suites.extend(['ReportReviewInstrumentedTest','NativeLcdPumpInstrumentedTest','S
 if a.crash_details_only:suites=['CrashDetailsInstrumentedTest']
 if a.evidence_only:suites=['DiagnosticEvidenceInstrumentedTest']
 if a.review_only:suites=['ReportReviewInstrumentedTest']
+if a.security_only:suites=['SecurityAccessInstrumentedTest','SecuritySessionInstrumentedTest','SecurityCollectionInstrumentedTest']
 sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 deps=ReportDependencies(r,out,env)
 ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',ns)
 tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();root.set('package',package)
-test_version='0.1.0-crash-tests.2' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
+test_version='0.1.0-security-tests.4' if a.security_only else '0.1.0-crash-tests.2' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
 root.set('{'+ns+'}versionName',test_version);root.set('{'+ns+'}versionCode','1')
 app=root.find('application');app.set('{'+ns+'}label','OpenSAAB '+test_version+' ARM64 TEST ONLY')
 for e in app.findall('activity'):

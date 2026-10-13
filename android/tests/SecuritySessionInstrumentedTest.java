@@ -83,7 +83,7 @@ public final class SecuritySessionInstrumentedTest extends Instrumentation {
             boolean freshVisible=false;long windowDeadline=SystemClock.elapsedRealtime()+5000;
             while(SystemClock.elapsedRealtime()<windowDeadline){
                 android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
-                if(root!=null&&!root.findAccessibilityNodeInfosByText("Start collection").isEmpty()){freshVisible=true;break;}
+                if(root!=null&&!root.findAccessibilityNodeInfosByText("Manual collection").isEmpty()){freshVisible=true;break;}
                 SystemClock.sleep(50);
             }
             check(freshVisible,"Stale receipt blocked fresh collection action");

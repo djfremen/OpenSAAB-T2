@@ -93,7 +93,7 @@ public final class SecuritySessionData {
         SsaData.validateInput(after);
         if(!identity.vin.equals(SsaData.vin(after))||!Arrays.equals(after,selected))throw new IOException("Selected security data changed; review it again.");
         if(!transferEvidence(run,after))throw new IOException("Complete the original firmware collection and transfer prompt first.");
-        SsaCardImport.verifyBaseline(card,before);
+        SsaCardImport.verifyBaseline(card,SecurityCollectionCard.beforeImport(run));
         File baseline=new File(run,"security-card-baseline.sha256");
         if(!baseline.isFile()||baseline.length()!=64||!SsaCardImport.hash(card).equals(new String(Files.readAllBytes(baseline.toPath()),StandardCharsets.US_ASCII)))
             throw new IOException("Diagnostic software changed since collection. Select the original software or collect fresh data.");

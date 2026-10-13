@@ -150,7 +150,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     public Dialog showActions(){
         return new SessionSheet.Menu(this)
-            .add(securityAccess!=null&&securityAccess.readyToProcess()?"Process security data":"Get security access",()->runShortcut(FirmwareMenuNavigator.Target.SECURITY))
+            .add(securityAccess!=null&&securityAccess.readyToProcess()?"Process security data":"Get security access",()->{if(securityAccess!=null)securityAccess.requestAccess();else runShortcut(FirmwareMenuNavigator.Target.SECURITY);})
             .add("ECU information",()->runShortcut(FirmwareMenuNavigator.Target.ECU_INFO))
             .add("Original menus",()->{if(menuShortcut!=null)menuShortcut.cancel();})
             .add("Read engine codes — HS-CAN",this::openEngineCodes)
@@ -202,7 +202,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void openSecuritySession(boolean collect){
         if(running.get())return;
-        Intent next=new Intent(this,ChipsoftUsbActivity.class).putExtra(collect?"native_seeds":"full_native",true).putExtra("auto_start",true);
+        Intent next=new Intent(this,ChipsoftUsbActivity.class).putExtra(collect?"native_seeds":"full_native",true).putExtra("auto_start",true).putExtra(SecurityCollectionMode.EXTRA,SecurityCollectionMode.from(getIntent())).putExtra(SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(SecurityCollectionMode.PLATFORM_EXTRA));
         if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
         startActivity(next);finish();
     }
@@ -337,8 +337,10 @@ public final class ChipsoftUsbActivity extends Activity {
                     }
                     nativeDirectory=run;health.begin(run);lcdPump.setDirectory(run);File f=new File(getFilesDir(),"firmware");
                     SecuritySessionData.recordBaseline(run,new File(f,"card.bin"));
+                    File sessionCard=seeds?SecurityCollectionCard.prepare(new File(f,"card.bin"),run):new File(f,(symbolOnly || audible)?"card-authorized.bin":"card.bin");
+                    if(seeds)SecurityCollectionMode.record(this,run);
                     for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(f,name).isFile())throw new IOException("Missing original firmware: "+name);
-                    builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so","--test-harness","--harness-target",symbolOnly?"dtc-link-1367":"native-manual","--candi-native-link","--candi-chipsoft-usb-token",token,"--candi-firmware",new File(f,"candi.bin").getPath(),"--boot",new File(f,"eprom.bin").getPath(),"--opsys",new File(f,"opsys.dwn").getPath(),"--max-insns","50000000000","--output-dir",run.getPath(),new File(f,(symbolOnly || audible)?"card-authorized.bin":"card.bin").getPath());if(symbolOnly)builder.command().add("--candi-chipsoft-symbol-only");if(seeds)builder.command().add("--candi-chipsoft-seeds");if(audible)builder.command().add("--candi-chipsoft-audible");
+                    builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so","--test-harness","--harness-target",symbolOnly?"dtc-link-1367":"native-manual","--candi-native-link","--candi-chipsoft-usb-token",token,"--candi-firmware",new File(f,"candi.bin").getPath(),"--boot",new File(f,"eprom.bin").getPath(),"--opsys",new File(f,"opsys.dwn").getPath(),"--max-insns","50000000000","--output-dir",run.getPath(),sessionCard.getPath());if(symbolOnly)builder.command().add("--candi-chipsoft-symbol-only");if(seeds)builder.command().add("--candi-chipsoft-seeds");if(audible)builder.command().add("--candi-chipsoft-audible");
                     log("NATIVE_SESSION "+run.getName()+" requests=original-firmware command_policy="+(fullNative?"full-native":"restricted"));
                 }
                 if(fullNative)builder.environment().put("TECH2_CHIPSOFT_FULL_NATIVE","1");

@@ -81,6 +81,7 @@ public final class MainActivity extends Activity {
         cancelConnection=new Button(this);cancelConnection.setText("Cancel");cancelConnection.setTag("cancel-connection");com.opensaab.usb.SessionStyle.button(cancelConnection,false);cancelConnection.setOnClickListener(v->simulatorConnection.stop());cancelConnection.setVisibility(View.GONE);workspace.addLaunch(cancelConnection);
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         start.setTag("connect-start");
+        Button securityStart=new Button(this);securityStart.setText("Get security access");securityStart.setTag("security-start");com.opensaab.usb.SessionStyle.button(securityStart,false);securityStart.setOnClickListener(v->chooseSecurityCollection());workspace.addLaunch(securityStart);
         offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
         details.addView(label(com.opensaab.usb.AppUpdates.identity(this),13));
         updateReminder=new com.opensaab.usb.AppUpdates.Reminder(this,()->!running);workspace.addLaunch(updateReminder.view());
@@ -172,9 +173,12 @@ public final class MainActivity extends Activity {
         if(vehicleSummary!=null){vehicleSummary.setText("No current vehicle connection");connectionDate.setText("Last vehicle is saved history");authStatus.setText("auth_status: [N/A]");authDate.setText("Vehicle access not verified");vehicleDetails="No current vehicle connection. Last vehicle is saved history only.";}
         if(status!=null&&!running)status.setText("Ready — connect an adapter or explore offline");
     }
+    private void chooseSecurityCollection(){
+        com.opensaab.usb.SecurityCollectionMode.choose(this,mode->{getIntent().putExtra(com.opensaab.usb.SecurityCollectionMode.EXTRA,mode);selectAdapter("native_seed",false);});
+    }
     public android.app.Dialog showActions(){
         return new com.opensaab.usb.SessionSheet.Menu(this)
-            .add("Get security access",()->selectAdapter("native_seed",false))
+            .add("Get security access",this::chooseSecurityCollection)
             .add("Read engine codes — HS-CAN",()->selectAdapter("dtc_read",false))
             .add("ECU information",()->selectAdapter("native_ecu_info",false))
             .add("Read DTC",()->selectAdapter("native_dtc",false))
@@ -300,6 +304,8 @@ public final class MainActivity extends Activity {
             if(!com.opensaab.usb.MdiAdapter.packaged(this)){status.setText("MDI support is unavailable for this app architecture");return;}
             android.content.Intent mdi=new android.content.Intent(this,com.opensaab.usb.MdiUsbActivity.class)
                 .putExtra("mdi_security_request",mode.equals("native_seed"))
+                .putExtra("mdi_security_collect",mode.equals("native_seed"))
+                .putExtra(com.opensaab.usb.SecurityCollectionMode.EXTRA,com.opensaab.usb.SecurityCollectionMode.from(getIntent())).putExtra(com.opensaab.usb.SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(com.opensaab.usb.SecurityCollectionMode.PLATFORM_EXTRA))
                 .putExtra("usb_device_name",current.getDeviceName()).putExtra("auto_start",true);
             Runnable begin=()->{clearSimulatorIdentity();status.setText("Opening selected MDI USB adapter…");startActivityForResult(mdi,27);};
             if(shortcut&&!mode.equals("native_seed"))new android.app.AlertDialog.Builder(this).setTitle("MDI original firmware")
@@ -330,7 +336,7 @@ public final class MainActivity extends Activity {
         }else{status.setText("This adapter is detected, but its Android driver is not ready");return;}
         status.setText(match.profile.openingMessage());
         android.util.Log.i("OpenSaabAdapters","BACKEND_SELECTED backend="+match.backend()+" identity_verified=false probe="+match.profile.probeExecutable);
-        startActivityForResult(launch.putExtra("usb_device_name",chosen.getDeviceName()).putExtra("auto_start",true),27);
+        startActivityForResult(launch.putExtra("usb_device_name",chosen.getDeviceName()).putExtra("auto_start",true).putExtra(com.opensaab.usb.SecurityCollectionMode.EXTRA,com.opensaab.usb.SecurityCollectionMode.from(getIntent())).putExtra(com.opensaab.usb.SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(com.opensaab.usb.SecurityCollectionMode.PLATFORM_EXTRA)),27);
     }
     private void enqueue(String command) {
         if (!running || stopping.get()) { status.setText("Tap Start to select an adapter or emulation mode"); return; }

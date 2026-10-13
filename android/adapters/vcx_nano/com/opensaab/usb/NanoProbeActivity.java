@@ -117,7 +117,7 @@ public class NanoProbeActivity extends Activity {
         manager=(UsbManager)getSystemService(USB_SERVICE);
         LinearLayout root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(24,48,24,24);
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(24,i.getSystemWindowInsetTop()+24,24,i.getSystemWindowInsetBottom()+24);return i;});
-        title=new TextView(this); title.setText(nativeEngineData?"OpenSAAB · Engine live data":nativeClearDtc?"OpenSAAB · Native DTC clear":(nativeDtc || nativeKeyStatus || nativeFullNative)?"OpenSAAB · Tech2 + Nano":nativeSeeds?"OpenSAAB · Native security collection":"OpenSAAB · USB adapter tests"); title.setTextSize(23); root.addView(title);
+        title=new TextView(this); setTitle(AppBuildProfile.programName(this));title.setText(AppBuildProfile.programName(this)); title.setTextSize(23); root.addView(title);
         TextView architecture=new TextView(this);architecture.setTextSize(12);architecture.setText(EmulatorArchitecture.label(new File(getApplicationInfo().nativeLibraryDir,"libtech2_emu.so")));root.addView(architecture);
         purpose=new TextView(this); purpose.setText(nativeFullNative?"Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus":nativeKeyStatus?"Original Tech2 + CANdi firmware · direct USB\nSelect Diagnostics / All / Service / Check Ignition Key Status":nativeEngineData?"Original Tech2 + CANdi firmware · direct USB\nSelect vehicle year and model, then Engine / Engine Control":nativeClearDtc?"Original Tech2 + CANdi firmware · direct USB\nClear mode enabled · follow original prompts":nativeDtc?"Original Tech2 + CANdi firmware · direct USB\nRead codes · follow original ignition prompts":nativeSeeds?"Original Tech2 + CANdi firmware · direct USB\nSeed collection only · follow original ignition prompts":"Direct Android USB · bounded channel tests\nOptional read-only VIN check · no security access"); root.addView(purpose);
         summary=new TextView(this);summary.setMaxLines(2);summary.setEllipsize(android.text.TextUtils.TruncateAt.END);summary.setText("Ready · no active USB session");summary.setTextSize(15);root.addView(summary);
@@ -144,8 +144,7 @@ public class NanoProbeActivity extends Activity {
         if(nativeFullNative || nativeSecurityCollect){
             securityAccess=new SecurityAccessView(this,nativeSecurityCollect,()->nativeDirectory,()->running.get(),this::stopForSecurityHandoff,
                 ()->openSecuritySession(true),this::resumeSecurityFirmware);
-            // Original menus are operated manually; no ignition acknowledgement is generated.
-            securityAccess.manualNavigation();
+            // Guided collection sends recognized menu keys only; physical prompts stay manual.
             securityAccess.setMenuKey(this::sendSecurityMenuKey);
             root.addView(securityAccess);
         }
@@ -170,7 +169,7 @@ public class NanoProbeActivity extends Activity {
             });
             lcdHandler.postDelayed(new Runnable(){public void run(){updateNativeLcd();if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
         }
-        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code)));root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});if(securityAccess!=null)controls.setActions(()->securityAccess.requestAccess());root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         HeadunitLayout.apply(root);
         setContentView(root);
         IntentFilter f=new IntentFilter(PERMISSION); f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED); f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
@@ -378,12 +377,14 @@ public class NanoProbeActivity extends Activity {
                 nativeLcdPump.setDirectory(nativeDirectory);
                 File firmware=new File(getFilesDir(),"firmware");
                 SecuritySessionData.recordBaseline(nativeDirectory,new File(firmware,"card.bin"));
+                File sessionCard=nativeSecurityCollect?SecurityCollectionCard.prepare(new File(firmware,"card.bin"),nativeDirectory):new File(firmware,"card.bin");
+                if(nativeSecurityCollect)SecurityCollectionMode.record(this,nativeDirectory);
                 for(String name:new String[]{"eprom.bin","opsys.dwn","card.bin","candi.bin"})if(!new File(firmware,name).isFile())throw new IOException("Missing original firmware: "+name);
                 builder=new ProcessBuilder(getApplicationInfo().nativeLibraryDir+"/libtech2_emu.so",
                     "--test-harness","--harness-target",(nativeFullNative || nativeSecurityCollect || nativeKeyStatus || nativeDtc&&!nativeClearDtc)?"native-manual":nativeDtc?"dtc-link-1367":"security-link-1367","--candi-native-link",
                     "--candi-nano-usb-token",token,"--candi-firmware",new File(firmware,"candi.bin").getPath(),
                     "--boot",new File(firmware,"eprom.bin").getPath(),"--opsys",new File(firmware,"opsys.dwn").getPath(),
-                    "--max-insns","50000000000","--output-dir",nativeDirectory.getPath(),new File(firmware,"card.bin").getPath());
+                    "--max-insns","50000000000","--output-dir",nativeDirectory.getPath(),sessionCard.getPath());
                 if(nativeClearDtc)builder.command().add("--candi-nano-clear-dtc");
                 if(nativeKeyStatus)builder.command().add("--candi-nano-key-status");
                 if(nativeFullNative)builder.command().add("--candi-nano-full-native");
@@ -560,7 +561,7 @@ public class NanoProbeActivity extends Activity {
     void stopForSecurityHandoff(){if(health!=null)health.expectedStop();cancel();}
     void openSecuritySession(boolean collect){
         if(running.get() || isFinishing() || isDestroyed())return;
-        Intent next=new Intent(this,NanoProbeActivity.class).putExtra(collect?"nano_security_collect":"nano_full_native",true).putExtra("auto_start",true);
+        Intent next=new Intent(this,NanoProbeActivity.class).putExtra(collect?"nano_security_collect":"nano_full_native",true).putExtra("auto_start",true).putExtra(SecurityCollectionMode.EXTRA,SecurityCollectionMode.from(getIntent())).putExtra(SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(SecurityCollectionMode.PLATFORM_EXTRA));
         if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
         startActivity(next);finish();
     }
@@ -576,7 +577,7 @@ public class NanoProbeActivity extends Activity {
     void resumeSecurityFirmware(){
         if(running.get() || cancelled || isFinishing() || isDestroyed())return;
         nativeSecurityCollect=false;nativeSeeds=false;nativeFullNative=true;
-        title.setText("OpenSAAB · Tech2 + Nano");
+        title.setText(AppBuildProfile.programName(this));
         purpose.setText("Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus");
         getIntent().removeExtra("nano_security_collect");getIntent().removeExtra("native_seed");getIntent().putExtra("nano_full_native",true);
         if(securityAccess!=null)securityAccess.returnedToFirmware();

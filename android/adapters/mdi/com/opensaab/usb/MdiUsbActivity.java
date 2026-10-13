@@ -61,7 +61,7 @@ public final class MdiUsbActivity extends Activity {
     }};
 
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);BackNavigation.install(this,()->{if(running.get())key(1);else finish();});
+        super.onCreate(state);BackNavigation.install(this,()->{if(running.get()){security.manualNavigation();key(1);}else finish();});
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         manager=(UsbManager)getSystemService(USB_SERVICE);permission=getPackageName()+".MDI_USB_PERMISSION";
         authority=getIntent().getBooleanExtra("mdi_security_collect",false)?"seeds":"full";
@@ -70,12 +70,12 @@ public final class MdiUsbActivity extends Activity {
         ignition=new IgnitionStatusView(this);details.addView(ignition);
         security=new SecurityAccessView(this,authority.equals("seeds"),()->nativeDirectory,()->running.get(),
             ()->stop("Closing firmware for security processing"),()->restart(true),()->restart(false));
-        security.manualNavigation();security.setMenuKey(this::key);details.addView(security);
+        security.setMenuKey(this::key);details.addView(security);
         reports=new DtcReportView(this,"mdi",()->nativeDirectory);details.addView(reports);
         ImageView lcd=new ImageView(this);lcd.setScaleType(ImageView.ScaleType.FIT_CENTER);
         console=new TextView(this);console.setTypeface(android.graphics.Typeface.MONOSPACE);console.setTextSize(11);
         console.setText("MDI session log stays on this device.");ScrollView scroll=new ScrollView(this);scroll.addView(console);
-        controls=new Tech2Controls(this,lcd,scroll,this::key);controls.setActions(this::actions);
+        controls=new Tech2Controls(this,lcd,scroll,code->{security.manualNavigation();key(code);});controls.setActions(this::actions);
         health=new EmulatorHealthMonitor(this,()->stop("Preparing report"));
         lcdPump=new NativeLcdPump(bitmap->{
             if(bitmap==null){lcd.setImageDrawable(null);return;}
@@ -171,6 +171,14 @@ public final class MdiUsbActivity extends Activity {
             nativeDirectory=new File(directory,"native");Files.createDirectories(nativeDirectory.toPath());
             File card=new File(getFilesDir(),"firmware/card.bin");
             if(card.isFile())SecuritySessionData.recordBaseline(nativeDirectory,card);
+            File sessionFirmware=new File(getFilesDir(),"firmware");
+            if(authority.equals("seeds")){
+                File fresh=SecurityCollectionCard.prepare(card,nativeDirectory);SecurityCollectionMode.record(this,nativeDirectory);
+                sessionFirmware=new File(directory,"collection-firmware");Files.createDirectory(sessionFirmware.toPath());
+                Files.move(fresh.toPath(),new File(sessionFirmware,"card.bin").toPath());
+                for(String name:new String[]{"eprom.bin","opsys.dwn","candi.bin"})
+                    Files.copy(new File(getFilesDir(),"firmware/"+name).toPath(),new File(sessionFirmware,name).toPath());
+            }
             if(stopping)Files.write(new File(directory,"session-stop").toPath(),new byte[]{1});
             keyPump=new InteractiveKeyPump(new File(nativeDirectory,"native-key.txt"),e->ui.post(()->setMessage("Firmware input unavailable")));
             if(stopping)keyPump.cancel();
@@ -226,7 +234,7 @@ public final class MdiUsbActivity extends Activity {
             attempt.stage(ConnectionAttempt.Stage.TRANSPORT_START);
             boolean capture=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0&&getIntent().getBooleanExtra("mdi_capture",false);
             int result=MdiNative.nativeRun(connection.getFileDescriptor(),directory.getAbsolutePath(),
-                new File(getApplicationInfo().nativeLibraryDir,"libtech2_mdi.so").getAbsolutePath(),new File(getFilesDir(),"firmware").getAbsolutePath(),authority,capture);
+                new File(getApplicationInfo().nativeLibraryDir,"libtech2_mdi.so").getAbsolutePath(),sessionFirmware.getAbsolutePath(),authority,capture);
             workflowSucceeded=result==0;
             JSONObject report=json(new File(directory,"result-private.json"),65536);
             transportClean=report.optBoolean("filter_disabled")&&report.optBoolean("halt_sent")&&report.optBoolean("USB_IN_cancel_reaped");
@@ -303,7 +311,7 @@ public final class MdiUsbActivity extends Activity {
     private void restart(boolean collect){
         if(running.get()||closed)return;
         UsbDevice current=attached();if(current==null){setMessage("Reconnect MDI before returning to firmware");return;}
-        if(collect){startActivity(new Intent(this,MdiUsbActivity.class).putExtra("mdi_security_collect",true)
+        if(collect){startActivity(new Intent(this,MdiUsbActivity.class).putExtra("mdi_security_collect",true).putExtra(SecurityCollectionMode.EXTRA,SecurityCollectionMode.from(getIntent())).putExtra(SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(SecurityCollectionMode.PLATFORM_EXTRA))
             .putExtra("usb_device_name",current.getDeviceName()).putExtra("auto_start",true));finish();return;}
         authority="full";stopping=false;security.returnedToFirmware();discover();
     }

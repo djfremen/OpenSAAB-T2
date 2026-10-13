@@ -16,5 +16,6 @@ public final class AppBuildProfile {
         return isHeadunit32(context) ? "headunit-arm32-development" : "arm64";
     }
     public static String installedVersion(Context c){try{return c.getPackageManager().getPackageInfo(c.getPackageName(),0).versionName;}catch(Exception e){return "unknown";}}
+    public static String programName(Context c){return "OpenSAAB "+installedVersion(c)+" "+(isHeadunit32(c)?"ARM32":"ARM64");}
     private AppBuildProfile() {}
 }
