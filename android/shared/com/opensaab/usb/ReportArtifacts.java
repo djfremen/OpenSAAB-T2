@@ -64,8 +64,11 @@ public final class ReportArtifacts {
         Artifact current=read(c,a.id,a.hash);
         if(!Arrays.equals(a.bytes(),current.bytes()))throw new IOException("Saved report changed");
         File mark=marker(c,a.id);Files.createDirectories(mark.getParentFile().toPath());
-        FirmwareStore.writeJson(mark,new JSONObject().put("saved_id",a.id).put("report_sha256",a.hash)
-            .put("report_id",receipt).put("submitted_utc",java.time.Instant.now().toString()));
+        JSONObject record=new JSONObject().put("saved_id",a.id).put("report_sha256",a.hash)
+            .put("report_id",receipt).put("submitted_utc",java.time.Instant.now().toString());
+        FirmwareStore.writeJson(mark,record);
+        // The report screen's summary and the per-artifact duplicate-send guard must agree.
+        FirmwareStore.writeJson(new File(c.getFilesDir(),"last-support-upload.json"),record);
     }
     static void pruneReceipt(Context c,String id){marker(c,id).delete();}
     public static void remember(Context c,Artifact a,boolean open)throws Exception {

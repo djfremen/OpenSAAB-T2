@@ -58,6 +58,7 @@ public final class ReportReviewInstrumentedTest extends Instrumentation {
             check(Arrays.equals(a.bytes(),exact.getBytes(StandardCharsets.UTF_8)),"JSON bytes reformatted");
             check(a.hash.equals(ReportArtifacts.digest(exact.getBytes(StandardCharsets.UTF_8))),"Wrong body hash");
             String fake="OS-000000000000000000000001";ReportArtifacts.recordReceipt(app,a,fake);
+            check(FirmwareStore.json(new File(app.getFilesDir(),"last-support-upload.json")).getString("report_id").equals(fake),"Last sent report stayed stale after confirmed upload");
             replace(file,exact);check(ReportArtifacts.receipt(app,ReportArtifacts.read(app,a.id,a.hash)).equals(fake),"ZIP repacking broke JSON receipt");
             replace(file,exact+" ");
             try{ReportArtifacts.recordReceipt(app,a,fake);throw new AssertionError("Changed file recorded");}catch(IOException expected){}
@@ -95,6 +96,7 @@ public final class ReportReviewInstrumentedTest extends Instrumentation {
             runOnMainSync(restored::send);check(!restored.busy,"Sent report retransmission started");
             runOnMainSync(()->{restored.closeReview();restored.prepare("Synthetic new incident");});await(()->!restored.busy&&restored.reviewOpen,"New report not prepared");
             check(!restored.artifact.id.equals(a.id)&&restored.receipt.isEmpty()&&!restored.consent,"New incident inherited delivery/consent");
+            check(FirmwareStore.json(new File(app.getFilesDir(),"last-support-upload.json")).getString("report_id").equals(fake),"Unsent incident replaced last confirmed receipt");
             // Exercise the actual Send button and Activity completion with a local fake uploader.
             java.lang.reflect.Field uploadField=ReportReviewModel.class.getDeclaredField("uploader");uploadField.setAccessible(true);
             final int[] buttonUploads={0};
