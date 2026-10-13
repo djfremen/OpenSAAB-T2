@@ -28,6 +28,10 @@ public class NanoProbeActivity extends Activity {
     static final String TAG="OpenSaabNano";
     // Returning Back must not let a new activity reopen USB during old cleanup.
     static final AtomicBoolean usbSessionOwned=new AtomicBoolean(false);
+    public static boolean sessionActive(){return usbSessionOwned.get();}
+    final NanoRebootHandoff rebootHandoff=new NanoRebootHandoff();
+    volatile boolean sessionCleanupConfirmed;
+    boolean rebootRequestRejected;
     UsbManager manager;
     TextView text, summary;
     Button retry;
@@ -94,7 +98,7 @@ public class NanoProbeActivity extends Activity {
                 }
                 else {requestGate.cancel();connectionFailure(ConnectionAttempt.Reason.PERMISSION_DENIED);summary.setText("USB permission denied — no test started");log("USB permission denied; no connection opened.");}
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(i.getAction()) && selected!=null && selected.equals(d)) {
-                permissionPending=false;connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);log("Adapter disconnected."); securityVehicle=null;securityDevice=null;pendingSecurityStart=null;cancel();
+                permissionPending=false;rebootHandoff.cancel();connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);log("Adapter disconnected."); securityVehicle=null;securityDevice=null;pendingSecurityStart=null;cancel();
             } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(i.getAction()) && foreground && !running.get()) {
                 if(d!=null && NanoProfile.PROFILE.matches(d.getVendorId(),d.getProductId()))log("Nano connected. Choose a test to start; attachment never restarts a previous test.");
             }
@@ -102,6 +106,7 @@ public class NanoProbeActivity extends Activity {
     };
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);com.opensaab.usb.BackNavigation.install(this,this::leaveScreen);
+        rebootNano=getIntent().getBooleanExtra("reboot_nano",false);
         nativeFullNative=getIntent().getBooleanExtra("nano_full_native",false);
         nativeSecurityCollect=getIntent().getBooleanExtra("nano_security_collect",false);
         final boolean fullNativeRequested=nativeFullNative || nativeSecurityCollect;
@@ -152,10 +157,14 @@ public class NanoProbeActivity extends Activity {
         Button channel=new Button(this); channel.setText("Test channel open / close"); channel.setOnClickListener(v->selectMode(true)); root.addView(channel);
         Button receive=new Button(this); receive.setText("Receive P-bus / I-bus · 8 seconds"); receive.setOnClickListener(v->{if(!running.get() && !permissionPending){receiveTest=true;channelTest=false;channelTestSw=false;dlcVoltage=false;hsVin=false;rebootNano=false;initHandshake=false;skipInit=false;discover();}}); root.addView(receive);
         Button vin=new Button(this);vin.setText("P-bus VIN transport check");vin.setOnClickListener(v->{if(!running.get() && !permissionPending){receiveTest=true;channelTest=false;channelTestSw=false;dlcVoltage=false;hsVin=true;rebootNano=false;initHandshake=false;skipInit=false;discover();}});root.addView(vin);
-        // Explicit private diagnostics only; USB attachment never invokes either action.
-        if(!nativeFirmware() && (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0){
-            Button init=new Button(this);init.setText("Initialize Nano");init.setOnClickListener(v->selectStartup(false));root.addView(init);
-            Button reboot=new Button(this);reboot.setText("Reboot Nano");reboot.setOnClickListener(v->selectStartup(true));root.addView(reboot);
+        // Explicit adapter controls; USB attachment never invokes a reboot or initialization.
+        if(!nativeFirmware()){
+            if(!rebootNano&&(getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0){Button init=new Button(this);init.setText("Initialize Nano");init.setOnClickListener(v->selectStartup(false));root.addView(init);}
+            Button reboot=new Button(this);reboot.setText("Reboot Nano");reboot.setTag("nano-reboot");reboot.setOnClickListener(v->selectStartup(true));root.addView(reboot);
+        }
+        if(rebootNano){
+            purpose.setText("Reboot Nano · adapter software restart\nThe app closes USB afterward. Connect and start to reconnect.");
+            start.setVisibility(android.view.View.GONE);channel.setVisibility(android.view.View.GONE);receive.setVisibility(android.view.View.GONE);vin.setVisibility(android.view.View.GONE);
         }
         if(nativeFirmware()) {
             start.setVisibility(android.view.View.GONE);channel.setVisibility(android.view.View.GONE);receive.setVisibility(android.view.View.GONE);vin.setVisibility(android.view.View.GONE);
@@ -169,7 +178,7 @@ public class NanoProbeActivity extends Activity {
             });
             lcdHandler.postDelayed(new Runnable(){public void run(){updateNativeLcd();if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
         }
-        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});if(securityAccess!=null)controls.setActions(()->securityAccess.requestAccess());root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});controls.setActions(this::showActions);root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         HeadunitLayout.apply(root);
         setContentView(root);
         IntentFilter f=new IntentFilter(PERMISSION); f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED); f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
@@ -184,11 +193,12 @@ public class NanoProbeActivity extends Activity {
         initHandshake=getIntent().getBooleanExtra("init_handshake",false);
         skipInit=getIntent().getBooleanExtra("skip_init",false);
         boolean privateBuild=(getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
-        conflictingModes |= (nativeKeyStatus && (channelTest || channelTestSw || getIntent().hasExtra("nano_probe_mode") || getIntent().getBooleanExtra("receive_test",false) || hsVin || dlcVoltage || rebootNano || initHandshake || skipInit)) || (rebootNano && initHandshake) || ((rebootNano || initHandshake) && (nativeFirmware() || channelTest || receiveTest || hsVin || dlcVoltage)) || ((rebootNano || initHandshake || skipInit || nativeKeyStatus) && !privateBuild) || (skipInit && (!channelTest || nativeFirmware() || receiveTest || hsVin || dlcVoltage || rebootNano || initHandshake));
+        conflictingModes |= (nativeKeyStatus && (channelTest || channelTestSw || getIntent().hasExtra("nano_probe_mode") || getIntent().getBooleanExtra("receive_test",false) || hsVin || dlcVoltage || rebootNano || initHandshake || skipInit)) || (rebootNano && initHandshake) || ((rebootNano || initHandshake) && (nativeFirmware() || channelTest || receiveTest || hsVin || dlcVoltage)) || ((initHandshake || skipInit || nativeKeyStatus) && !privateBuild) || (skipInit && (!channelTest || nativeFirmware() || receiveTest || hsVin || dlcVoltage || rebootNano || initHandshake));
         boolean otherNativeProfile=getIntent().getBooleanExtra("native_seed",false) || getIntent().getBooleanExtra("native_dtc",false) || getIntent().getBooleanExtra("native_clear_dtc",false) || getIntent().getBooleanExtra("native_engine_data",false) || getIntent().getBooleanExtra("native_key_status",false);
         boolean adapterTest=channelTest || channelTestSw || getIntent().hasExtra("nano_probe_mode") || getIntent().getBooleanExtra("receive_test",false) || hsVin || dlcVoltage || rebootNano || initHandshake || skipInit;
         if(nativeFullNative && !NativeCommandGate.fullNativeModeAllowed(privateBuild,otherNativeProfile,adapterTest))conflictingModes=true;
         if(nativeSecurityCollect && !NativeCommandGate.securityCollectionModeAllowed(otherNativeProfile,adapterTest))conflictingModes=true;
+        rebootRequestRejected=rebootNano && conflictingModes;
         nativeFullNativeRejected=fullNativeRequested && conflictingModes;
         if(conflictingModes)log("ERROR Conflicting native modes; no session started.");
         if(!conflictingModes && getIntent().getBooleanExtra("auto_start",false))new Handler(Looper.getMainLooper()).post(this::discover);
@@ -211,6 +221,8 @@ public class NanoProbeActivity extends Activity {
     }
     void showConnectionReport(){runOnUiThread(()->{if(!isFinishing() && reportConnection!=null)reportConnection.setVisibility(android.view.View.VISIBLE);});}
     void discover() {
+        if(rebootNano&&!NanoRebootAction.idle()){log("Finish the current session before rebooting Nano");return;}
+        if(rebootRequestRejected){log("Reboot Nano requires a separate adapter-only session");return;}
         if(nativeFullNativeRejected){log("ERROR Full native control requires an exclusive private Nano session.");return;}
         if(FirmwareGate.busy()){log("Finish firmware installation first");return;}
         if(nativeFirmware()){String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty()){log("Firmware setup needed: "+missing);startActivity(new Intent(this,FirmwareActivity.class));return;}}
@@ -231,6 +243,9 @@ public class NanoProbeActivity extends Activity {
             }
         }
         if (selected==null) { requestGate.cancel();connectionFailure(ConnectionAttempt.Reason.NO_ADAPTER);summary.setText("Nano not found — no test started");log("No matching USB adapter. Connect Nano and retry."); return; }
+        if(getIntent().hasExtra("usb_device_id")&&selected.getDeviceId()!=getIntent().getIntExtra("usb_device_id",-1)){
+            selected=null;requestGate.cancel();connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);log("Selected Nano changed · choose it again before rebooting");return;
+        }
         connectionAttempt.device(selected.getVendorId(),selected.getProductId());connectionAttempt.stage(ConnectionAttempt.Stage.PERMISSION);
         log("Candidate 1A86:55D3 · "+selected.getDeviceName());
         if (manager.hasPermission(selected)) startProbe(selected,requestId);
@@ -242,6 +257,9 @@ public class NanoProbeActivity extends Activity {
         }
     }
     void startProbe(UsbDevice device,long requestId) {
+        if(rebootNano&&(!NanoRebootAction.idle()||(getIntent().hasExtra("usb_device_id")&&device.getDeviceId()!=getIntent().getIntExtra("usb_device_id",-1)))){
+            requestGate.cancel();permissionPending=false;summary.setText("Reboot not started · selected Nano changed or another session is active");return;
+        }
         if(!foreground || !requestGate.consume(requestId) || !running.compareAndSet(false,true))return;
         if(!usbSessionOwned.compareAndSet(false,true)){
             running.set(false);requestGate.cancel();
@@ -255,7 +273,7 @@ public class NanoProbeActivity extends Activity {
         securityVinProbe=(nativeFullNative || nativeSecurityCollect) && securityVehicle==null;
         if(retry!=null)retry.setEnabled(false);
         nativeDirectory=null;
-        nativeFailure=null;readModeRejected=false;
+        nativeFailure=null;readModeRejected=false;sessionCleanupConfirmed=false;
         if(nativeLcd!=null)nativeLcd.setImageDrawable(null);
         summary.setText("Starting USB test… Stop remains available");
         cancelled=false;nativeStop.reset();nativeProtocolCleanupConfirmed=false;
@@ -502,7 +520,7 @@ public class NanoProbeActivity extends Activity {
                             String state=result.getString("status");
                             String expected=rebootNano?"adapter_software_reboot_acknowledged":initHandshake?"init_handshake_completed":(hsVin || securityVinProbe)?"hs_vin_received":receiveTest?"channels_receive_test_completed":channelTest?"channel_open_close_verified":dlcVoltage?"dlc_voltage_read":"identified";
                             if(!state.equals(expected) && !((hsVin || securityVinProbe) && state.equals("hs_vin_no_reply")))throw new IOException("Unexpected probe result for selected mode");
-                            if(rebootNano && (!startup.rebootAcknowledged() || result.getLong("vehicle_tx")!=0))throw new IOException("Reboot acknowledgement not observed");
+                            if(rebootNano && !NanoRebootHandoff.verified(state,result.getString("origin"),result.getBoolean("reboot_acknowledged"),startup.rebootAcknowledged(),result.getLong("vehicle_tx"),result.getBoolean("usb_closed"),result.getBoolean("channel_cleanup"),result.getJSONArray("cleanup_errors").length(),diagnosticWrites))throw new IOException("Reboot acknowledgement not observed");
                             if(initHandshake && (!startup.handshakeComplete() || result.getLong("vehicle_tx")!=0))throw new IOException("Initialization acknowledgement not observed");
                             if((hsVin || securityVinProbe) && state.equals("hs_vin_received") && (result.getLong("vehicle_tx")!=2 || !result.getString("vin").matches("[A-HJ-NPR-Z0-9]{17}")))throw new IOException("Invalid VIN result");
                             if(securityVinProbe && state.equals("hs_vin_received")){
@@ -524,17 +542,17 @@ public class NanoProbeActivity extends Activity {
                                 case "channels_receive_test_completed":outcome="Receive test completed";break;
                                 default:throw new IOException("Unknown probe result status");
                             }
-                            String message=outcome+" · P-bus "+counts.getLong(0)+" / I-bus "+counts.getLong(1)+" frames · USB closed";
+                            String message=rebootNano?"Nano software reboot acknowledged · USB closed. Back returns to Ready; Connect and start to reconnect.":outcome+" · P-bus "+counts.getLong(0)+" / I-bus "+counts.getLong(1)+" frames · USB closed";
                             final int code=state.equals("hs_vin_no_reply")?RESULT_CANCELED:RESULT_OK;
                             resultSucceeded=code==RESULT_OK;
                             resultPublished=true;
                             runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(code,new Intent().putExtra("summary",message));}});
-                        }catch(Exception e){log("Summary unavailable: "+e.getMessage());}
+                        }catch(Exception e){failureReason=e.getMessage();log("Summary unavailable: "+e.getMessage());}
                     } }
                 }catch(InterruptedException e){child.destroyForcibly();forcedTermination=true;Thread.currentThread().interrupt();}
             }
             if(!resultPublished) {
-                final String message=stoppedByUser?"Stopped — choose a test or Back":"Unable to start: "+(failureReason==null?"see console":failureReason)+" — retry or Back";
+                final String message=stoppedByUser?(rebootNano?"Reboot cancelled · Back returns to Ready":"Stopped — choose a test or Back"):(rebootNano?"Reboot not confirmed: ":"Unable to start: ")+(failureReason==null?"see console":failureReason)+" — retry or Back";
                 runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(RESULT_CANCELED,new Intent().putExtra("summary",message));}});
             }
             Integer childCode=null;try{if(child!=null)childCode=child.exitValue();}catch(IllegalThreadStateException stillRunning){}
@@ -546,6 +564,7 @@ public class NanoProbeActivity extends Activity {
             if(nativeFirmware() && stoppedByUser)log("NATIVE_STOP_RESULT usb_closed="+cleaned+" protocol_cleanup_confirmed="+nativeProtocolCleanupConfirmed+" quit_received="+requestedQuit);
             final boolean startSecurityFirmware=securityVinProbe && requestedQuit && cleaned && resultSucceeded && !stoppedByUser && securityVehicle!=null;
             InteractiveKeyPump endedInput=nativeKeyPump;if(endedInput!=null)endedInput.close();nativeKeyPump=null;
+            sessionCleanupConfirmed=cleaned&&!forcedTermination&&(!nativeFirmware()||nativeProtocolCleanupConfirmed);
             closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null){if(stoppedByUser||requestedQuit&&cleaned)health.expectedStop();else health.ended();}running.set(false);
             if(securityVinProbe){securityVinProbe=false;if(!startSecurityFirmware){securityVehicle=null;securityDevice=null;}}
             if(readModeRejected && !stoppedByUser)runOnUiThread(()->{if(activeSessionId==sessionId && !isFinishing() && !isDestroyed())new AlertDialog.Builder(this).setTitle("Nano mode blocked this request").setMessage(nativeFailure).setPositiveButton("Done",null).show();});
@@ -553,6 +572,43 @@ public class NanoProbeActivity extends Activity {
             runOnUiThread(()->{if(activeSessionId==sessionId)clearNativePresentation();});
             runOnUiThread(()->{if(retry!=null && !isFinishing())retry.setEnabled(true);});
         }
+    }
+    android.app.Dialog showActions(){
+        SessionSheet.Menu menu=new SessionSheet.Menu(this);
+        if(securityAccess!=null)menu.add(securityAccess.readyToProcess()?"Process existing data":"Get security access",securityAccess::requestAccess);
+        return menu.add("Reboot Nano",this::requestReboot).add("Console",controls::showConsole).show("Actions");
+    }
+    void requestReboot(){
+        if(SecurityAccessView.workflowBusy()){summary.setText("Finish security processing before rebooting Nano");return;}
+        if(rebootHandoff.state()==NanoRebootHandoff.State.WAITING||rebootHandoff.state()==NanoRebootHandoff.State.READY)return;
+        UsbDevice target=selected;
+        if(target==null){java.util.List<UsbDevice> devices=NanoRebootAction.candidates(this);if(devices.size()==1)target=devices.get(0);}
+        if(target==null){summary.setText("Connect and select Nano before rebooting");return;}
+        final UsbDevice chosen=target;
+        if(running.get()||usbSessionOwned.get()||permissionPending)new AlertDialog.Builder(this).setTitle("Reboot Nano")
+            .setMessage("This ends the current diagnostic session, then reboots Nano. Reconnect with Connect and start afterward.")
+            .setNegativeButton("Keep session",null).setPositiveButton("Stop and reboot",(d,w)->beginReboot(chosen)).show();
+        else beginReboot(chosen);
+    }
+    void beginReboot(UsbDevice chosen){
+        if(SecurityAccessView.workflowBusy()||!foreground)return;
+        boolean needsCleanup=running.get()||usbSessionOwned.get();
+        if(!rebootHandoff.begin(SystemClock.elapsedRealtime(),needsCleanup))return;
+        pendingSecurityStart=null;cancel();summary.setText("Reboot Nano · waiting for session cleanup");
+        log("NANO_REBOOT_REQUEST waiting_for_cleanup="+needsCleanup);
+        final Runnable advance=new Runnable(){public void run(){
+            NanoRebootHandoff.State state=rebootHandoff.poll(SystemClock.elapsedRealtime(),running.get()||usbSessionOwned.get()||permissionPending,sessionCleanupConfirmed,foreground&&!isFinishing()&&!isDestroyed());
+            if(state==NanoRebootHandoff.State.WAITING){lcdHandler.postDelayed(this,100);return;}
+            if(state==NanoRebootHandoff.State.FAILED){summary.setText("Reboot not started · session cleanup was not confirmed. Reconnect Nano, then retry.");log("NANO_REBOOT_BLOCKED cleanup_unconfirmed=true");return;}
+            if(state!=NanoRebootHandoff.State.READY)return;
+            UsbDevice current=manager.getDeviceList().get(chosen.getDeviceName());
+            if(current==null||current.getDeviceId()!=chosen.getDeviceId()||!NanoRebootAction.idle()){
+                rebootHandoff.cancel();summary.setText("Reboot not started · selected Nano changed or another session is active");return;
+            }
+            if(rebootHandoff.consume()){
+                startActivity(NanoRebootAction.intent(NanoProbeActivity.this,current).addFlags(Intent.FLAG_ACTIVITY_FORWARD_RESULT));finish();
+            }
+        }};lcdHandler.post(advance);
     }
     boolean sendSecurityMenuKey(int code){
         if(!foreground || !running.get() || cancelled || nativeStop.pending() || nativeDirectory==null || new File(nativeDirectory,"native-key.txt").exists())return false;
@@ -656,6 +712,6 @@ public class NanoProbeActivity extends Activity {
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed() { leaveScreen(); }
     @Override protected void onStart() { super.onStart();foreground=true;if(pendingSecurityStart!=null){Runnable next=pendingSecurityStart;pendingSecurityStart=null;next.run();} }
-    @Override protected void onStop() { foreground=false;super.onStop();if(running.get() || permissionPending)cancel();else requestGate.cancel(); }
+    @Override protected void onStop() { foreground=false;rebootHandoff.cancel();super.onStop();if(running.get() || permissionPending)cancel();else requestGate.cancel(); }
     @Override protected void onDestroy() { if(dtcReport!=null)dtcReport.close();if(securityAccess!=null)securityAccess.close();pendingSecurityStart=null;cancel();if(nativeLcdPump!=null)nativeLcdPump.close();lcdHandler.removeCallbacksAndMessages(null);unregisterReceiver(receiver);super.onDestroy(); }
 }

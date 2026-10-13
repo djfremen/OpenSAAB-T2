@@ -177,7 +177,9 @@ public final class MainActivity extends Activity {
         com.opensaab.usb.SecurityCollectionMode.choose(this,mode->{getIntent().putExtra(com.opensaab.usb.SecurityCollectionMode.EXTRA,mode);selectAdapter("native_seed",false);});
     }
     public android.app.Dialog showActions(){
-        return new com.opensaab.usb.SessionSheet.Menu(this)
+        com.opensaab.usb.SessionSheet.Menu menu=new com.opensaab.usb.SessionSheet.Menu(this);
+        if(com.opensaab.usb.NanoRebootAction.available(this))menu.add("Reboot Nano",()->{if(idleTool())com.opensaab.usb.NanoRebootAction.choose(this);});
+        return menu
             .add("Get security access",this::chooseSecurityCollection)
             .add("Read engine codes — HS-CAN",()->selectAdapter("dtc_read",false))
             .add("ECU information",()->selectAdapter("native_ecu_info",false))
