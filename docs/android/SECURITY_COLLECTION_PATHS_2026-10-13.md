@@ -38,7 +38,7 @@ remain tracked work. Android ARM32, Windows, Intel/ARM macOS and Linux receive t
 common contract requirement but do not inherit implementation or test claims.
 Linux is excluded from the owner's October 13 vehicle campaign.
 
-Private candidate: 0.1.0-preview.67-security.1 / Android ARM64. Versioned launcher,
+Private candidate: 0.1.0-preview.67-security.2 / Android ARM64. Versioned launcher,
 program/window labels and packaged metadata identify the exact build. Historical
 public64/public66 APKs and native payload hashes remain preserved. No public
 release or updater change is authorized by this local fix.

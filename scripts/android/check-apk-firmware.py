@@ -68,8 +68,10 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if info.file_size > 4096:
                     raise ValueError('Oversized build metadata')
                 receipt = json.loads(apk.read(name))
-                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
+                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
                     raise ValueError('Unexpected source metadata')
+                if any(key in receipt and type(receipt[key]) is not bool for key in ('source_dirty','private_preview')) or (receipt.get('source_dirty') is True and receipt.get('private_preview') is not True):
+                    raise ValueError('Invalid preview source metadata')
                 continue
             if name in mdi_pins:
                 data=apk.read(name);validate_elf(data[:20],profile)
