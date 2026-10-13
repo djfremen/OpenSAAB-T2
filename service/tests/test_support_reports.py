@@ -53,6 +53,23 @@ class Reports(unittest.TestCase):
         report['device_resources']['vin']='not-allowed'
         self.assertEqual(400,self.send(report).status_code)
 
+    def test_desktop_reports(self):
+        desktop={'format':1,'app':'com.opensaab.desktop','platform':'macos','arch':'arm64','version':'0.2.18',
+                 'build':'abc1234','os_version':'Version 15.1','description':'Mac QC',
+                 'device_resources':{'ram_total_bytes':17179869184,'runtime_cpu_count':10},
+                 'recent_sessions':[{'adapter':'chipsoft','startup':{'native_boot_ms':900},'guest_crash':False,
+                   'session_end':{'reason':'adapter_stopped','exit_code':3,'elapsed_ms':900},
+                   'emulator_outcome':{'status':'incomplete','exit_code':3}}],
+                 'connection_attempts':[],'last-app-error.json':{'utc':'2026-09-24T10:00:00Z','kind':'session_error','message':'x'}}
+        first=self.send(desktop)
+        self.assertEqual(201,first.status_code)
+        route='/api/admin/support/reports/'+first.json()['report_id']
+        self.assertEqual(desktop,self.client.get(route,headers={'Authorization':'Bearer test-only-admin'}).json())
+        for bad in (dict(desktop,platform='ios'),dict(desktop,arch='ppc'),dict(desktop,android_api=27),
+                    {k:v for k,v in desktop.items() if k!='platform'},dict(desktop,vin='x'),dict(desktop,app='com.other')):
+            self.assertEqual(400,self.send(bad).status_code)
+        self.assertEqual(400,self.send({k:v for k,v in self.report.items() if k!='android_api'}).status_code)
+
     def test_auth_status_snapshot(self):
         auth = {'auth_status': '[POST-AUTH]', 'freshness': 'Fresh',
                 'observed_utc': '2026-09-30T12:01:00Z', 'status_utc': '2026-09-30T12:00:00Z',
@@ -100,6 +117,31 @@ class Reports(unittest.TestCase):
             with self.subTest(extra=extra):
                 self.assertEqual(400, self.send(dict(self.report, recent_sessions=[extra])).status_code)
         self.assertFalse(self.store.objects)
+
+    def test_evidence_v2_round_trip_and_privacy(self):
+        evidence={'schema':2,'adapter':'nano','artifacts':{'crash.json':'available','report.json':'missing','cleanup-evidence.json':'missing'},
+                  'attempt_id':'00000000-0000-0000-0000-000000000001','session_mode':'read_only','last_operation':'vin',
+                  'primary_reason':'PROTOCOL_OR_PROCESS_ERROR','terminal_fault':{'pc':94662,'recent_pcs':[94660,94662]},
+                  'cleanup':{'child_exit_code':3,'forced_termination':False,'usb_release':'succeeded','protocol_cleanup':'unknown'},
+                  'startup_result':{'startup_complete':False,'fresh_dh_exchanges':0}}
+        import copy
+        desktop={'format':1,'app':'com.opensaab.desktop','platform':'macos','arch':'x86_64','description':'Synthetic evidence v2',
+                 'submitter_notes_provided':True,'recent_sessions':[{'adapter':'nano','session_id':'a'*64,'diagnostic_evidence':evidence}]}
+        result=self.send(desktop);self.assertEqual(201,result.status_code,result.text)
+        body=json.loads(next(iter(self.store.objects.values()))[0]);self.assertEqual(desktop,body)
+        for session_id in ['mdi-00000000-0000-0000-0000-000000000001','offline-00000000-0000-0000-0000-000000000001']:
+            report=copy.deepcopy(self.report);report['recent_sessions']=[{'session_id':session_id,'diagnostic_evidence':evidence}]
+            self.assertEqual(201,self.send(report).status_code)
+        for bad in [dict(evidence,vin='private'),dict(evidence,terminal_fault={'pc':-1}),
+                    dict(evidence,terminal_fault={'recent_pcs':list(range(33))}),dict(evidence,terminal_fault={'pc':True}),
+                    dict(evidence,artifacts={'crash.json':'raw contents'}),dict(evidence,cleanup={'child_exit_code':2**40}),
+                    dict(evidence,startup_result={'vin':'private'}),dict(evidence,last_operation='raw command')]:
+            self.setUp() # Each malformed fixture gets a fresh rate limiter.
+            report=copy.deepcopy(desktop);report['recent_sessions'][0]['diagnostic_evidence']=bad
+            self.assertEqual(400,self.send(report).status_code)
+    def test_existing_ios_client_preserved(self):
+        self.assertEqual(201,self.send({'format':1,'app':'com.opensaab.t2.ios.preview','platform':'ios','arch':'arm64',
+            'description':'Synthetic existing client','model':'iPhone17,1','failure_stage':'unexpected_emulator_exit'}).status_code)
 
     def test_consent_and_media_type(self):
         self.assertEqual(400,self.client.post('/api/support/reports',json=self.report).status_code)

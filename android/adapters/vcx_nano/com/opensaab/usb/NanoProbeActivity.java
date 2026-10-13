@@ -301,7 +301,7 @@ public class NanoProbeActivity extends Activity {
         int diagnosticWrites=0;boolean vinSent=false,flowSent=false;
         final NanoStartupGate startup=new NanoStartupGate(rebootNano?NanoStartupGate.Mode.REBOOT:skipInit?NanoStartupGate.Mode.CHANNEL_CONTROL:(initHandshake || nativeFirmware() || receiveTest || channelTest)?NanoStartupGate.Mode.INITIALIZE:NanoStartupGate.Mode.IDENTITY_ONLY);
         final ConnectionAttempt progress=connectionAttempt;
-        PrintWriter out=null; boolean requestedQuit=false; boolean cleaned=true;
+        PrintWriter out=null; boolean requestedQuit=false; boolean cleaned=true; boolean forcedTermination=false;
         boolean resultPublished=false;boolean resultSucceeded=false;
         String failureReason=null;
         java.lang.Process child=null;
@@ -372,7 +372,8 @@ public class NanoProbeActivity extends Activity {
             if(skipInit)builder.command().add("--skip-init");
             if(nativeFirmware()){
                 nativeDirectory=new File(getFilesDir(),"native-"+java.util.UUID.randomUUID().toString());
-                if(!nativeDirectory.mkdir())throw new IOException("Cannot create native session directory");health.begin(nativeDirectory);
+                if(!nativeDirectory.mkdir())throw new IOException("Cannot create native session directory");
+                progress.bind(nativeDirectory,nativeFullNative?"full_native":nativeSeeds?"security_seeds":"read_only","original_menus");health.begin(nativeDirectory);
                 nativeKeyPump=new InteractiveKeyPump(new File(nativeDirectory,"native-key.txt"),e->log("Key input stopped: "+e));
                 nativeLcdPump.setDirectory(nativeDirectory);
                 File firmware=new File(getFilesDir(),"firmware");
@@ -464,7 +465,7 @@ public class NanoProbeActivity extends Activity {
                 if(out.checkError())throw new IOException("Controller output closed");
             }
             if(!requestedQuit)throw new IOException("Probe cancelled or expired");
-        } catch(Exception e) { if(cancelled || nativeStop.pending())progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}SupportReports.recordError(this,e,false);failureReason=e.getMessage();log("ERROR "+failureReason);if(out!=null)out.println("ERROR transport"); }
+        } catch(Exception e) { if(cancelled || nativeStop.pending())progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}SupportReports.recordError(this,e,false,nativeDirectory);failureReason=e.getMessage();log("ERROR "+failureReason);if(out!=null)out.println("ERROR transport"); }
         finally {
             final boolean stoppedByUser=cancelled || nativeStop.pending();
             if(connection!=null) {
@@ -487,7 +488,7 @@ public class NanoProbeActivity extends Activity {
             if(requestedQuit && out!=null)out.println(cleaned?"CLOSED":"ERROR cleanup");
             if(child!=null) {
                 try {
-                    if(!child.waitFor(2,TimeUnit.SECONDS)) { child.destroyForcibly();log("PROBE_EXIT timeout"); }
+                    if(!child.waitFor(2,TimeUnit.SECONDS)) { child.destroyForcibly();forcedTermination=true;if(!stoppedByUser)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.TIMEOUT);log("PROBE_EXIT timeout"); }
                     else { if(outputReader!=null)outputReader.join(1000);log("PROBE_EXIT "+child.exitValue()); if(!nativeFirmware() && resultFile.isFile())log("RESULT_FILE "+resultFile.getName());if(child.exitValue()!=0 && !stoppedByUser){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();} if(nativeFirmware()){
                         final String message=(stoppedByUser?"Stopped":child.exitValue()==0?"Session ended":nativeFailure!=null?nativeFailure:"Connection/session failed (exit "+child.exitValue()+")")+" · "+(cleaned?"USB closed":"USB cleanup incomplete")+" · Retry or Back";
                         resultPublished=true;resultSucceeded=!stoppedByUser && child.exitValue()==0;
@@ -529,12 +530,14 @@ public class NanoProbeActivity extends Activity {
                             runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(code,new Intent().putExtra("summary",message));}});
                         }catch(Exception e){log("Summary unavailable: "+e.getMessage());}
                     } }
-                }catch(InterruptedException e){child.destroyForcibly();Thread.currentThread().interrupt();}
+                }catch(InterruptedException e){child.destroyForcibly();forcedTermination=true;Thread.currentThread().interrupt();}
             }
             if(!resultPublished) {
                 final String message=stoppedByUser?"Stopped — choose a test or Back":"Unable to start: "+(failureReason==null?"see console":failureReason)+" — retry or Back";
                 runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(RESULT_CANCELED,new Intent().putExtra("summary",message));}});
             }
+            Integer childCode=null;try{if(child!=null)childCode=child.exitValue();}catch(IllegalThreadStateException stillRunning){}
+            progress.cleanup(childCode,forcedTermination,cleaned?"succeeded":"failed",nativeProtocolCleanupConfirmed?"succeeded":"unknown");
             if(!cleaned && !stoppedByUser){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             else if(requestedQuit && cleaned && resultPublished && resultSucceeded)progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             else if(!stoppedByUser && !resultPublished){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();}

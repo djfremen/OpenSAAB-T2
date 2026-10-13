@@ -1,0 +1,12 @@
+{
+  "source_apk_sha256": "8acaeab6208354cae05422d75b0c3199c5056779f2f83ec09b706960d4d98703",
+  "baseline": "0.1.0-preview.64",
+  "native_payloads": {
+    "libtech2_emu.so": "4211cb6cd0e531411eac01137bcc8c59ebb5185413a9d5aeaa9f6b9009f8ce73",
+    "libnano_probe.so": "67718eaed94cef5eb09d878fe057f1dd63dbde83298e4db6471064a61ad60e7c",
+    "libchipsoft_probe.so": "afd3c5527cd7f95f5bcf807dfb5c3d73ca23caf82a7d65f19b1fb6329f112040",
+    "libopensaab_connection.so": "deed02b2fb033cdc546f1196d27caeeb72f93f3b2d8aa30de89ad3ad77b4479b",
+    "libopensaab_mdi_android.so": "6b8d7eb2f8997c3b65695aab117e48e0b9bfdc8e607c55f066af6044f77cbd2a",
+    "libtech2_mdi.so": "b0d46d07b4d8eaf1f3bc4414df90e2db4f472555dbf04f5d1c2c04d1ef616274"
+  }
+}

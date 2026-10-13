@@ -33,9 +33,14 @@ public final class SupportReports {
     }
     static List<File> sessions(File files){
         List<File> out=new ArrayList<>();File[] children=files.listFiles();
-        if(children!=null)for(File f:children)if(f.isDirectory()&&f.getName().matches("(chipsoft|native)-[a-f0-9-]+"))out.add(f);
+        if(children!=null)for(File f:children)if(f.isDirectory()&&f.getName().matches("(chipsoft|native|mdi|mongoose)-[a-f0-9-]+"))out.add(f);
+        File[] mdi=new File(files,"mdi-sessions").listFiles();if(mdi!=null)for(File f:mdi)if(f.isDirectory())out.add(f);
         File[] offline=new File(files,"sessions").listFiles();if(offline!=null)for(File f:offline)if(f.isDirectory())out.add(f);
-        out.sort((a,b)->Long.compare(b.lastModified(),a.lastModified()));return out.subList(0,Math.min(5,out.size()));
+        out.sort((a,b)->Long.compare(b.lastModified(),a.lastModified()));
+        try{String incident=FirmwareStore.json(new File(files,"last-app-error.json")).optString("session_id");
+            for(int i=0;i<out.size();i++)if(!incident.isEmpty()&&OfflineSessionEvidence.id(out.get(i)).equals(incident)){File f=out.remove(i);out.add(0,f);break;}
+        }catch(Exception ignored){}
+        return out.subList(0,Math.min(5,out.size()));
     }
     public static boolean notesProvided(String description){
         String text=description==null?"":description.trim();
@@ -65,7 +70,7 @@ public final class SupportReports {
         report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts and fixed failure categories cover bounded log tails only.");
         JSONArray runs=new JSONArray();File files=c.getFilesDir();
         for(File dir:sessions(files)){
-            JSONObject session=new JSONObject().put("adapter",dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":"offline").put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
+            JSONObject session=new JSONObject().put("adapter",dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":dir.getName().startsWith("mdi-")?"mdi":dir.getName().startsWith("mongoose-")?"mongoose":dir.getParentFile().getName().equals("mdi-sessions")?"mdi":"offline").put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
             for(String name:new String[]{"usb.log","native-process.log","rust.log","tech2.log","console.log"}){File f=new File(dir,name);if(f.isFile()&&f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))try{logs.put(logSummary(f));}catch(IOException e){logs.put(new JSONObject().put("source",name).put("unavailable",true));}}
             File outcome=new File(dir,"report.json");
             if(outcome.isFile()&&outcome.length()<1048576)try{
@@ -81,6 +86,7 @@ public final class SupportReports {
             OfflineSessionEvidence.collect(dir,session);
             session.put("diagnostic_events",SessionDiagnostics.read(dir));
             try{File info=new File(dir,"adapter-identity.json");if(info.length()<=512){String version=FirmwareStore.json(info).optString("firmware_version");if(version.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){1,3}(?:[-+][A-Za-z0-9._-]{1,20})?"))session.put("firmware_version",version);}}catch(Exception ignored){}
+            session.put("diagnostic_evidence",DiagnosticEvidence.collect(dir,session.optString("adapter","unknown")));
             session.put("native_performance",PerformanceReport.session(dir));
             session.put("logs",logs);runs.put(session);
         }

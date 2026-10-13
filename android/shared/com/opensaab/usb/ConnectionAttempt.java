@@ -26,6 +26,13 @@ public final class ConnectionAttempt {
     private Outcome outcome=Outcome.IN_PROGRESS;
     private Reason reason=Reason.NONE;
     private Integer vendor,product;
+    private File evidenceRun;
+    private String evidenceMode="unknown",operation="connection";
+    private JSONObject cleanupEvidence=new JSONObject();
+    public synchronized void bind(File run,String mode,String operation){evidenceRun=run;evidenceMode=mode;this.operation=operation;save();}
+    public synchronized void cleanup(Integer exit,boolean forced,String usb,String protocol){
+        try{cleanupEvidence=new JSONObject().put("forced_termination",forced).put("usb_release",usb).put("protocol_cleanup",protocol);if(exit!=null)cleanupEvidence.put("child_exit_code",exit);}catch(JSONException ignored){}save();
+    }
 
     public ConnectionAttempt(Context c, Adapter adapter) {
         this.root=new File(c.getFilesDir(),"connection-attempts");this.adapter=adapter;
@@ -55,9 +62,12 @@ public final class ConnectionAttempt {
                 .put("reason",reason.name()).put("elapsed_ms",elapsed()).put("stages",new JSONArray(stages.toString()));
             if(vendor!=null)j.put("usb_vendor_id",vendor).put("usb_product_id",product);
             String snapshot=j.toString();
+            final File bound=evidenceRun;
+            final String evidence=new JSONObject().put("attempt_id",id).put("session_mode",evidenceMode).put("last_operation",operation).put("primary_reason",reason.name()).put("cleanup",cleanupEvidence).toString();
             IO.execute(()->{try{
                 if(!root.isDirectory()&&!root.mkdirs())return;
                 FirmwareStore.writeJson(new File(root,id+".json"),new JSONObject(snapshot));
+                if(bound!=null&&bound.isDirectory())FirmwareStore.writeJson(new File(bound,"connection-evidence.json"),new JSONObject(evidence));
                 File[] files=root.listFiles((d,n)->n.matches("[a-f0-9-]{36}\\.json"));
                 if(files!=null){Arrays.sort(files,Comparator.comparingLong(File::lastModified).reversed());for(int i=20;i<files.length;i++)files[i].delete();}
             }catch(Exception ignored){} });

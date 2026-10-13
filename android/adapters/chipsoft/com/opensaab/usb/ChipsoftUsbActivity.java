@@ -294,7 +294,7 @@ public final class ChipsoftUsbActivity extends Activity {
         VehicleIdentity identified=null;
         ChipsoftIdentity adapterIdentity=new ChipsoftIdentity();
         UsbDeviceConnection conn=null;UsbInterface ctl=null,data=null;UsbEndpoint rx=null,tx=null;
-        boolean ctlClaim=false,dataClaim=false,quit=false,clean=true;
+        boolean ctlClaim=false,dataClaim=false,quit=false,clean=true; boolean forcedTermination=false; Integer childExit=null; String usbRelease="not_attempted";
         UsbRequest read=null;boolean queued=false;PrintWriter out=null;java.lang.Process child=null;
         File run=new File(getFilesDir(),"chipsoft-"+java.util.UUID.randomUUID());
         FirmwareGate.Lease firmwareLease=null;
@@ -303,6 +303,7 @@ public final class ChipsoftUsbActivity extends Activity {
             if(nativeFirmware){String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())throw new IOException("Firmware setup needed: "+missing);}
             if((symbolOnly || audible) && (!new File(getFilesDir(),audible?"chipsoft-audible-authority.json":"chipsoft-symbol-authority.json").isFile() || new File(getFilesDir(),"firmware/card-authorized.bin").length()!=33554432))throw new IOException("Load a validated SSA card and fresh Symbol Only authority before opening USB");
             if(!run.mkdir())throw new IOException("Cannot create session directory");
+            progress.bind(run,fullNative?"full_native":symbolOnly?"security_seeds":"read_only",vinCheck?"vin":dtcRead?"dtc_read":nativeFirmware?"original_menus":"connection");
             try(BufferedWriter capture=new BufferedWriter(new FileWriter(new File(run,"usb.log")))){
                 for(int i=0;i<d.getInterfaceCount();i++){
                     UsbInterface iface=d.getInterface(i);if(iface.getInterfaceClass()==2 && iface.getInterfaceSubclass()==2)ctl=iface;
@@ -386,12 +387,13 @@ public final class ChipsoftUsbActivity extends Activity {
             if(conn!=null){
                 if(read!=null && queued){try{if(!read.cancel())clean=false;UsbRequest done=conn.requestWait(300);if(done!=read)clean=false;}catch(Exception e){clean=false;}}
                 if(receiveTest && !quit && tx!=null){clean=false;for(String hex:new String[]{"050004000000880008800000","050004000000050005000000","2000000000000000"})try{byte[] b=UsbBridgeCodec.unhex(hex);conn.bulkTransfer(tx,b,b.length,200);}catch(Exception ignored){}log("Emergency channel close sent; replies unverified");}
-                if(dataClaim)clean&=conn.releaseInterface(data);if(ctlClaim)clean&=conn.releaseInterface(ctl);conn.close();if(read!=null)read.close();
+                if(dataClaim)clean&=conn.releaseInterface(data);if(ctlClaim)clean&=conn.releaseInterface(ctl);conn.close();if(read!=null)read.close();usbRelease=clean?"succeeded":"failed";
             }
             if(out!=null && quit)out.println(clean?"CLOSED":"ERROR cleanup");
-            if(child!=null)try{if(!child.waitFor(2,TimeUnit.SECONDS)){child.destroyForcibly();clean=false;}else {log("RUST_EXIT "+child.exitValue());if(child.exitValue()!=0)clean=false;}}catch(InterruptedException e){child.destroyForcibly();Thread.currentThread().interrupt();clean=false;}
+            if(child!=null)try{if(!child.waitFor(2,TimeUnit.SECONDS)){child.destroyForcibly();forcedTermination=true;clean=false;if(!cancelled)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.TIMEOUT);}else {log("RUST_EXIT "+child.exitValue());childExit=child.exitValue();if(childExit!=0){clean=false;if(!cancelled)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);}}}catch(InterruptedException e){child.destroyForcibly();forcedTermination=true;Thread.currentThread().interrupt();clean=false;}
             try{File result=new File(run,"result.json");if(quit && clean && result.length()>0){String report=new String(java.nio.file.Files.readAllBytes(result.toPath()),StandardCharsets.UTF_8);log(report);if(dtcRead && !cancelled)saveEngineCodes(report,identity,run);if(vinCheck){identified=VehicleSession.fromProbe(new org.json.JSONObject(report));}}}catch(Exception e){if(dtcRead)clean=false;log("Result read failed: "+e.getMessage());}
             if(symbolOnly || audible){new File(getFilesDir(),audible?"chipsoft-audible-authority.json":"chipsoft-symbol-authority.json").delete();new File(getFilesDir(),"firmware/card-authorized.bin").delete();}
+            progress.cleanup(childExit,forcedTermination,usbRelease,"unknown");
             if(!clean && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             if(vinCheck && identified==null && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.VIN_UNAVAILABLE);showConnectionReport();}
             if(quit && clean && !identifyFirst && (!vinCheck || identified!=null))progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);

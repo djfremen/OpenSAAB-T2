@@ -15,8 +15,8 @@ public final class OfflineSessionEvidence {
     private String stopIntent="none";
     public static String id(File dir){
         if(dir==null)return "";String name=dir.getName();
-        if(name.matches("(?:chipsoft|native|offline)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))return name;
-        if(name.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))return "offline-"+name;
+        if(name.matches("(?:chipsoft|native|offline|mdi|mongoose)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))return name;
+        if(name.matches("[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))return (dir.getParentFile()!=null&&dir.getParentFile().getName().equals("mdi-sessions")?"mdi-":"offline-")+name;
         return "";
     }
     public static String digest(File file)throws Exception {

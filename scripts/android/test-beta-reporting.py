@@ -9,6 +9,7 @@ import importlib.util
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--serial',required=True)
 p.add_argument('--lifecycle',action='store_true',help='Add real report-screen rotation/recreation/Home tests; use a phone-sized AVD')
+p.add_argument('--evidence-only',action='store_true')
 a=p.parse_args()
 if not a.serial.startswith('emulator-'):raise SystemExit('Disposable Android emulator required')
 r=Path(__file__).resolve().parents[2];sdk=Path.home()/'Library/Android/sdk';bt=sdk/'build-tools/36.0.0'
@@ -21,6 +22,7 @@ def run(*args,capture=False):
 suites=['SupportReportInstrumentedTest','EmulatorHealthInstrumentedTest','SecurityAccessInstrumentedTest','SecuritySessionInstrumentedTest']
 if a.lifecycle:suites.append('ReportLifecycleInstrumentedTest')
 suites.extend(['ReportReviewInstrumentedTest','NativeLcdPumpInstrumentedTest','SessionEndInstrumentedTest'])
+if a.evidence_only:suites=['DiagnosticEvidenceInstrumentedTest']
 sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 deps=ReportDependencies(r,out,env)
 ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',ns)

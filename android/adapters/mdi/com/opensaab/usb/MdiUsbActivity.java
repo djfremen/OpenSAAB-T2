@@ -167,7 +167,7 @@ public final class MdiUsbActivity extends Activity {
         FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed",setup="";
         try{
             lease=FirmwareGate.use();
-            directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());
+            directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());if(attempt!=null)attempt.bind(directory,"read_only","connection");
             nativeDirectory=new File(directory,"native");Files.createDirectories(nativeDirectory.toPath());
             File card=new File(getFilesDir(),"firmware/card.bin");
             if(card.isFile())SecuritySessionData.recordBaseline(nativeDirectory,card);
@@ -249,6 +249,7 @@ public final class MdiUsbActivity extends Activity {
             final String result=end+(usbClean?" · USB closed":" · USB cleanup incomplete");
             final String requiredSetup=setup;
             final boolean released=transportClean&&usbClean;
+            if(attempt!=null)attempt.cleanup(null,false,connection==null?"not_attempted":usbClean?"succeeded":"failed",transportClean?"succeeded":"unknown");
             if(attempt!=null)attempt.finish(stopping?ConnectionAttempt.Outcome.CANCELLED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
                 stopping?ConnectionAttempt.Reason.USER_STOP:!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
             ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));

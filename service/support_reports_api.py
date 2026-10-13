@@ -30,6 +30,15 @@ ram_total_kib ram_available_kib swap_free_kib frame_age_ms ram_total_bytes ram_a
 low_memory_threshold_bytes system_low_memory app_heap_used_bytes app_heap_limit_bytes
 app_native_heap_bytes storage_free_bytes display_width_px display_height_px density_dpi runtime_cpu_count'''.split())
 
+# Desktop shells (macOS/Windows/Linux) share one Rust collector with the same privacy rules.
+FIELDS.update('''platform arch build os_version startup native_boot_ms session_end guest_crash
+message'''.split())
+ANDROID_APPS = ('com.opensaab.tech2', 'com.opensaab.tech2.headunit32')
+DESKTOP_APP = 'com.opensaab.desktop'
+IOS_APP = 'com.opensaab.t2.ios.preview'
+FIELDS.update('model failure_stage'.split())
+IOS_FAILURE_STAGES = {'unexpected_emulator_exit','emulator_heartbeat_missing','input_without_display_response','ui_unresponsive','session_interrupted'}
+
 # Reviewed Android diagnostic candidate: fixed labels and bounded lifecycle evidence.
 FIELDS.update('''firmware_version session_id diagnostic_events event failure_category failure_categories
 category tail_line incident_relation orientation_start orientation_end pause_count resume_count'''.split())
@@ -98,13 +107,49 @@ def validate_emulation(v):
         evidence_object(e, END_NUMBERS|{'reason','exit_code','forced_stop','unavailable'}, {'reason':END_REASONS}, END_NUMBERS, {'forced_stop'})
         if 'exit_code' in e and type(e['exit_code']) is not int: raise ValueError('Invalid process exit code')
 
+
+# Cross-platform diagnostic evidence v2. No raw strings or memory payloads.
+FIELDS.update("diagnostic_evidence artifacts terminal_fault recent_pcs session_mode last_operation primary_reason cleanup child_exit_code forced_termination usb_release protocol_cleanup startup_result startup_complete query_record_verified installed_record_verified channel_cleanup usb_closed fresh_dh_exchanges vehicle_tx report.json crash.json session-end.json host-performance.json connection-evidence.json cleanup-evidence.json result.json".split())
+EVIDENCE_ARTIFACTS={'report.json','crash.json','session-end.json','host-performance.json','connection-evidence.json','cleanup-evidence.json','result.json'}
+EVIDENCE_ADAPTERS={'chipsoft','nano','mdi','mongoose','obdlink','vlinker','offline','unknown'}
+def validate_diagnostic(e):
+    if not isinstance(e,dict) or set(e)-{'schema','adapter','artifacts','attempt_id','session_mode','last_operation','primary_reason','cleanup','terminal_fault','startup_result'} or type(e.get('schema')) is not int or e['schema']!=2 or e.get('adapter') not in EVIDENCE_ADAPTERS:
+        raise ValueError('Invalid diagnostic evidence')
+    artifacts=e.get('artifacts')
+    if not isinstance(artifacts,dict) or set(artifacts)-EVIDENCE_ARTIFACTS or any(v not in ('available','missing','unreadable','oversize','invalid') for v in artifacts.values()):raise ValueError('Invalid artifact availability')
+    if 'attempt_id' in e and (not isinstance(e['attempt_id'],str) or not re.fullmatch(r'[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}',e['attempt_id'])):raise ValueError('Invalid diagnostic attempt')
+    for key,allowed in {'session_mode':{'offline','read_only','full_native','security_seeds','unknown'},'last_operation':{'connection','vin','dtc_read','dtc_clear','ecu_info','engine_data','security','original_menus','manual_input','unknown'},'primary_reason':{'NONE','NO_ADAPTER','MULTIPLE_ADAPTERS','PERMISSION_DENIED','DISCONNECTED','TIMEOUT','IO_ERROR','PROTOCOL_OR_PROCESS_ERROR','VIN_UNAVAILABLE','CLEANUP_FAILED','USER_STOP','SETUP_REQUIRED'}}.items():
+        if key in e and (not isinstance(e[key],str) or e[key] not in allowed):raise ValueError('Invalid diagnostic label')
+    if 'terminal_fault' in e:
+        f=e['terminal_fault']
+        if not isinstance(f,dict) or set(f)-{'pc','recent_pcs'}:raise ValueError('Invalid fault evidence')
+        pcs=f.get('recent_pcs',[])
+        if not isinstance(pcs,list) or len(pcs)>32 or any(type(v) is not int or not 0<=v<=4294967295 for v in pcs):raise ValueError('Invalid execution history')
+        if 'pc' in f and f['pc'] is not None and (type(f['pc']) is not int or not 0<=f['pc']<=4294967295):raise ValueError('Invalid fault address')
+    if 'cleanup' in e:
+        c=e['cleanup']
+        if not isinstance(c,dict) or set(c)-{'child_exit_code','forced_termination','usb_release','protocol_cleanup'}:raise ValueError('Invalid cleanup evidence')
+        if 'child_exit_code' in c and (type(c['child_exit_code']) is not int or not -2147483648<=c['child_exit_code']<=2147483647):raise ValueError('Invalid child exit')
+        if 'forced_termination' in c and type(c['forced_termination']) is not bool:raise ValueError('Invalid forced termination')
+        for k in ('usb_release','protocol_cleanup'):
+            if k in c and c[k] not in ('succeeded','failed','unknown','not_attempted'):raise ValueError('Invalid cleanup status')
+    if 'startup_result' in e:
+        r=e['startup_result'];flags={'startup_complete','query_record_verified','installed_record_verified','channel_cleanup','usb_closed'};nums={'fresh_dh_exchanges','vehicle_tx'}
+        if not isinstance(r,dict) or set(r)-flags-nums:raise ValueError('Invalid startup result')
+        if any(type(r[k]) is not bool for k in flags&r.keys()) or any(type(r[k]) is not int or r[k]<0 for k in nums&r.keys()):raise ValueError('Invalid startup values')
+
 def validate(value, depth=0):
     if depth > 8:
         raise ValueError('Report is too deeply nested')
     if isinstance(value, dict):
         validate_emulation(value)
+        if "diagnostic_evidence" in value: validate_diagnostic(value["diagnostic_evidence"])
         if len(value) > 48 or any(k not in FIELDS for k in value):
             raise ValueError('Unsupported report fields')
+        if 'failure_stage' in value and (not isinstance(value['failure_stage'],str) or value['failure_stage'] not in IOS_FAILURE_STAGES):
+            raise ValueError('Unsupported failure stage')
+        if 'model' in value and (not isinstance(value['model'], str) or not re.fullmatch(r'[A-Za-z0-9,._-]{1,40}',value['model'])):
+            raise ValueError('Unsupported device model')
         if 'security_status' in value:
             auth = value['security_status']
             if (not isinstance(auth, dict) or set(auth) - {'auth_status', 'freshness', 'observed_utc', 'status_utc', 'vehicle_access_verified'}
@@ -132,7 +177,7 @@ def validate(value, depth=0):
             if key in value and (not isinstance(value[key], str) or value[key] not in allowed):
                 raise ValueError('Unsupported diagnostic label')
         if 'session_id' in value and (not isinstance(value['session_id'], str) or
-                not re.fullmatch(r'(?:chipsoft|native|offline)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', value['session_id'])):
+                not re.fullmatch(r'(?:[a-f0-9]{64}|(?:chipsoft|native|offline|mdi|mongoose)-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})', value['session_id'])):
             raise ValueError('Unsupported session identifier')
         for key, limit in (('diagnostic_events', 32), ('failure_categories', 16)):
             if key in value and (not isinstance(value[key], list) or len(value[key]) > limit):
@@ -157,10 +202,22 @@ def parse_report(body):
     validate(report)
     if not isinstance(report, dict) or report.get('format') != 1:
         raise ValueError('Unsupported report format')
-    if report.get('app') not in ('com.opensaab.tech2', 'com.opensaab.tech2.headunit32'):
-        raise ValueError('Unsupported application')
-    if not isinstance(report.get('description'), str) or not isinstance(report.get('android_api'), int):
+    app = report.get('app')
+    if not isinstance(report.get('description'), str):
         raise ValueError('Required report information is missing')
+    if app in ANDROID_APPS:
+        if not isinstance(report.get('android_api'), int):
+            raise ValueError('Required report information is missing')
+    elif app == IOS_APP:
+        if report.get('platform') != 'ios' or report.get('arch') != 'arm64' or 'android_api' in report:
+            raise ValueError('Required iOS report information is missing')
+    elif app == DESKTOP_APP:
+        if report.get('platform') not in ('macos', 'windows', 'linux') or report.get('arch') not in ('arm64', 'x86_64'):
+            raise ValueError('Required report information is missing')
+        if 'android_api' in report:
+            raise ValueError('Unsupported report fields')
+    else:
+        raise ValueError('Unsupported application')
     return json.dumps(report, ensure_ascii=True, sort_keys=True, separators=(',', ':')).encode()
 
 class Limits:
