@@ -31,8 +31,9 @@ sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'
 deps=ReportDependencies(r,out,env)
 ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',ns)
 tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();root.set('package',package)
-root.set('{'+ns+'}versionName','0.1.0-crash-details-test.1');root.set('{'+ns+'}versionCode','1')
-app=root.find('application');app.set('{'+ns+'}label','OpenSAAB 0.1.0-crash-details-test.1 ARM64 TEST ONLY')
+test_version='0.1.0-crash-tests.2' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
+root.set('{'+ns+'}versionName',test_version);root.set('{'+ns+'}versionCode','1')
+app=root.find('application');app.set('{'+ns+'}label','OpenSAAB '+test_version+' ARM64 TEST ONLY')
 for e in app.findall('activity'):
  if e.get('{'+ns+'}name')=='com.opensaab.usb.SupportReportActivity':e.set('{'+ns+'}exported','true') # Isolated harness only.
  if e.get('{'+ns+'}name')=='.MainActivity':e.set('{'+ns+'}name','com.opensaab.tech2.MainActivity')
@@ -52,7 +53,9 @@ with zipfile.ZipFile(out/'unsigned.apk','a') as z:
  for dex in sorted(out.glob('classes*.dex')):z.write(dex,dex.name)
 run(bt/'zipalign','-f','4',out/'unsigned.apk',out/'aligned.apk')
 run(bt/'apksigner','sign','--ks',Path.home()/'.android/debug.keystore','--ks-pass','pass:android','--key-pass','pass:android','--out',out/'diagnostics-test-only.apk',out/'aligned.apk')
-run(*adb,'install','-r',out/'diagnostics-test-only.apk')
+test_apk=out/('OpenSAAB-'+test_version+'-android-arm64-v8a-test.apk')
+shutil.copy2(out/'diagnostics-test-only.apk',test_apk)
+run(*adb,'install','-r',test_apk)
 try:
  for suite in suites:
   result=run(*adb,'shell','am','instrument','-w','-r',package+'/com.opensaab.usb.'+suite,capture=True)

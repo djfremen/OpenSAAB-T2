@@ -141,10 +141,10 @@ with zipfile.ZipFile(unsigned, 'a') as z:
         z.write(repo/'android/adapters/mdi/MDI_NOTICES.txt','assets/legal/MDI_NOTICES.txt')
 aligned = build / 'aligned.apk'
 run(bt / 'zipalign', '-f', '4', unsigned, aligned)
-apk = build / ('OpenSAAB-T2-arm64-v8a.apk' if args.release else 'opensaab-tech2.apk')
+apk = build / ('OpenSAAB-T2-'+args.version_name+'-'+profile.abi+'.apk')
 if experimental:
-    apk = build / ('OpenSAAB-T2-headunit-armeabi-v7a.apk' if args.release else 'OpenSAAB-T2-headunit-armeabi-v7a-dev.apk')
-if demand_test: apk = build / 'OpenSAAB-32-bit-interactive-test.apk'
+    apk = build / ('OpenSAAB-T2-'+args.version_name+'-'+profile.abi+'.apk')
+if demand_test: apk = build / ('OpenSAAB-'+args.version_name+'-'+profile.abi+'-interactive-test.apk')
 if args.release:
     keystore = os.environ.get('OPENSAAB_RELEASE_KEYSTORE')
     password_file = os.environ.get('OPENSAAB_RELEASE_PASSWORD_FILE')
