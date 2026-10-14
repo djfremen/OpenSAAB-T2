@@ -36,6 +36,33 @@ public final class CrashDetailsInstrumentedTest extends Instrumentation {
     check(crash.getString("reason").equals(reason)&&report.getString("reason").equals(reason),"first failure overwritten");
     check(crash.getJSONObject("crash_diagnostics").toString().equals(snapshot.toString())&&report.getJSONObject("crash_diagnostics").toString().equals(snapshot.toString()),"logs disagree");
     check(snapshot.getString("architecture").equals("arm64-v8a")&&!snapshot.isNull("attempt_id"),"package/session metadata lost");
-    out.putString("stream","PASS: packaged native summary, rejected model/firmware/hardware, unknown driver, linked connection, independent USB cleanup, terminal PC/exit, identical saved snapshot, original failure preserved, serial excluded\n");
+    AdapterCompatibilityNotice.Notice mid=AdapterCompatibilityNotice.read(run);
+    check(mid!=null&&mid.code.equals("model_not_validated")&&mid.url.equals(AdapterCompatibilityNotice.INFO),"Mid incorrectly sent to Pro update");
+    JSONObject adapter=FirmwareStore.json(new File(run,"adapter-diagnostics.json"));
+    adapter.put("model","Chipsoft J2534 Pro").put("firmware_version","1.5.1");
+    FirmwareStore.writeJson(new File(run,"adapter-diagnostics.json"),adapter);
+    String older=ConnectionAttempt.failureSummary(getTargetContext(),run);
+    AdapterCompatibilityNotice.Notice oldPro=AdapterCompatibilityNotice.read(run);
+    check(oldPro!=null&&oldPro.code.equals("older_pro_firmware")&&oldPro.url.equals(AdapterCompatibilityNotice.PRO),"older Pro update guidance missing");
+    check(older.contains("firmware 1.5.1")&&older.contains("Pro firmware 1.5.2")&&older.contains(AdapterCompatibilityNotice.PRO),"Console guidance incomplete");
+    adapter.put("firmware_version","1.5.2");FirmwareStore.writeJson(new File(run,"adapter-diagnostics.json"),adapter);
+    ConnectionAttempt.failureSummary(getTargetContext(),run);
+    check(AdapterCompatibilityNotice.read(run).code.equals("identity_not_validated"),"same-version rejection called outdated");
+    android.app.Activity activity=startActivitySync(new android.content.Intent().setClassName(getTargetContext().getPackageName(),"com.opensaab.tech2.MainActivity").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+    final EmulatorHealthMonitor[] monitor=new EmulatorHealthMonitor[1];final boolean[] stopCalled={false};
+    runOnMainSync(()->{monitor[0]=new EmulatorHealthMonitor(activity,()->stopCalled[0]=true);monitor[0].begin(run);monitor[0].endedCompatibility(oldPro);});waitForIdleSync();
+    java.lang.reflect.Field dialogField=EmulatorHealthMonitor.class.getDeclaredField("dialog");dialogField.setAccessible(true);
+    android.app.AlertDialog dialog=(android.app.AlertDialog)dialogField.get(monitor[0]);
+    check(dialog!=null&&dialog.isShowing(),"compatibility message not displayed");
+    android.widget.TextView message=dialog.findViewById(android.R.id.message);
+    check(message.getText().toString().contains("firmware 1.5.1")&&message.getText().toString().contains("firmware 1.5.2"),"dialog lost detected/tested versions");
+    check(dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).getText().toString().equals("Pro driver/firmware"),"official link action missing");
+    check(!stopCalled[0],"notice automatically restarted/stopped a session");
+    JSONObject event=FirmwareStore.json(new File(getTargetContext().getFilesDir(),"last-emulator-health.json"));
+    check(event.getString("reason").equals("unexpected_emulator_exit"),"compatibility failure relabelled vehicle-network failure");
+    android.graphics.Bitmap screen=getUiAutomation().takeScreenshot();
+    if(screen!=null){try(java.io.FileOutputStream image=new java.io.FileOutputStream(new File(getTargetContext().getFilesDir(),"chipsoft-compatibility-test.png"))){screen.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);}screen.recycle();}
+    runOnMainSync(()->{monitor[0].close();activity.finish();});
+    out.putString("stream","PASS: native snapshot and cleanup, serial excluded, older Pro vs current Pro vs Mid, official link, real compatibility dialog with detected/tested versions, no automatic restart/update/upload, unchanged failure category\n");
   }catch(Throwable e){result=0;out.putString("stream","FAIL: "+e+"\n");}finish(result,out);}
 }

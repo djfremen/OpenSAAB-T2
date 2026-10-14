@@ -408,19 +408,20 @@ public final class ChipsoftUsbActivity extends Activity {
             closeSockets();if(firmwareLease!=null)firmwareLease.close();
             log("USB_CLOSED cleanup_ok="+clean+" session="+run.getName());
             if(progress.failed())log(ConnectionAttempt.failureSummary(this,run));
+            final AdapterCompatibilityNotice.Notice compatibilityNotice=progress.failed()?AdapterCompatibilityNotice.read(run):null;
             if(vinCheck && identified!=null && !cancelled && generation==vehicleGeneration){
                 if(!onlineDetails)identified=VehicleSession.unavailable(identified,"not_requested");
                 try{synchronized(identityLock){if(!cancelled&&generation==vehicleGeneration){VehicleSession.save(new File(run,VehicleSession.FILE),identified);VehicleSession.save(new File(getFilesDir(),"last-vehicle.json"),identified);}}}
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
             if(nativeFirmware&&!vinCheck&&health!=null){
-                if(unexpectedDisconnect)health.ended("Chipsoft USB disconnected during the operation. Last firmware screen and evidence were retained.","Chipsoft disconnected");else if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
+                if(compatibilityNotice!=null&&!cancelled)health.endedCompatibility(compatibilityNotice);else if(unexpectedDisconnect)health.ended("Chipsoft USB disconnected during the operation. Last firmware screen and evidence were retained.","Chipsoft disconnected");else if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
             }
             running.set(false);
             final String endedMessage=unexpectedDisconnect?"Chipsoft disconnected · operation interrupted; last screen saved":cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
             if(lcdPump!=null)lcdPump.clearDirectory(run);
             runOnUiThread(()->{if(nativeFirmware&&!vinCheck&&!isDestroyed())finishNativePresentation(run,endedMessage);});
-            runOnUiThread(()->{if(!isDestroyed()&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");});
+            runOnUiThread(()->{if(!isDestroyed()&&!isFinishing()&&generation==vehicleGeneration){if(compatibilityNotice!=null&&!cancelled){adapterSummary.setText(compatibilityNotice.title+" · details in Console");if(foreground&&!running.get()&&(!nativeFirmware||vinCheck))AdapterCompatibilityNotice.show(this,compatibilityNotice);}else if(adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");}});
             if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
             if(dtcRead && quit && clean && !cancelled && generation==vehicleGeneration)runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed() && continueDiagnostics!=null)continueDiagnostics.setEnabled(true);});
             final VehicleIdentity ready=identified;
@@ -428,6 +429,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(cancelled || generation!=vehicleGeneration || isFinishing() || isDestroyed())return;
                 if(ready==null){
                     vinSummary.setText("VIN unavailable · no vehicle session started");
+                    if(compatibilityNotice!=null)return;
                     new AlertDialog.Builder(this).setTitle("Could not identify vehicle")
                         .setMessage("Check the adapter connection and turn the ignition ON, then retry. A fresh VIN is needed to keep this session and its reports attached to the correct vehicle.")
                         .setNeutralButton("Report problem",(dialog,which)->startActivity(new Intent(this,SupportReportActivity.class)))

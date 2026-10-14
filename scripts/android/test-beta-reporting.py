@@ -39,7 +39,7 @@ sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'
 deps=ReportDependencies(r,out,env)
 ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',ns)
 tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();root.set('package',package)
-test_version='0.1.0-guided-context-tests.2' if a.guided_context else '0.1.0-nano-reboot-tests.1' if a.nano_reboot else '0.1.0-security-tests.4' if a.security_only else '0.1.0-crash-tests.2' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
+test_version='0.1.0-guided-context-tests.2' if a.guided_context else '0.1.0-nano-reboot-tests.1' if a.nano_reboot else '0.1.0-security-tests.4' if a.security_only else '0.1.0-chipsoft-guidance-tests.1' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
 if a.android_rounds:test_version='0.1.0-android-rounds-tests.3'
 root.set('{'+ns+'}versionName',test_version);root.set('{'+ns+'}versionCode','1')
 app=root.find('application');
@@ -73,6 +73,9 @@ try:
   (out/(suite+'.txt')).write_text(result.stdout+'\n'+result.stderr)
   print(result.stdout)
   if 'PASS:' not in result.stdout or 'INSTRUMENTATION_CODE: -1' not in result.stdout:raise SystemExit(suite+' failed')
+  if a.crash_details_only:
+   with (out/'chipsoft-compatibility-test.png').open('wb') as image:
+    subprocess.run([str(x) for x in [*adb,'exec-out','run-as',package,'cat','files/chipsoft-compatibility-test.png']],check=True,env=env,stdout=image)
  if a.lifecycle:
   spec=importlib.util.spec_from_file_location('review_process',r/'scripts/android/test-review-process.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);module.exercise(adb,out,env)
 finally:run(*adb,'uninstall',package)

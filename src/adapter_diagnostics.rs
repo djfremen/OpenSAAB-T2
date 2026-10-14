@@ -113,15 +113,19 @@ pub fn snapshot(dir: &Path) -> Value {
         let result=read(dir,"result.json");
         if let Some(s)=result["firmware"].as_str().filter(|s|version(s)) {out["firmware_version"]=json!(s);}
     }
+    if let Some(advice)=crate::adapter_compatibility::chipsoft(&out) {out["compatibility_guidance"]=advice;}
     out
 }
 pub fn console(v: &Value) -> String {
     let s=|key:&str|v[key].as_str().unwrap_or("unavailable");
     let pc=v["terminal_pc"].as_u64().map(|n|format!("0x{n:08X}")).unwrap_or("unavailable".into());
     let exit=v["process_exit_code"].as_i64().map(|n|n.to_string()).unwrap_or("unavailable".into());
-    format!("CRASH DETAILS\n  App: OpenSAAB {} {} | build {}\n  Connection: {}\n  Adapter: {} | model {}\n  Firmware: {} | hardware {} | driver {}\n  Transport: {} | state {} | stage {}\n  Compatibility: {} | failure {}\n  Mode: {} | operation {}\n  Cleanup: USB {} | protocol {}\n  Terminal PC: {pc} | process exit {exit}",
+    let details = format!("CRASH DETAILS\n  App: OpenSAAB {} {} | build {}\n  Connection: {}\n  Adapter: {} | model {}\n  Firmware: {} | hardware {} | driver {}\n  Transport: {} | state {} | stage {}\n  Compatibility: {} | failure {}\n  Mode: {} | operation {}\n  Cleanup: USB {} | protocol {}\n  Terminal PC: {pc} | process exit {exit}",
         s("app_version"),s("architecture"),s("build"),s("attempt_id"),s("family"),s("model"),s("firmware_version"),s("hardware_version"),s("driver_version"),
-        s("transport"),s("state"),s("stage"),s("compatibility"),s("failure_kind"),s("session_mode"),s("last_operation"),s("usb_release"),s("protocol_cleanup"))
+        s("transport"),s("state"),s("stage"),s("compatibility"),s("failure_kind"),s("session_mode"),s("last_operation"),s("usb_release"),s("protocol_cleanup"));
+    if let Some(advice)=crate::adapter_compatibility::chipsoft(v) {
+        format!("{details}\n\n{}\n{}\nOfficial Chipsoft information: {}",advice["title"].as_str().unwrap(),advice["message"].as_str().unwrap(),advice["url"].as_str().unwrap())
+    } else { details }
 }
 
 /// Refresh after host cleanup as well, without opening any transport or firmware.
