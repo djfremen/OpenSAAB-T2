@@ -1,0 +1,4 @@
+worker/target/
+build/
+*.pyc
+__pycache__/

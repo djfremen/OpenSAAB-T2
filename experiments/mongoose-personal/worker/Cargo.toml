@@ -1,0 +1,11 @@
+[package]
+name = "opensaab-mongoose-beta-worker"
+version = "0.1.1-preview.3"
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.93"
+[lib]
+name = "tech2_emu"
+[dependencies]
+serde_json = "1.0"
+opensaab-adapter-translation = { version = "=0.1.0", path = "shared/adapter-translation" }

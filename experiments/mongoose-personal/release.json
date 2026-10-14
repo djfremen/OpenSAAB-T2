@@ -1,0 +1,17 @@
+{
+  "product": "OpenSAAB",
+  "version": "0.1.1-preview.3",
+  "version_code": 100003,
+  "release_date": "2026-10-14",
+  "package": "com.opensaab.tech2.mongoosebeta",
+  "platform": "android",
+  "architecture": "arm64",
+  "display_architecture": "ARM64",
+  "installer_name": "OpenSAAB_64_14OCT26_v0.1.1-preview.3.apk",
+  "channel": "Developer Preview",
+  "scope": "Personal MongoosePro GM II USB startup, HS-CAN VIN, bounded I-Bus wake/CIM ignition-status and CIM VIN; physical contributor tests pending",
+  "security_access": {
+    "policy": "security-access-password-1",
+    "mode": "unavailable"
+  }
+}
