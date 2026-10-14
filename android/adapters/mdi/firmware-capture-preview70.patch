@@ -1,0 +1,69 @@
+--- a/src/mdi_backend.rs
++++ b/src/mdi_backend.rs
+@@ -8,7 +8,6 @@
+ use std::{
+     collections::BTreeMap,
+     fs::OpenOptions,
+-    io::Write,
+     path::Path,
+     sync::{
+         atomic::{AtomicBool, Ordering},
+@@ -68,7 +67,7 @@
+         let cancelled = stop.clone();
+         let directory = directory.to_path_buf();
+         let worker = thread::spawn(move || {
+-            let mut log = log;
++            let mut log = opensaab_session_evidence::bounded_capture::BoundedCapture::new(log, 128 * 1024 * 1024);
+             let mut pair: Option<RawPair> = None;
+             let mut pending = BTreeMap::<(usize, u32), (usize, u64)>::new();
+             let result = (|| -> Result<(), String> {
+@@ -84,8 +83,7 @@
+                         e.error
+                     })?,
+                 );
+-                writeln!(log, "{}", pair.as_mut().unwrap().take_activity())
+-                    .map_err(|e| e.to_string())?;
++                log.record(&pair.as_mut().unwrap().take_activity());
+                 ready_sender
+                     .try_send(())
+                     .map_err(|_| "MDI startup caller left")?;
+@@ -93,7 +91,6 @@
+                     "MDI_RAW_READY buses=HS500k,SW33k source=generated-DPDU vendor_driver=false"
+                 );
+                 let start = Instant::now();
+-                let mut bytes = 0u64;
+                 while !cancelled.load(Ordering::Acquire) {
+                     if start.elapsed() > Duration::from_secs(900) {
+                         return Err("MDI raw session deadline".into());
+@@ -155,15 +152,7 @@
+                                 .map_err(|_| "MDI guest event queue full/closed")?;
+                         }
+                     }
+-                    let activity =
+-                        serde_json::to_vec(&session.take_activity()).map_err(|e| e.to_string())?;
+-                    bytes += activity.len() as u64 + 1;
+-                    if bytes > 128 * 1024 * 1024 {
+-                        return Err("MDI structured capture boundary".into());
+-                    }
+-                    log.write_all(&activity)
+-                        .and_then(|_| log.write_all(b"\n"))
+-                        .map_err(|e| e.to_string())?;
++                    log.record(&session.take_activity());
+                     thread::sleep(Duration::from_millis(1));
+                 }
+                 Ok(())
+@@ -172,12 +161,12 @@
+                 .as_mut()
+                 .map(|pair| {
+                     let result = pair.close();
+-                    let _ = writeln!(log, "{}", pair.take_activity());
++                    log.record(&pair.take_activity());
+                     result
+                 })
+                 .unwrap_or(serde_json::Value::Null);
+             let clean = cleanup["cleanup_ok"] == true;
+-            let report = serde_json::json!({"result_error":result.as_ref().err(),"cleanup_ok":clean,"raw_pair":cleanup,"unconfirmed_guest_tickets":pending.len()});
++            let report = serde_json::json!({"result_error":result.as_ref().err(),"cleanup_ok":clean,"raw_pair":cleanup,"unconfirmed_guest_tickets":pending.len(),"capture":log.report()});
+             let _ = std::fs::write(
+                 directory.join("mdi-cleanup-private.json"),
+                 report.to_string(),

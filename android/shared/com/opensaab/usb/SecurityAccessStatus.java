@@ -41,7 +41,13 @@ public final class SecurityAccessStatus {
         }catch(Exception missing){return false;}
     }
     public boolean ssaMatches(byte[] bytes){try{return imported()&&bytes!=null&&data.getProperty("ssa_hash","").equals(hash(bytes));}catch(Exception invalid){return false;}}
-    public boolean sameSession(File session){return session!=null&&session.getName().equals(data.getProperty("source_session"));}
+    public static String sessionId(File session){
+        if(session==null)return "";
+        // MDI puts each run in <UUID>/native; basename alone is ambiguous.
+        return "native".equals(session.getName())&&session.getParentFile()!=null
+            ?session.getParentFile().getName()+"/native":session.getName();
+    }
+    public boolean sameSession(File session){return session!=null&&sessionId(session).equals(data.getProperty("source_session"));}
     private String time(String name){String value=data.getProperty(name);return value==null?"not completed":DISPLAY.format(Instant.parse(value));}
     public String freshness(boolean cardMatches,Instant now){
         Long age=ageSeconds(cardMatches,now);

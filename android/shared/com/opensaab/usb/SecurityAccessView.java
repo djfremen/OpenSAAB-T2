@@ -22,7 +22,8 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private static final String INTERNET_REQUIRED="Security access requires internet. OpenSAAB is contacted first; you can allow Bojer as a fallback if OpenSAAB is unavailable. It cannot be processed offline.";
     private final Activity activity;
     private boolean collection;
-    public void returnedToFirmware(){manualCollection=false;collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
+    private long refreshGeneration;
+    public void returnedToFirmware(){refreshGeneration++;manualCollection=false;collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
     private final Supplier<File> session;
     private final BooleanSupplier running;
     private final Runnable stop,collect,resume;
@@ -75,12 +76,14 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     public boolean collecting(){return collection&&!imported;}
     /** Follow collection in this full-control session without rebooting or re-selecting menus. */
     public void collectInCurrentSession(){
+        refreshGeneration++;
         observed=session.get();collection=true;manualCollection=true;manualNavigation=true;navigator=null;transferSeen=false;imported=false;failure=null;
     }
     public boolean navigating(){return collection&&!busy&&navigator!=null&&navigator.active();}
     public void refresh(){
         if(closed||busy||!polling.compareAndSet(false,true))return;
         final File run=session.get();
+        final long generation=refreshGeneration;
         try{worker.execute(()->{
             String text="";
             try{if(run!=null){File f=new File(run,"screen.txt");if(!f.isFile())f=new File(run,"native-dtc-screen.txt");if(f.isFile()&&f.length()<8192)text=new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8);}}catch(IOException ignored){}
@@ -89,12 +92,16 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             try{if(identity==null||saved==null||!saved.matches(identity.vin))saved=null;}catch(Exception invalid){saved=null;}
             final SecurityAccessStatus current=saved;
             final VehicleIdentity currentIdentity=identity;
-            final SecuritySessionData working=SecuritySessionData.load(run,new File(activity.getFilesDir(),"firmware/card.bin"),identity);
+            final File selectedCard=new File(activity.getFilesDir(),"firmware/card.bin");
+            // Explicit fresh collection keeps priority over an older import. Once this
+            // collection imports, its historical PRE snapshot is evidence, not current data.
+            SecuritySessionData processed=(!collection||imported)?SecuritySessionData.imported(run,selectedCard,identity,saved):null;
+            final SecuritySessionData working=processed!=null?processed:SecuritySessionData.load(run,selectedCard,identity);
             final boolean cardMatches=current!=null&&current.ssaMatches(working.bytes);
             final String screen=text;
             final SsaState currentState=working.state;
             activity.runOnUiThread(()->{
-                polling.set(false);if(closed||busy||session.get()!=run)return;
+                polling.set(false);if(closed||busy||session.get()!=run||generation!=refreshGeneration)return;
                 if(observed!=run){if(manualCollection)collection=false;observed=run;manualCollection=false;transferSeen=false;imported=false;failure=null;
                     navigator=null;navigationWaitingLogged=false;}
                 // A new native directory can appear before card preparation/VIN publication ends.
@@ -206,7 +213,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 // Release the image lease and workflow gate before the new emulator opens the card.
                 WORKFLOW_BUSY.set(false);released=true;
                 activity.runOnUiThread(()->{
-                    busy=false;manualCollection=false;imported=true;
+                    refreshGeneration++;busy=false;manualCollection=false;collection=false;transferSeen=false;navigator=null;imported=true;
                     if(!closed&&session.get()==run){
                         SessionDiagnostics.record(run,SessionDiagnostics.Event.RESTART_REQUESTED);
                         show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
@@ -225,7 +232,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private void process(File run,boolean allowFallback,byte[] selection)throws Exception{
         VehicleIdentity identity=VehicleSession.read(new File(run,VehicleSession.FILE));
         if(identity==null)throw new IOException("No verified vehicle identity; collect again.");
-        SecurityAccessStatus attempt=new SecurityAccessStatus(identity.vin,run.getName(),java.time.Instant.now());
+        SecurityAccessStatus attempt=new SecurityAccessStatus(identity.vin,SecurityAccessStatus.sessionId(run),java.time.Instant.now());
         attempt.save(receiptFile());
         try{processAttempt(run,allowFallback,identity,attempt,selection);}
         catch(Exception failure){

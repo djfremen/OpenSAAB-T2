@@ -34,6 +34,12 @@ public final class SessionEndInstrumentedTest extends Instrumentation {
             runOnMainSync(()->{try{field(active,"nativeDirectory").set(active,ended);((AtomicBoolean)field(active,"running").get(active)).set(false);android.widget.ImageView v=(android.widget.ImageView)field(active,"nativeLcd").get(active);v.setImageBitmap(Bitmap.createBitmap(320,240,Bitmap.Config.ARGB_8888));call(active,"finishNativePresentation",new Class[]{File.class,String.class},ended,"Live adapter stopped");}catch(Exception e){throw new RuntimeException(e);}});
             check(((android.widget.ImageView)field(active,"nativeLcd").get(active)).getDrawable()==null,"Chipsoft end left frame");
             Object workspace=field(active,"workspace").get(active);check(((android.widget.TextView)field(workspace,"summary").get(workspace)).getText().toString().startsWith("Live adapter stopped"),"Chipsoft reason hidden in details");
+            File retained=new File(ended,"screen.txt");retained.getParentFile().mkdirs();java.nio.file.Files.write(retained.toPath(),"Checking Key Position Working".getBytes("UTF-8"));
+            final ChipsoftUsbActivity chip=(ChipsoftUsbActivity)active;
+            runOnMainSync(()->{chip.connectionAttempt=new ConnectionAttempt(chip,ConnectionAttempt.Adapter.CHIPSOFT);chip.adapterDisconnected();});
+            check(chip.unexpectedDisconnect&&chip.connectionAttempt.failed(),"Detach was recorded as operator Stop");
+            check(chip.status.getText().toString().startsWith("Chipsoft disconnected"),"Detach reason hidden");
+            check(retained.isFile()&&new String(java.nio.file.Files.readAllBytes(retained.toPath()),"UTF-8").contains("Key Position"),"Last screen lost on detach");
             runOnMainSync(active::finish);
             active=startActivitySync(new Intent(getTargetContext(),NanoProbeActivity.class).putExtra("native_dtc",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             runOnMainSync(()->{try{android.widget.ImageView v=(android.widget.ImageView)field(active,"nativeLcd").get(active);v.setImageBitmap(Bitmap.createBitmap(320,240,Bitmap.Config.ARGB_8888));call(active,"clearNativePresentation",new Class[]{});}catch(Exception e){throw new RuntimeException(e);}});

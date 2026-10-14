@@ -37,6 +37,15 @@ public final class SecuritySessionData {
             return new SecuritySessionData(b,complete);
         }catch(Exception unavailable){return new SecuritySessionData(null,false);}
     }
+    /** A validated import for this exact collection supersedes its preserved PRE snapshot. */
+    static SecuritySessionData imported(File run,File card,VehicleIdentity identity,SecurityAccessStatus receipt){
+        try{
+            if(identity==null||receipt==null||!receipt.imported()||!receipt.sameSession(run)||!receipt.matches(identity.vin))return null;
+            byte[] selected=card(card);
+            if(SsaState.analyze(selected)!=SsaState.POST_AUTH||!identity.vin.equals(SsaData.vin(selected))||!receipt.ssaMatches(selected))return null;
+            return new SecuritySessionData(selected,false);
+        }catch(Exception unavailable){return null;}
+    }
     static void snapshot(File run,boolean fresh)throws Exception{
         File metadata=new File(run,"native-security-snapshot.json");
         if(!metadata.isFile()||metadata.length()>8192)throw new IOException("Missing original-firmware collection evidence.");

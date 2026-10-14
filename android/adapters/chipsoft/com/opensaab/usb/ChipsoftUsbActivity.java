@@ -44,6 +44,7 @@ public final class ChipsoftUsbActivity extends Activity {
     Button continueDiagnostics;
     boolean fullNative,keyStatus,audible,seeds,vinCheck,symbolOnly,nativeFirmware,receiveTest;volatile File nativeDirectory;ImageView nativeLcd;final Handler lcdHandler=new Handler(Looper.getMainLooper());volatile boolean cancelled; boolean pending,foreground;
     volatile ServerSocket server; volatile Socket client;
+    volatile boolean unexpectedDisconnect;
     final RequestGate requests=new RequestGate(); String permission;long permissionEpoch;
     final BroadcastReceiver receiver=new BroadcastReceiver(){
         public void onReceive(Context c,Intent i){
@@ -56,7 +57,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 }else {pending=false;requests.cancel();connectionFailure(ConnectionAttempt.Reason.PERMISSION_DENIED);log("USB permission denied; tap Identify to retry.");}
             }else if(UsbManager.ACTION_USB_DEVICE_DETACHED.equals(i.getAction())){
                 UsbDevice d=i.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                if(selected!=null && selected.equals(d)){connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);log("Chipsoft disconnected");stop();}
+                if(selected!=null && selected.equals(d)){adapterDisconnected();}
             }
         }
     };
@@ -238,6 +239,11 @@ public final class ChipsoftUsbActivity extends Activity {
         else {pendingVehicleStart=restart;status.setText("Security access ready · firmware will restart when you return");}
     }
     void log(String s){android.util.Log.i("OpenSaabChipsoft",s);runOnUiThread(()->{if(console.length()>24000)console.setText("");console.append(s+"\n");if(s.startsWith("NATIVE_SESSION"))status.setText(audible?"Original firmware · BCM audible reminder":symbolOnly?"Original firmware · BCM Symbol Only operation":"Original firmware active · direct Chipsoft USB");else if(s.startsWith("USB_CLOSED"))status.setText(s.contains("cleanup_ok=true")?"Session ended · USB released":"Session ended · check cleanup log");else if(!s.startsWith("NATIVE_USB_TX"))status.setText(s);});}
+    void adapterDisconnected(){
+        unexpectedDisconnect=true;connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);
+        log("Chipsoft disconnected · last firmware screen retained in session evidence");stop();
+        status.setText("Chipsoft disconnected · operation interrupted; last screen saved");updateWorkspace();
+    }
     void connectionFailure(ConnectionAttempt.Reason reason){
         ConnectionAttempt attempt=connectionAttempt;
         if(attempt!=null)attempt.finish(ConnectionAttempt.Outcome.FAILED,reason);
@@ -275,7 +281,7 @@ public final class ChipsoftUsbActivity extends Activity {
         long epoch=requests.begin();if(manager.hasPermission(selected))start(selected,epoch);
         else {pending=true;permissionEpoch=epoch;Intent i=new Intent(permission).setPackage(getPackageName()).putExtra("epoch",epoch);manager.requestPermission(selected,PendingIntent.getBroadcast(this,(int)epoch,i,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT));log("Waiting for Android USB permission");}
     }
-    void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;long generation=vehicleGeneration;
+    void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;unexpectedDisconnect=false;long generation=vehicleGeneration;
         if(vinSummary!=null)vinSummary.setText("Reading VIN from vehicle…");
         if(engineCodes!=null)engineCodes.setText("Reading fresh VIN, then engine codes…");
         new Thread(()->probe(d,nativeFirmware || dtcRead,null,generation),"chipsoft-usb").start();}
@@ -408,10 +414,10 @@ public final class ChipsoftUsbActivity extends Activity {
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
             if(nativeFirmware&&!vinCheck&&health!=null){
-                if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
+                if(unexpectedDisconnect)health.ended("Chipsoft USB disconnected during the operation. Last firmware screen and evidence were retained.","Chipsoft disconnected");else if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
             }
             running.set(false);
-            final String endedMessage=cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
+            final String endedMessage=unexpectedDisconnect?"Chipsoft disconnected · operation interrupted; last screen saved":cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
             if(lcdPump!=null)lcdPump.clearDirectory(run);
             runOnUiThread(()->{if(nativeFirmware&&!vinCheck&&!isDestroyed())finishNativePresentation(run,endedMessage);});
             runOnUiThread(()->{if(!isDestroyed()&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");});
@@ -518,7 +524,7 @@ public final class ChipsoftUsbActivity extends Activity {
         status.setText(reason);showVehicle(true);updateWorkspace();
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
-    void stop(){if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
+    void stop(){if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null&&!unexpectedDisconnect)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
     protected void onResume(){super.onResume();foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){

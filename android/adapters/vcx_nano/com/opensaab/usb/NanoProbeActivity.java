@@ -614,7 +614,12 @@ public class NanoProbeActivity extends Activity {
         if(!foreground || !running.get() || cancelled || nativeStop.pending() || nativeDirectory==null || new File(nativeDirectory,"native-key.txt").exists())return false;
         nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));return true;
     }
-    void stopForSecurityHandoff(){if(health!=null)health.expectedStop();cancel();}
+    void stopForSecurityHandoff(){
+        // Processing saved seeds also enters here after a clean operator Stop.
+        // An idle handoff must not turn that completed Stop into cancellation.
+        if(!running.get()&&!usbSessionOwned.get()&&!permissionPending)return;
+        if(health!=null)health.expectedStop();cancel();
+    }
     void openSecuritySession(boolean collect){
         if(running.get() || isFinishing() || isDestroyed())return;
         Intent next=new Intent(this,NanoProbeActivity.class).putExtra(collect?"nano_security_collect":"nano_full_native",true).putExtra("auto_start",true).putExtra(SecurityCollectionMode.EXTRA,SecurityCollectionMode.from(getIntent())).putExtra(SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(SecurityCollectionMode.PLATFORM_EXTRA));
@@ -622,7 +627,7 @@ public class NanoProbeActivity extends Activity {
         startActivity(next);finish();
     }
     void startSameSecurityAdapter(){
-        if(running.get() || usbSessionOwned.get() || !foreground || cancelled || isFinishing() || isDestroyed() || securityVehicle==null || securityDevice==null)return;
+        if(running.get() || usbSessionOwned.get() || !foreground || cancelled || !sessionCleanupConfirmed || isFinishing() || isDestroyed() || securityVehicle==null || securityDevice==null)return;
         UsbDevice attached=manager.getDeviceList().get(securityDevice.getDeviceName());
         if(attached==null || attached.getDeviceId()!=securityDevice.getDeviceId() || !manager.hasPermission(attached)){
             securityVehicle=null;securityDevice=null;summary.setText("Security access ready · reconnect the adapter to continue");return;
@@ -632,6 +637,9 @@ public class NanoProbeActivity extends Activity {
     }
     void resumeSecurityFirmware(){
         if(running.get() || cancelled || isFinishing() || isDestroyed())return;
+        if(usbSessionOwned.get() || permissionPending || !sessionCleanupConfirmed){
+            summary.setText("Security data imported · adapter cleanup was not confirmed. Reconnect Nano to continue.");return;
+        }
         nativeSecurityCollect=false;nativeSeeds=false;nativeFullNative=true;
         title.setText(AppBuildProfile.programName(this));
         purpose.setText("Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus");
