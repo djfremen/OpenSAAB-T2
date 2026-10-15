@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+pub mod backend;
+pub mod channel;
+pub mod dtc;
+pub mod init;
+pub mod probe;
+pub mod protocol;
+#[cfg(target_os = "macos")]
+pub mod serial;
+#[cfg(target_os = "windows")]
+#[path = "serial_windows.rs"]
+pub mod serial;

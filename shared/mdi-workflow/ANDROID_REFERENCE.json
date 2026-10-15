@@ -1,0 +1,73 @@
+{
+  "version": "0.1.0-preview.70",
+  "matching_source_sha256": "8c27a20b657e73ae17a1253fe673802e7739eeaf62f7bc8ac098f7674cbacb25",
+  "pins": [
+    {
+      "reference_path": "OpenMDI/src/client.rs",
+      "sha256": "079e2c4d10b28f4559b66089f6d668115e3a7aed657064a12d129e9646109341"
+    },
+    {
+      "reference_path": "OpenMDI/src/lib.rs",
+      "sha256": "53a2dfce5a08c8885dc80937c940d0266b86e62087852d75340fa54d3b8dd5ee"
+    },
+    {
+      "reference_path": "OpenMDI/src/ecm.rs",
+      "sha256": "f022b7647a4ef242dec4cb651a58af702aec5df2941c2bdfc69cce117f5e0797"
+    },
+    {
+      "reference_path": "OpenMDI/src/vin_main.rs",
+      "sha256": "67a15f8518ccf29b43f02b5ddca1b820242c30d9d9945431fc444b881d63f2c4"
+    },
+    {
+      "reference_path": "OpenMDI/src/classic_mdi_bootstrap.rs",
+      "sha256": "4710e37a3c977d114564bf6a1ddc1e48e09446d68036ff45953c5cb8b639932c"
+    },
+    {
+      "reference_path": "OpenMDI/src/trace.rs",
+      "sha256": "bb7db6be12e7bd715b54da610864f3c0a08cb12ea63944a516274e37ecb98156"
+    },
+    {
+      "reference_path": "OpenMDI/src/main.rs",
+      "sha256": "9d022a09db07a61e902db255c8a8b7447fb6c2e28374d85339eb7fc8289c5067"
+    },
+    {
+      "reference_path": "OpenMDI/src/manage_main.rs",
+      "sha256": "0062b17170f97b2563f92a18360216b8d028d2393b8aebe943858b72907c1778"
+    },
+    {
+      "reference_path": "OpenMDI/src/management.rs",
+      "sha256": "75c5cad6c0bb118e93d6c6f73acc1236d02fd7c594e9bc3176a32d85fc68cd24"
+    },
+    {
+      "reference_path": "OpenMDI/src/wire.rs",
+      "sha256": "587fbaa9d2102e14a7f0e3793d4753b5f49a661c160b2e922c03ef1b06e28f72"
+    },
+    {
+      "reference_path": "OpenSAAB-T2/android/adapters/mdi/native/src/discovery.rs",
+      "sha256": "7f8e431b9e88754e2ddb2e314599a25ecfecdbda7e7169bf932b63c969ba31c7"
+    },
+    {
+      "reference_path": "OpenSAAB-T2/android/adapters/mdi/native/src/lib.rs",
+      "sha256": "d73fb9b2bbabfdaff596ed2a7c628350235ba8466db7b0463098e0af4b24b4d0"
+    },
+    {
+      "reference_path": "OpenSAAB-T2/android/adapters/mdi/native/src/async_input.rs",
+      "sha256": "ccad4cc23c601d56610941d70f22a7d9bcaaa306f36cddb488be20d0c2429fa3"
+    },
+    {
+      "reference_path": "OpenSAAB-T2/android/adapters/mdi/native/src/usb_configuration.rs",
+      "sha256": "126c806eb84c56cc3dffa6c5c6d919fca505c4bf6f6c2b7fa4a5f53fa61179d7"
+    },
+    {
+      "reference_path": "mdi-firmware-engine/OpenSAAB-T2/src/mdi_backend.rs",
+      "sha256": "60701cb27b00a8768bcae0a0a6782635f54449f587d72778fd78ece47ef75d02"
+    }
+  ],
+  "Android_cutover": "pending; existing Android reference preserved",
+  "shared_scope": "RNDIS,userspace Ethernet/TCP,fresh discovery,management,VIN,guest lifecycle; macOS owns IOKit handles only",
+  "native_preview_adaptations": {
+    "policy_denial_context": "transport-neutral typed classification; permissions unchanged",
+    "session_lifetime": "operator-controlled native guest; startup/RPC/TX/cleanup remain bounded",
+    "Android_cutover": "pending; verified reference binaries and original provenance preserved"
+  }
+}

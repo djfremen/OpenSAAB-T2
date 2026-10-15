@@ -1,0 +1,33 @@
+[package]
+name = "tech2-emu"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.93"
+default-run = "tech2-emu"
+
+[features]
+default = ["gui"]
+gui = ["dep:minifb"]
+load-test = []
+embedded = []
+mdi-body-read-experiment = []
+
+[dependencies]
+openmdi={path="../shared/mdi-protocol"}
+opensaab-adapter-translation={path="../shared/adapter-translation"}
+opensaab-mdi-workflow={path="../shared/mdi-workflow"}
+opensaab-vlinker-workflow = { version = "=0.1.3", path = "../shared/vlinker-workflow" }
+opensaab-session-evidence = { path = "../shared/session-evidence" }
+m68k = { version = "0.12.1", features = ["serde"] }
+serde_json = "1.0"
+minifb = { version = "0.25", optional = true }
+sha2 = "0.10"
+base64 = "0.22"
+time = { version = "0.3", features = ["formatting"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lib]
+crate-type = ["rlib", "staticlib"]

@@ -1,0 +1,37 @@
+OpenSAAB for macOS @VERSION@ — @ARCH@ preview
+
+1. Drag OpenSAAB.app to Applications (or to ~/Applications).
+2. Open OpenSAAB. The standard package prepares eprom.bin, opsys.dwn and
+   candi.bin automatically using the same verified support profile as Android.
+   Valid existing components are preserved.
+3. On first launch, select Diagnostic language and Software version, then
+   Download and continue. The original Saab diagnostic image is downloaded
+   separately and verified before selection. Setup returns to the ready screen.
+4. Run without an adapter starts the original firmware menus. Enter selects,
+   arrows move, Escape goes back. Keypad exposes the remaining Tech 2 keys.
+   Use the top-left menu to stop, change language, or open session logs.
+
+The application controls remain English. Diagnostic menus use the selected
+firmware language. Existing firmware and logs are preserved on app upgrades.
+An explicitly built import-only package still requires your runtime folder;
+it is not the standard setup profile. Third-party firmware retains its owners'
+terms; the OpenSAAB source license does not license that firmware.
+
+Connect and start identifies a Chipsoft Pro adapter and then reads the VIN
+from the engine ECU over HS-CAN (one read-only request). This Mac preview then starts the original menus using the native Chipsoft bridge.
+Original-menu ECU/DTC results still need vehicle testing; direct startup DTC
+reading is not integrated on macOS.
+A detected serial port is not proof of an identified Chipsoft adapter.
+
+Firmware and logs are stored in ~/Library/Application Support/OpenSAAB/.
+Replacing or deleting the application leaves those files intact.
+
+Requires @ARCH@ and macOS 12 or newer. The preview is ad-hoc signed,
+not Developer ID signed or notarized. Do not disable Gatekeeper. Public
+notarized distribution and full hardware qualification remain pending.
+
+Source and build instructions:
+  The matching source archive and checksums accompany the beta download.
+  Source directory: emulator/installer/macos/
+
+Connected preview: Connect and start identifies Chipsoft, reads a fresh HS-CAN VIN, then launches the selected original software with the shared CANdi bridge over native CDC. CANdi/vehicle channels remain deferred until the guest needs them. This preview permits the existing read-diagnostics command profile; security, clearing and programming are not enabled. An ECM-only bench can reject the original single-wire wake at diagnostic pin 1. That is reported as an incomplete operation, not successful ECU information or DTC retrieval.

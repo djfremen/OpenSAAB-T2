@@ -1,0 +1,22 @@
+[package]
+name = "openmdi"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+description = "Classic Bosch/GM MDI protocol research, trace decoding and scoped direct HS VIN client"
+
+[dependencies]
+serde_json = "1.0"
+blowfish = "=0.9.1"
+
+[[bin]]
+name = "openmdi-trace"
+path = "src/main.rs"
+
+[[bin]]
+name = "openmdi-vin"
+path = "src/vin_main.rs"
+
+[[bin]]
+name = "openmdi-manage"
+path = "src/manage_main.rs"

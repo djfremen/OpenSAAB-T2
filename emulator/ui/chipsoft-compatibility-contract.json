@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "title": "Chipsoft compatibility guidance",
+  "source": "OpenSAAB-T2/src/adapter_compatibility.rs; passive advice used by the shared crash formatter; Android is a thin UI binding",
+  "tested_native_identity": "CHIPSOFT J2534 Pro v. 1.5.2",
+  "rules": [
+    "Show observed model/firmware and the tested Pro1.5.2 identity separately. Missing evidence remains unknown.",
+    "Recommend the Pro update package only for observed Pro firmware with an unambiguous numeric version older than1.5.2.",
+    "A matching1.5.2 rejection is not evidence of outdated firmware. Newer/unknown firmware requires evidence rather than a downgrade instruction.",
+    "Mid/Lite are model-support gaps; a firmware update never grants capabilities.",
+    "Open the fixed official link only after an explicit tap following cleanup; never run an updater, flash, restart, upload or retry automatically.",
+    "Retain the first failure category, independent cleanup and bounded local identity; exclude raw identity/serials.",
+    "Android uses direct USB and does not load the Windows J2534 driver."
+  ],
+  "official_info": "https://www.chipsoft.com.ua/2021/01/13/chipsoft-j2534-152.html",
+  "official_pro_package": "https://chipsoft.com.ua/download/chipsoft_j2534_pro_kline_canhacker_tech2win_drivers_152.zip",
+  "verified_date": "2026-10-14",
+  "version": "0.1.0-chipsoft-guidance.1",
+  "version_code": 100071,
+  "targets": {
+    "android-arm64": "private0.1.0-chipsoft-guidance.1 built and installed; exact APK hash/identity and passive native cases pass; synthetic dialog pass; physical validation pending",
+    "android-arm32": "pending native packaging/installed checks; deferred startup preserved",
+    "macos-arm64": "pending source adoption and installed qualification",
+    "macos-x86_64": "pending source adoption and installed qualification",
+    "windows-x64": "pending source adoption and installed qualification",
+    "ios-arm64": "pending",
+    "linux-x86_64": "pending"
+  },
+  "public_release_changed": false
+}

@@ -1,0 +1,13 @@
+[package]
+name="opensaab-mdi-workflow"
+version="0.1.0"
+edition="2021"
+license="MPL-2.0"
+[dependencies]
+sha2="0.10"
+openmdi={path="../mdi-protocol"}
+serde_json="1.0"
+time={version="0.3",features=["formatting"]}
+smoltcp={version="=0.12.0",default-features=false,features=["std","medium-ethernet","proto-ipv4","multicast","socket-tcp","socket-udp"]}
+[build-dependencies]
+cc="1"
