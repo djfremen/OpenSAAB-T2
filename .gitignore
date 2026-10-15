@@ -1,0 +1,4 @@
+**/target/
+emulator/dist/
+.DS_Store
+__pycache__/
