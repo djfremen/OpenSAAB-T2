@@ -41,7 +41,7 @@ public final class MdiMcpInstrumentedTest extends Instrumentation {
     public void onStart(){Bundle result=new Bundle();Activity activity=null;java.lang.Process worker=null;InteractiveKeyPump pump=null;AtomicBoolean running=null;File output=null;int code=0;
         try{
             Context context=getTargetContext();check(SimulatorVehicleConnection.available(context),"Disposable Android emulator required");
-            check(AppBuildProfile.installedVersion(context).equals("0.1.0-preview.85"),"Wrong installed attempt");
+            check(AppBuildProfile.installedVersion(context).equals("0.1.0-preview.90"),"Wrong installed attempt");
             FirmwareStore store=new FirmwareStore(context.getFilesDir());check(store.missing().isEmpty(),"Real firmware required");
             activity=startActivitySync(new Intent(context,MdiUsbActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();final Activity a=activity;
             File run=new File(context.getFilesDir(),"mdi-sessions/"+UUID.randomUUID());output=new File(run,"native");Files.createDirectories(output.toPath());

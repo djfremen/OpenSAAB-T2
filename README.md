@@ -4,9 +4,9 @@
 
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
-**Public Android beta: v0.1.0-preview.89 (`OpenSAAB_64_14OCT26_v0.1.0-preview.89.apk`, versionCode `100089`).**
+**Public Android beta: v0.1.0-preview.90 (`OpenSAAB_64_15OCT26_v0.1.0-preview.90.apk`, versionCode `100090`).**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.89) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.90) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
 **Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
 

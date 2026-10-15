@@ -5,6 +5,7 @@ import json
 import hashlib
 import zipfile
 import re
+import os
 from datetime import date
 from pathlib import PurePosixPath, Path
 from build_profiles import PROFILES, validate_elf
@@ -15,6 +16,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
     profile = PROFILES[profile_name]
     native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     connection_core = 'lib/arm64-v8a/libopensaab_connection.so'
+    recovered_core = 'lib/arm64-v8a/libtech2_recovered.so'
     if connection_core_sha256 is not None and (profile_name != 'arm64' or not re.fullmatch('[0-9a-f]{64}', connection_core_sha256)):
         raise ValueError('vLinker connection core requires an exact ARM64 SHA-256 pin')
     mdi_pins = {}
@@ -22,9 +24,11 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
     if mdi_module_sha256 is not None:
         if profile_name!='arm64' or any(not re.fullmatch('[0-9a-f]{64}',p) for p in (mdi_module_sha256,mdi_bridge_sha256)):raise ValueError('MDI ARM64 pins required')
         mdi_pins={'lib/arm64-v8a/libopensaab_mdi_android.so':mdi_module_sha256,'lib/arm64-v8a/libtech2_mdi.so':mdi_bridge_sha256}
-    if recovered_core_sha256 is not None:
-        if profile_name!='arm64' or not re.fullmatch('[0-9a-f]{64}',recovered_core_sha256): raise ValueError('Recovered core requires exact ARM64 pin')
-        mdi_pins['lib/arm64-v8a/libtech2_recovered.so']=recovered_core_sha256
+    if profile_name == 'arm64' and os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
+        if recovered_core_sha256 is None or not re.fullmatch('[0-9a-f]{64}', recovered_core_sha256):
+            raise ValueError('Recovered core requires exact ARM64 pin')
+    elif recovered_core_sha256 is not None:
+        raise ValueError('Recovered core requires exact ARM64 pin')
     with zipfile.ZipFile(path) as apk:
         names = apk.namelist()
         if len(names) != len(set(names)):
@@ -97,6 +101,12 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if hashlib.sha256(data).hexdigest() != connection_core_sha256:
                     raise ValueError('vLinker connection executable differs from the locally built source pin')
                 continue
+            if name == recovered_core and recovered_core_sha256 is not None:
+                data = apk.read(name)
+                validate_elf(data[:20], profile)
+                if hashlib.sha256(data).hexdigest() != recovered_core_sha256:
+                    raise ValueError('Recovered core executable differs from the locally built source pin')
+                continue
             # Apart from the pinned support files, allow only the compiled manifest,
             # DEX, resource table, small UI resources and Android signing metadata.
             allowed = name in {'AndroidManifest.xml', 'resources.arsc'} or re.fullmatch(r'classes(?:[2-9]|[1-9][0-9]+)?\.dex', name) is not None or name.startswith('META-INF/') or (
@@ -108,7 +118,10 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             raise ValueError('Missing emulator or USB executable')
         if connection_core_sha256 is not None and connection_core not in names:
             raise ValueError('Missing pinned vLinker connection executable')
+        if recovered_core_sha256 is not None and recovered_core not in names:
+            raise ValueError('Missing pinned recovered core executable')
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256')
     parser.add_argument('--recovered-core-sha256');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256)
+

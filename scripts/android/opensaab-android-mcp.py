@@ -99,7 +99,7 @@ def main():
                 if method=='initialize':
                     requested=(request.get('params') or {}).get('protocolVersion')
                     proto=requested if requested in ('2024-11-05','2025-03-26','2025-06-18','2025-11-25') else '2025-03-26'
-                    result={'protocolVersion':proto,'capabilities':{'tools':{}},'serverInfo':{'name':'opensaab-android','version':'0.1.0-preview.85'}}
+                    result={'protocolVersion':proto,'capabilities':{'tools':{}},'serverInfo':{'name':'opensaab-android','version':'0.1.0-preview.90'}}
                 elif method=='ping':result={}
                 elif method=='tools/list':result={'tools':[{'name':n,'description':d,'inputSchema':{'type':'object','properties':s,'required':list(s),'additionalProperties':False}} for n,d,s in schemas()]}
                 elif method=='tools/call':

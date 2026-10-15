@@ -25,7 +25,7 @@ public final class PreviewWelcomeInstrumentedTest extends Instrumentation {
             runOnMainSync(()->{
                 check(tag(first,"developer-preview-welcome")!=null&&tag(first,"session-workspace")==null,"App workspace preceded welcome");
                 check(text(first,"preview-title").equals("Developer Preview"),"Preview label absent");
-                check(text(first,"preview-version").contains("0.1.0-preview.85")&&text(first,"preview-version").contains("ARM64"),"Installed identity absent");
+                check(text(first,"preview-version").contains("0.1.0-preview.90")&&text(first,"preview-version").contains("ARM64"),"Installed identity absent");
                 check(text(first,"preview-release-date").contains("2026")&&text(first,"preview-release-date").startsWith("Version date: ")&&!text(first,"preview-release-date").toLowerCase(java.util.Locale.ROOT).contains("private"),"Packaged version date absent or confusing private label present");
                 check(text(first,"preview-message").contains("Report issue")&&text(first,"preview-review-note").contains("review"),"Development/report invitation absent");
                 check(!FirmwareGate.sessionActive(),"Welcome started diagnostics");

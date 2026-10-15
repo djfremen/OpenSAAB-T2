@@ -75,7 +75,8 @@ public final class AppUpdatesInstrumentedTest extends Instrumentation {
             check(AppUpdates.select(new JSONArray().put(release("v0.1.0-preview.99",true)).put(stable),true).tag.equals("v0.1.0"),"stable supersedes same-version previews");
             JSONObject both=catalog(entry(false,"0.1.0-preview.28"),entry(true,"0.1.0-headunit.17"));
             check(AppUpdates.catalog(both,"com.opensaab.tech2","arm64-v8a").code==100028,"ARM64 catalog");
-            check(AppUpdates.catalog(catalog(entry(false,"0.1.0-preview.89").put("url","https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.89/OpenSAAB_64_14OCT26_v0.1.0-preview.89.apk")),"com.opensaab.tech2","arm64-v8a").code==100089,"dated ARM64 catalog");
+            check(AppUpdates.catalog(catalog(entry(false,"0.1.0-preview.90").put("url","https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.90/OpenSAAB_64_15OCT26_v0.1.0-preview.90.apk")),"com.opensaab.tech2","arm64-v8a").code==100090,"dated ARM64 catalog");
+            check(AppUpdates.catalog(catalog(entry(false,"0.1.0-preview.89").put("url","https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.89/OpenSAAB_64_14OCT26_v0.1.0-preview.89.apk")),"com.opensaab.tech2","arm64-v8a").code==100089,"prior dated ARM64 catalog");
             check(AppUpdates.catalog(catalog(entry(false,"0.1.0-preview.70").put("url","https://github.com/djfremen/OpenSAAB-T2/releases/download/v0.1.0-preview.70/OpenSAAB-T2-0.1.0-preview.70-arm64-v8a.apk")),"com.opensaab.tech2","arm64-v8a").code==100070,"versioned ARM64 catalog");
             check(AppUpdates.catalog(both,"com.opensaab.tech2.headunit32","armeabi-v7a").code==100017,"ARM32 catalog");
             check(AppUpdates.catalog(both,"com.opensaab.tech2","armeabi-v7a").code==-1,"cross architecture");
