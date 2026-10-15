@@ -26,7 +26,7 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
             runOnMainSync(()->{android.view.View notice=a.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
             runOnMainSync(()->{AndroidMcp.bind(a,owner);try{AndroidMcp.enable(a);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();
             String token=new String(Files.readAllBytes(new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").toPath()),StandardCharsets.US_ASCII);
-            JSONObject state=call(token,"state",new JSONObject());long manual=state.getLong("manual_generation");check(state.getString("app_version").equals("0.1.0-preview.85"),"Installed version unavailable");
+            JSONObject state=call(token,"state",new JSONObject());long manual=state.getLong("manual_generation");check(state.getString("app_version").equals("0.1.0-preview.90"),"Installed version unavailable");
             boolean denied=false;try{call("0".repeat(64),"state",new JSONObject());}catch(EOFException expected){denied=true;}check(denied,"Bad token was accepted");
             check(call(token,"key",key("wrong","fixture-menu",manual)).has("error")&&owner.keys==0,"Stale session admitted");
             check(call(token,"key",key(owner.session,"wrong",manual)).has("error")&&owner.keys==0,"Stale revision admitted");

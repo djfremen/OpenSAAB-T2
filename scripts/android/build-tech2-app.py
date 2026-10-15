@@ -73,7 +73,8 @@ if not emulator.is_file() or not probe.is_file() or not chipsoft.is_file():
 for executable in (emulator, probe, chipsoft):
     with executable.open('rb') as stream:
         validate_elf(stream.read(20), profile)
-env = dict(os.environ, JAVA_HOME=str(jdk), PATH=str(jdk / 'bin') + os.pathsep + os.environ['PATH'])
+ndk = Path(os.environ.get('ANDROID_NDK_HOME', str(sdk / 'ndk/android-ndk-r29')))
+env = dict(os.environ, JAVA_HOME=str(jdk), ANDROID_NDK_HOME=str(ndk), PATH=str(jdk / 'bin') + os.pathsep + str(Path.home() / '.cargo/bin') + os.pathsep + os.environ['PATH'])
 
 def run(*args):
     subprocess.run([str(x) for x in args], check=True, env=env)
@@ -85,12 +86,17 @@ if mdi_module is not None:
     if profile.abi != 'arm64-v8a': raise SystemExit('MDI module qualification currently covers ARM64 only')
     for binary in (mdi_module,mdi_bridge):validate_elf(binary.read_bytes()[:20],profile)
 connection_core = None
+recovered_core = None
 if profile.abi == 'arm64-v8a':
     # Private picker-only build reuses the exact preview.56 native payloads.
     if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
         run('sh', repo / 'scripts/android/build-vlinker-workflow.sh')
+        run('sh', repo / 'scripts/android/build-recovered-core.sh')
     connection_core = Path(os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or repo / 'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection')
     validate_elf(connection_core.read_bytes()[:20], profile)
+    if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
+        recovered_core = Path(os.environ.get('OPENSAAB_RECOVERED_CORE') or repo / 'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu')
+        validate_elf(recovered_core.read_bytes()[:20], profile)
 deps = ReportDependencies(repo, build, env)
 unsigned = build / 'unsigned.apk'
 ns = 'http://schemas.android.com/apk/res/android'
@@ -139,6 +145,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
     z.write(probe, f'lib/{profile.abi}/libnano_probe.so')
     z.write(chipsoft, f'lib/{profile.abi}/libchipsoft_probe.so')
     if connection_core is not None:z.write(connection_core, 'lib/arm64-v8a/libopensaab_connection.so')
+    if recovered_core is not None:z.write(recovered_core, 'lib/arm64-v8a/libtech2_recovered.so')
     if mdi_module is not None:
         z.write(mdi_module,'lib/arm64-v8a/libopensaab_mdi_android.so')
         z.write(mdi_bridge,'lib/arm64-v8a/libtech2_mdi.so')
@@ -164,5 +171,6 @@ else:
         run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
             '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
-run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
+run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
 print(apk)
+

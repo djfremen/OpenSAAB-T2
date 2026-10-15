@@ -49,7 +49,7 @@ public final class NativeBootInstrumentedTest extends Instrumentation {
         try{
             Context context=getTargetContext();check(SimulatorVehicleConnection.available(context),"Disposable Android emulator required");
             String version=context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;
-            check(version.equals("0.1.0-preview.85"),"Wrong installed attempt: "+version);
+            check(version.equals("0.1.0-preview.90"),"Wrong installed attempt: "+version);
             String label=context.getApplicationInfo().loadLabel(context.getPackageManager()).toString();
             check(label.contains(version)&&label.contains("ARM64"),"Packaged app identity missing version/architecture");
             FirmwareStore store=new FirmwareStore(context.getFilesDir());check(store.missing().isEmpty(),"Real firmware required");

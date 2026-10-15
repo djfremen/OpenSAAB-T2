@@ -29,9 +29,9 @@ tasks.register('prepareAndroidInputs', Exec) {
     dependsOn 'buildRust', 'buildVlinkerWorkflow', 'buildRecoveredCore', 'buildMdiMcpBridge'
     workingDir repo
     environment 'OPENSAAB_SUPPORT_ROOT', supportRoot
-    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.0-preview.89')
-    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('100089')
-    environment 'OPENSAAB_RELEASE_DATE', providers.gradleProperty('appReleaseDate').getOrElse('2026-10-14')
+    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.0-preview.90')
+    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('100090')
+    environment 'OPENSAAB_RELEASE_DATE', providers.gradleProperty('appReleaseDate').getOrElse('2026-10-15')
     commandLine python, new File(repo, 'scripts/android/prepare-studio-inputs.py'), generated.get().asFile
     if (bundleSupport) args '--bundle-support'
 }
@@ -43,8 +43,8 @@ android {
         applicationId 'com.opensaab.tech2'
         minSdk 26
         targetSdk 36
-        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(100089)
-        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.0-preview.89')
+        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(100090)
+        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.0-preview.90')
         ndk { abiFilters 'arm64-v8a' }
     }
     sourceSets.main {
