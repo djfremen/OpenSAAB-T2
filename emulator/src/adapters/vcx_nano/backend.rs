@@ -209,7 +209,7 @@ impl Bridge {
         }
         Self::start_worker(Transport::Android(usb), directory, profile, key_status, full_native)
     }
-    fn start_worker(usb: Transport, directory: &Path, profile: Profile, key_status: bool, full_native: bool) -> Result<Self, String> {
+    fn start_worker(usb: Transport, directory: &Path, profile: Profile, _key_status: bool, full_native: bool) -> Result<Self, String> {
         let serial = usb.serial();
         let mut log = OpenOptions::new()
             .write(true)
@@ -234,7 +234,7 @@ impl Bridge {
             let mut ledger = if full_native {
                 TxLedger::with_full_native()
             } else {
-                TxLedger::with_key_status(key_status)
+                TxLedger::with_key_status(profile == Profile::Read)
             };
             let mut observe = |frame: &crate::nano_usb::Frame| -> Result<(), String> {
                 if frame.header[2] != 0 {
@@ -419,7 +419,7 @@ impl Bridge {
             worker: Some(worker),
             confirmations: 0,
             gate: CommandGate::default(),
-            key_status: KeyStatusGate::new(key_status),
+            key_status: KeyStatusGate::new(profile == Profile::Read),
             full_native,
             profile,
         };
@@ -783,10 +783,11 @@ mod tests {
     // the real adapter's status 96 or a hardware compatibility qualification.
     fn scripted_control_status(frame: &Frame) -> u8 {
         if frame.header[2] != 0x48 { return 0; }
-        match frame.payload.as_slice() {
-            [1, 0, 1, 1, 4, 0, 0, 0, 0, 0, 0, 0, 0] => 0,
-            [1, 0, 0, 0, 0] => 0,
-            [1, 0, 1, 1, 0] => 0x96,
+        match (frame.header[3], frame.payload.as_slice()) {
+            (0, [1, 0, 1, 1, 4, 0, 0, 4, 0, 0, 0, 4, 0]) => 0,
+            (1, [1, 0, 1, 1, 4, 0, 0, 0, 0, 0, 0, 0, 0]) => 0,
+            (_, [1, 0, 0, 0, 0]) => 0,
+            (_, [1, 0, 1, 1, 0]) => 0x96,
             other => panic!("Unexpected filter-control test record {other:?}"),
         }
     }
@@ -986,7 +987,7 @@ mod tests {
             let stream=TcpStream::connect(address).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
             stream.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
-            Bridge::start_worker(Transport::TestSerial(SocketUsb(BufReader::new(stream))), &directory, profile, stopping_key, full_native)
+            Bridge::start_worker(Transport::TestSerial(SocketUsb(BufReader::new(stream))), &directory, profile, false, full_native)
         } else { Bridge::start_at_permissions(
             "0123456789abcdef0123456789abcdef",
             &directory,

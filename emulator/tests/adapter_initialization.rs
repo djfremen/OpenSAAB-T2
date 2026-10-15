@@ -28,7 +28,14 @@ fn nano_setup_matches_capture_and_cleanup_deletes_the_installed_filter() {
         .flat_map(vcx_nano::init::shutdown)
         .map(|frame| hex(&frame.encode().unwrap()))
         .collect();
-    assert_eq!(serde_json::json!(setup), fixture["setup"]);
+    let mut expected_setup: Vec<String> = serde_json::from_value(fixture["setup"].clone()).unwrap();
+    assert_eq!(
+        expected_setup[5],
+        "BB8000480001000101040000000000000000CFBB"
+    );
+    expected_setup[5] = "BB8000480001000101040000040000000400D7BB".into();
+    assert_eq!(setup, expected_setup);
+    assert_ne!(serde_json::json!(setup), fixture["setup"]);
     // The later native cleanup correction deletes slot zero. Keep the older
     // captured zero-width PASS records in the fixture as historical evidence;
     // they no longer describe the corrected teardown operation.

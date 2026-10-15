@@ -124,8 +124,8 @@ enum ShellChecks {
     var good: [String:Any] = ["status":"hs_vin_received", "hardware":"VCX-NANO", "firmware":"1.9.4.2",
       "channel_cleanup":true, "usb_closed":true, "cleanup_errors":[String](), "error":NSNull(),
       "startup_complete":true, "query_record_verified":true, "installed_record_verified":true,
-      "fresh_dh_exchanges":2, "vehicle_tx":3, "gm_tester_present_tx":1,
-      "vin_profile":"saab9440-hs-tester-present-1", "vin":vin]
+      "fresh_dh_exchanges":2, "vehicle_tx":2, "gm_tester_present_tx":0,
+      "vin_profile":"basic-1a90", "vin":vin]
     try need(try NanoProbeResult(value:good,exitCode:0,vinRequired:true).vin == vin, "fresh Nano startup/VIN boundary")
     for field in ["channel_cleanup","usb_closed","startup_complete","query_record_verified","installed_record_verified"] {
       var bad = good; bad[field] = false
@@ -133,13 +133,13 @@ enum ShellChecks {
       do { _ = try NanoProbeResult(value:bad,exitCode:0,vinRequired:true) } catch { rejected = true }
       try need(rejected,"Nano rejects unconfirmed " + field)
     }
-    for (field,value) in [("hardware","CH343"),("firmware","1.9.4.3"),("vin","YS3FD49Y94I234567"),("vin_profile","basic-1a90")] {
+    for (field,value) in [("hardware","CH343"),("firmware","1.9.4.3"),("vin","YS3FD49Y94I234567"),("vin_profile","saab9440-hs-tester-present-1")] {
       var bad = good; bad[field] = value
       var rejected = false
       do { _ = try NanoProbeResult(value:bad,exitCode:0,vinRequired:true) } catch { rejected = true }
       try need(rejected,"Nano rejects unrelated " + field)
     }
-    for (field,value) in [("fresh_dh_exchanges",1),("vehicle_tx",2),("vehicle_tx",4),("gm_tester_present_tx",0),("gm_tester_present_tx",2)] {
+    for (field,value) in [("fresh_dh_exchanges",1),("vehicle_tx",1),("vehicle_tx",3),("gm_tester_present_tx",1),("gm_tester_present_tx",2)] {
       var bad = good; bad[field] = value
       var rejected = false
       do { _ = try NanoProbeResult(value:bad,exitCode:0,vinRequired:true) } catch { rejected = true }
