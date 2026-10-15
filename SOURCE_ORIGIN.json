@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "0.2.26-intel-preview.2",
+  "version": "0.2.26-intel-preview.3",
   "predecessor_revision": "e3a942c352a171e77abfe31cbd7bf5e940ef1283",
   "scope": "Selected corresponding source and exact build inputs; no private history or firmware",
   "reviewed_changes": [

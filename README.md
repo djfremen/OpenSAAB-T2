@@ -1,4 +1,4 @@
-# OpenSAAB Intel 0.2.26-intel-preview.2
+# OpenSAAB Intel 0.2.26-intel-preview.3
 
 Scoped native macOS Intel development preview for diagnostic language activation
 and deferred CANdi startup. Read [the release scope](emulator/docs/INTEL_PREVIEW_2026-10-14.md).

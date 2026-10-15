@@ -12,7 +12,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-fn nano_setup_and_reverse_cleanup_match_the_accepted_wire_capture() {
+fn nano_setup_matches_capture_and_cleanup_deletes_the_installed_filter() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
         "fixtures/nano_channel_sequence_2026_10_04.json"
     ))
@@ -29,7 +29,14 @@ fn nano_setup_and_reverse_cleanup_match_the_accepted_wire_capture() {
         .map(|frame| hex(&frame.encode().unwrap()))
         .collect();
     assert_eq!(serde_json::json!(setup), fixture["setup"]);
-    assert_eq!(serde_json::json!(shutdown), fixture["shutdown"]);
+    // The later native cleanup correction deletes slot zero. Keep the older
+    // captured zero-width PASS records in the fixture as historical evidence;
+    // they no longer describe the corrected teardown operation.
+    assert_eq!(shutdown, [
+        "BB800048010100000000CABB", "BB80004301C4BB", "BB80004101C2BB",
+        "BB800048000100000000C9BB", "BB80004300C3BB", "BB80004100C1BB",
+    ]);
+    assert_ne!(serde_json::json!(shutdown), fixture["shutdown"]);
     assert!(vcx_nano::init::setup(2).is_err());
     // Existing callers still resolve the relocated initialization functions.
     assert_eq!(

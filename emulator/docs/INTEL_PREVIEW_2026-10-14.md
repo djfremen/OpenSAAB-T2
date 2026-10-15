@@ -1,4 +1,4 @@
-# Intel development preview 0.2.26-intel-preview.2
+# Intel development preview 0.2.26-intel-preview.3
 
 This candidate continues the native Intel MDI/reporting/reconnect lineage at
 843b402, adopts the shared Saab 148 deferred-CANdi welcome fix from 65b379f
