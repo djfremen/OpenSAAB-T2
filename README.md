@@ -8,6 +8,12 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 **Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
 
+## Intel macOS developer preview
+
+[OpenSAAB 0.2.26-intel-preview.3 for Intel Mac](https://github.com/djfremen/OpenSAAB-T2/releases/tag/macos-v0.2.26-intel-preview.3) is a separate experimental macOS 12+ download with matching source, checksums and exact installed test scope. It addresses Saab 148 deferred CANdi startup and tests English/Swedish software activation; it also requires the shared security processing/import password gate. Physical Nano/vehicle results and the contributor's Ventura/OCLP English immediate-failure report remain pending for this exact version. Application controls remain English; diagnostic languages use separate firmware cards. Choose **Download and continue** to activate a selection; Cancel keeps the previous active card.
+
+This Intel experiment does not change the Android recommendation or the website's existing desktop recommendation. Read the release limits before testing.
+
 ## What you can test
 
 - Original Tech2 firmware menus with touch gestures, a collapsible keypad and console.
