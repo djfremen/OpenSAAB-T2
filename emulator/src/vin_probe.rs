@@ -3,6 +3,7 @@
 pub use opensaab_vlinker_workflow::translation::isotp::VinReply;
 
 pub use opensaab_vlinker_workflow::vin_probe::saab_tech2_year;
+pub use opensaab_vlinker_workflow::vin_probe::{SAAB_9440_TESTER_PRESENT, SAAB_9440_VIN_PROFILE};
 
 /// Validate a complete assembled Saab 1A90 reply without fabricating raw frames.
 pub fn assembled_saab_vin(payload: &[u8]) -> Result<String, String> {

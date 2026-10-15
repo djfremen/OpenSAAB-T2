@@ -139,9 +139,31 @@ impl UsbTransport for ControlledTransport {
     fn read(&mut self) -> Result<Vec<u8>, String> { self.check()?; self.inner.read() }
 }
 use tech2_emu::vin_probe::VinReply;
+fn host_hs_frame(sequence: u8, id: u32, data: &[u8]) -> Result<Frame, String> {
+    use tech2_emu::candi_cpu::{CanElectricalState, CanFrame, CanTransmission};
+    // The same read-only gate, electrical route and wire encoder as the guest
+    // Nano backend; this helper cannot introduce a separate raw CAN dialect.
+    tech2_emu::adapters::vcx_nano::native::encode(0, &CanTransmission {
+        ticket: u64::from(sequence),
+        frame: CanFrame { id, extended: false, rtr: false, dlc: data.len() as u8, data: data.to_vec() },
+        btr0: 0xc1, btr1: 0x36, electrical: CanElectricalState::StandardCan,
+    }, sequence)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn gm_keepalive_uses_the_shared_read_gate_and_native_hs_encoder() {
+        let keepalive = host_hs_frame(1, 0x101, &tech2_emu::vin_probe::SAAB_9440_TESTER_PRESENT).unwrap();
+        assert_eq!(keepalive.header, [0x80, 1, 0, 0]);
+        assert_eq!(keepalive.payload, [0,0,0,0,0,12,0,0,1,1,0xfe,1,0x3e,0,0,0,0,0]);
+        let vin = host_hs_frame(2, 0x7e0, &[2,0x1a,0x90,0,0,0,0,0]).unwrap();
+        assert_eq!(vin.header, [0x80, 2, 0, 0]);
+        assert_eq!(&vin.payload[6..], &[0,0,7,0xe0,2,0x1a,0x90,0,0,0,0,0]);
+        assert!(host_hs_frame(3, 0x7e0, &[0x30,0,0,0,0,0,0,0]).is_ok());
+        assert!(host_hs_frame(1, 0x7e0, &[2,0x27,2,0,0,0,0,0]).is_err());
+        assert!(host_hs_frame(1, 0x101, &[1,0x04,0,0,0,0,0,0]).is_err());
+    }
     #[test]
     fn captured_dlc_voltage_and_invalid_replies() {
         let good = Frame {
@@ -201,6 +223,7 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
                 "--channel-test-sw",
                 "--receive-test",
                 "--hs-vin-check",
+                "--hs-vin-gm-check",
                 "--voltage-check",
                 "--hardware-reboot",
             ]
@@ -209,7 +232,7 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
         || (!direct && args.get(2).map(String::as_str) == Some("--hardware-reboot"))
     {
         return Err(
-            "Usage: nano-usb-probe SESSION_TOKEN NEW_RESULT_PATH [MODE] or nano-usb-probe --port /dev/cu.usbmodem... NEW_RESULT_PATH [--channel-test|--channel-test-sw|--receive-test|--hs-vin-check|--voltage-check|--hardware-reboot]"
+            "Usage: nano-usb-probe SESSION_TOKEN NEW_RESULT_PATH [MODE] or nano-usb-probe --port /dev/cu.usbmodem... NEW_RESULT_PATH [--channel-test|--channel-test-sw|--receive-test|--hs-vin-check|--hs-vin-gm-check|--voltage-check|--hardware-reboot]"
                 .into(),
         );
     }
@@ -251,7 +274,8 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
         }
         ProbeTransport::Android(SocketUsb(r))
     };
-    let hs_vin = args.get(2).map(String::as_str) == Some("--hs-vin-check");
+    let gm_vin = args.get(2).map(String::as_str) == Some("--hs-vin-gm-check");
+    let hs_vin = gm_vin || args.get(2).map(String::as_str) == Some("--hs-vin-check");
     let voltage_check = args.get(2).map(String::as_str) == Some("--voltage-check");
     let hardware_reboot = args.get(2).map(String::as_str) == Some("--hardware-reboot");
     let probe_channel = u8::from(args.get(2).map(String::as_str) == Some("--channel-test-sw"));
@@ -260,6 +284,7 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
     let vin_frames = RefCell::new(Vec::<Vec<u8>>::new());
     let mut startup = tech2_emu::adapters::vcx_nano::init_handshake::Progress::default();
     let mut vehicle_tx = 0;
+    let mut gm_tester_present_tx = 0;
     let mut vin_result = None;
     let mut client = Client::new(ControlledTransport { inner: transport, cancelled });
     let mut counts = [0u64; 2];
@@ -368,19 +393,21 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
             }
             status = "channels_receive_test_completed";
             if hs_vin {
+                if gm_vin {
+                    client.transport_mut().write(&host_hs_frame(1, 0x101, &tech2_emu::vin_probe::SAAB_9440_TESTER_PRESENT)?.encode()?)?;
+                    vehicle_tx += 1;
+                    gm_tester_present_tx += 1;
+                    println!("HOST_PROBE functional tester-present 101: FE 01 3E 00 00 00 00 00; USB write returned; bus acknowledgment not inferred");
+                    // Captured Tech2Win keep-alive precedes VIN. Receive during
+                    // a bounded settling interval; never replay the VIN request.
+                    let settle = ReplyDeadline::new(Duration::from_millis(100));
+                    while !settle.expired() { client.receive(&mut observed)?; }
+                }
                 vin_frames.borrow_mut().clear();
-                let raw = |seq, data: &[u8]| {
-                    let mut payload = vec![0, 0, 0, 0, 0, (4 + data.len()) as u8, 0, 0, 7, 0xe0];
-                    payload.extend_from_slice(data);
-                    Frame {
-                        header: [0x80, seq, 0, 0],
-                        payload,
-                    }
-                };
                 println!("HOST_PROBE VIN request 7E0: 02 1A 90 00 00 00 00 00; not guest firmware traffic");
                 client
                     .transport_mut()
-                    .write(&raw(1, &[2, 0x1a, 0x90, 0, 0, 0, 0, 0]).encode()?)?;
+                    .write(&host_hs_frame(if gm_vin {2} else {1}, 0x7e0, &[2, 0x1a, 0x90, 0, 0, 0, 0, 0])?.encode()?)?;
                 vehicle_tx += 1;
                 let mut reply = VinReply::default();
                 let deadline = ReplyDeadline::new(Duration::from_secs(4));
@@ -391,7 +418,7 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
                         if reply.feed(&data)? {
                             client
                                 .transport_mut()
-                                .write(&raw(2, &[0x30, 0, 0, 0, 0, 0, 0, 0]).encode()?)?;
+                                .write(&host_hs_frame(if gm_vin {3} else {2}, 0x7e0, &[0x30, 0, 0, 0, 0, 0, 0, 0])?.encode()?)?;
                             vehicle_tx += 1;
                         }
                         if let Some(vin) = reply.vin()? {
@@ -472,7 +499,7 @@ fn run_probe(mut args: Vec<String>, cancelled: Option<std::sync::Arc<std::sync::
         "CAN_RX_SUMMARY hs={} sw={} diagnostic_tx={vehicle_tx}",
         counts[0], counts[1]
     );
-    let json=serde_json::json!({"startup_complete":startup.installed_record_verified,"query_record_verified":startup.query_record_verified,"installed_record_verified":startup.installed_record_verified,"fresh_dh_exchanges":startup.fresh_dh_exchanges,"status":if error.is_some(){"failed"}else{status},"error":error,"hardware":info.map(|v| &v.hardware),"firmware":info.map(|v| &v.firmware),"vehicle_tx":vehicle_tx,"vin":vin_result,"dlc_voltage_mv":dlc_voltage_mv,"request_origin":if hs_vin {"host-transport-probe"}else{"none"},"origin":if direct {"macos-native-cdc-serial"}else{"android-direct-usb"},"channel_rx":counts,"channel_ids":ids,"channel_cleanup":cleanup_ok,"cleanup_errors":cleanup_errors,"usb_closed":usb_closed}).to_string()+"\n";
+    let json=serde_json::json!({"startup_complete":startup.installed_record_verified,"query_record_verified":startup.query_record_verified,"installed_record_verified":startup.installed_record_verified,"fresh_dh_exchanges":startup.fresh_dh_exchanges,"status":if error.is_some(){"failed"}else{status},"error":error,"hardware":info.map(|v| &v.hardware),"firmware":info.map(|v| &v.firmware),"vehicle_tx":vehicle_tx,"gm_tester_present_tx":gm_tester_present_tx,"vin_profile":if gm_vin {tech2_emu::vin_probe::SAAB_9440_VIN_PROFILE}else{"basic-1a90"},"vin":vin_result,"dlc_voltage_mv":dlc_voltage_mv,"request_origin":if hs_vin {"host-transport-probe"}else{"none"},"origin":if direct {"macos-native-cdc-serial"}else{"android-direct-usb"},"channel_rx":counts,"channel_ids":ids,"channel_cleanup":cleanup_ok,"cleanup_errors":cleanup_errors,"usb_closed":usb_closed}).to_string()+"\n";
     output
         .write_all(json.as_bytes())
         .map_err(|e| e.to_string())?;

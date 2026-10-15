@@ -23,7 +23,9 @@ struct NanoProbeResult {
         value["query_record_verified"] as? Bool == true,
         value["installed_record_verified"] as? Bool == true,
         value["fresh_dh_exchanges"] as? Int == 2,
-        value["vehicle_tx"] as? Int == 2,
+        value["vehicle_tx"] as? Int == 3,
+        value["gm_tester_present_tx"] as? Int == 1,
+        value["vin_profile"] as? String == "saab9440-hs-tester-present-1",
         let vin = value["vin"] as? String, vin.utf8.count == 17,
         vin.utf8.allSatisfy({ (48...57).contains($0) || (65...90).contains($0) }),
         !vin.contains("I"), !vin.contains("O"), !vin.contains("Q") else {
@@ -32,6 +34,7 @@ struct NanoProbeResult {
       self.vin = vin
     } else {
       guard value["status"] as? String == "identified", value["vehicle_tx"] as? Int == 0,
+        value["gm_tester_present_tx"] as? Int == 0,
         value["startup_complete"] as? Bool == false,
         value["vin"] == nil || value["vin"] is NSNull else {
         throw ShellError.message("Nano identity-only check returned unexpected vehicle activity.")
@@ -102,7 +105,11 @@ extension Shell {
     try? JSONSerialization.data(withJSONObject:["adapter":"VCX Nano"]).write(to:directory.appendingPathComponent("dtc-context.json"),options:.atomic)
     let receipt = directory.appendingPathComponent("result.json")
     let result = try runTool(binaries.appendingPathComponent("nano-usb-probe"),
-      ["--port", port, receipt.path] + (vinRequired ? ["--hs-vin-check"] : []), timeout: vinRequired ? 45 : 8)
+      ["--port", port, receipt.path] + (vinRequired ? ["--hs-vin-gm-check"] : []), timeout: vinRequired ? 45 : 8)
+    // Preserve the bounded helper diagnostics even when receipt validation fails.
+    let console = directory.appendingPathComponent("probe-console.log")
+    try Data(result.text.utf8).write(to: console, options: .atomic)
+    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: console.path)
     let bytes = try Data(contentsOf: receipt)
     guard bytes.count <= 65536, let value = try JSONSerialization.jsonObject(with: bytes) as? [String: Any] else {
       throw ShellError.message("Invalid Nano result receipt.")
