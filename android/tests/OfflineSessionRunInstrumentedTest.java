@@ -19,7 +19,7 @@ public final class OfflineSessionRunInstrumentedTest extends Instrumentation {
     public void onStart(){Bundle result=new Bundle();MainActivity a=null;
         try{
             check(new FirmwareStore(getTargetContext().getFilesDir()).missing().isEmpty(),"Install original firmware in disposable AVD first");
-            Intent intent=new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);a=(MainActivity)startActivitySync(intent);waitForIdleSync();
+            Intent intent=new Intent(getTargetContext(),MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);a=(MainActivity)startActivitySync(intent);waitForIdleSync(); final Activity launchOwner=a; runOnMainSync(()->{android.view.View notice=launchOwner.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
             File runs=new File(getTargetContext().getFilesDir(),"sessions"),run=null;
             java.util.Set<String> previous=new java.util.HashSet<>();File[] prior=runs.listFiles();if(prior!=null)for(File f:prior)previous.add(f.getName());
             invoke(a,"startSession",null);

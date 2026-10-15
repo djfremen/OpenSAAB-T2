@@ -48,6 +48,14 @@ impl Report {
             return Err("Invalid DTC record length".into());
         }
         if data[1..4] == [0, 0, 0] {
+            let valid_end = if report == 0x541 {
+                matches!(data[4], 0xff | 0x17)
+            } else {
+                data[4] == 0xff
+            };
+            if !valid_end {
+                return Err("Invalid DTC report end marker".into());
+            }
             self.complete = true;
             return Ok(());
         }

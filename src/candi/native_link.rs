@@ -374,6 +374,9 @@ impl NativeLink {
             if self.uart.rx.is_empty() {
                 self.uart.line_ack = false;
             }
+            if output.iter().any(Option::is_some) {
+                self.uart.activity = false;
+            }
             self.uart.rx.extend(output);
         }
     }
@@ -387,7 +390,10 @@ impl NativeLink {
         !self.stopped
     }
     pub fn uart_receive_idle(&self) -> bool {
-        self.uart.rx.is_empty()
+        self.uart.receive_idle()
+    }
+    pub fn is_thr_write(&self, address: u32) -> bool {
+        self.uart.is_thr_write(address)
     }
     pub fn irq(&self) -> bool { self.uart.irq() }
     pub fn read(&mut self, address: u32) -> u8 { self.uart.read(address, &mut self.events) }

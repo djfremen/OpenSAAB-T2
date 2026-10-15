@@ -42,6 +42,8 @@ public final class NanoSecurityModeTest {
         check(!NativeCommandGate.securityCollectionModeAllowed(false,true));
         String observed="Native adapter stopped: Native USB command rejected by collection profile";
         check(NativeCommandGate.collectionRejectedExplanation(observed,true).contains("Get security access"));
+        check(NativeCommandGate.collectionRejectedExplanation(observed,true).contains("only when you intend"));
+        check(NativeCommandGate.collectionRejectedExplanation(observed,true).contains("matching operation in Actions"));
         check(NativeCommandGate.collectionRejectedExplanation(observed,false)==null);
         check(NativeCommandGate.collectionRejectedExplanation("ECU response7F2733",true)==null);
         check(NativeCommandGate.collectionRejectedExplanation("USB timeout",true)==null);

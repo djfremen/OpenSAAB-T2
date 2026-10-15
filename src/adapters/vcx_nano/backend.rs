@@ -164,7 +164,7 @@ impl Bridge {
             let mut ledger = if full_native {
                 TxLedger::with_full_native()
             } else {
-                TxLedger::with_key_status(key_status)
+                TxLedger::with_key_status(profile == Profile::Read)
             };
             let mut observe = |frame: &crate::nano_usb::Frame| -> Result<(), String> {
                 if frame.header[2] != 0 {
@@ -319,7 +319,7 @@ impl Bridge {
             worker: Some(worker),
             confirmations: 0,
             gate: CommandGate::default(),
-            key_status: KeyStatusGate::new(key_status),
+            key_status: KeyStatusGate::new(profile == Profile::Read),
             full_native,
             profile,
         };
@@ -595,15 +595,19 @@ mod tests {
     }
     #[test]
     fn fake_usb_runs_native_tx_rx_and_acknowledged_cleanup() {
-        scripted_worker(false, false, false);
+        scripted_worker(false, false, false, false);
     }
     #[test]
     fn rejected_queued_key_status_write_has_no_completion_and_six_cleanup_replies() {
-        scripted_worker(true, false, false);
+        scripted_worker(true, false, false, false);
     }
     #[test]
     fn explicit_full_native_forwards_original_key_through_frontend_and_worker() {
-        scripted_worker(false, true, false);
+        scripted_worker(false, true, false, false);
+    }
+    #[test]
+    fn ordinary_read_forwards_bounded_key_query_through_frontend_and_worker() {
+        scripted_worker(false, false, false, true);
     }
     #[test]
     fn full_native_total_budget_exemption_keeps_restricted_boundaries() {
@@ -638,7 +642,7 @@ mod tests {
     }
     #[test]
     fn explicit_manual_seeds_forward_only_original_seed_and_reject_keys() {
-        scripted_worker(false, false, true);
+        scripted_worker(false, false, true, false);
     }
     #[test]
     fn manual_seed_mode_rejects_wrong_ready_and_permission_mix_before_init() {
@@ -660,7 +664,7 @@ mod tests {
         assert!(Bridge::start_at_permissions("token",Path::new("unused"),Profile::Seeds,false,false,true,address).is_err());
         server.join().unwrap();
     }
-    fn scripted_worker(stopping_key: bool, full_native: bool, manual_seeds: bool) {
+    fn scripted_worker(stopping_key: bool, full_native: bool, manual_seeds: bool, ordinary_read: bool) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || {
@@ -712,7 +716,7 @@ mod tests {
                                 &frame.payload[10..],
                                 if full_native {
                                     &[4, 0x27, 2, 0x12, 0x34, 0, 0, 0]
-                                } else if stopping_key {
+                                } else if stopping_key || ordinary_read {
                                     &[3, 0xae, 3, 2, 0, 0, 0, 0]
                                 } else {
                                     &[2, 0x27, 1, 0, 0, 0, 0, 0]
@@ -797,14 +801,14 @@ mod tests {
             }
         });
         let directory = std::env::temp_dir().join(format!(
-            "nano-worker-test-{}-{stopping_key}-{full_native}-{manual_seeds}",
+            "nano-worker-test-{}-{stopping_key}-{full_native}-{manual_seeds}-{ordinary_read}",
             std::process::id()
         ));
         std::fs::create_dir(&directory).unwrap();
         let mut bridge = Bridge::start_at_permissions(
             "0123456789abcdef0123456789abcdef",
             &directory,
-            if stopping_key || full_native {
+            if stopping_key || full_native || ordinary_read {
                 Profile::Read
             } else {
                 Profile::Seeds
@@ -815,7 +819,7 @@ mod tests {
             address,
         )
         .unwrap();
-        if manual_seeds {
+        if manual_seeds || ordinary_read {
             for data in [vec![4,0x27,2,0x12,0x34,0,0,0], vec![2,0x27,0x0c,0,0,0,0,0],
                 vec![2,0xae,1,0,0,0,0,0], vec![4,0x3b,0x60,0x12,0x34,0,0,0]] {
                 assert!(bridge.transmit(2, CanTransmission {
@@ -838,7 +842,7 @@ mod tests {
                         dlc: 8,
                         data: if full_native {
                             vec![4, 0x27, 2, 0x12, 0x34, 0, 0, 0]
-                        } else if stopping_key {
+                        } else if stopping_key || ordinary_read {
                             vec![3, 0xae, 3, 2, 0, 0, 0, 0]
                         } else {
                             vec![2, 0x27, 1, 0, 0, 0, 0, 0]

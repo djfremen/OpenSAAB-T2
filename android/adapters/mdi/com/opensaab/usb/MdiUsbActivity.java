@@ -35,6 +35,8 @@ public final class MdiUsbActivity extends Activity {
     private Tech2Controls controls;
     private NativeLcdPump lcdPump;
     private volatile InteractiveKeyPump keyPump;
+    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get()&&!this.stopping,
+        ()->this.keyPump!=null&&this.keyPump.idle(),this::nativeWorkerAlive,this::key,()->stop("Stopped through AI control"),"mdi",()->this.directory);
     private EmulatorHealthMonitor health;
     private SecurityAccessView security;
     private DtcReportView reports;
@@ -61,7 +63,7 @@ public final class MdiUsbActivity extends Activity {
     }};
 
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);BackNavigation.install(this,()->{if(running.get()){security.manualNavigation();key(1);}else finish();});
+        super.onCreate(state);BackNavigation.install(this,()->{if(running.get()){AndroidMcp.manual();security.manualNavigation();key(1);}else finish();});
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         manager=(UsbManager)getSystemService(USB_SERVICE);permission=getPackageName()+".MDI_USB_PERMISSION";
         authority=getIntent().getBooleanExtra("mdi_security_collect",false)?"seeds":"full";
@@ -75,7 +77,7 @@ public final class MdiUsbActivity extends Activity {
         ImageView lcd=new ImageView(this);lcd.setScaleType(ImageView.ScaleType.FIT_CENTER);
         console=new TextView(this);console.setTypeface(android.graphics.Typeface.MONOSPACE);console.setTextSize(11);
         console.setText("MDI session log stays on this device.");ScrollView scroll=new ScrollView(this);scroll.addView(console);
-        controls=new Tech2Controls(this,lcd,scroll,code->{security.manualNavigation();key(code);});controls.setActions(this::actions);
+        controls=new Tech2Controls(this,lcd,scroll,code->{AndroidMcp.manual();security.manualNavigation();key(code);});controls.setActions(this::actions);
         health=new EmulatorHealthMonitor(this,()->stop("Preparing report"));
         lcdPump=new NativeLcdPump(bitmap->{
             if(bitmap==null){lcd.setImageDrawable(null);return;}
@@ -301,6 +303,16 @@ public final class MdiUsbActivity extends Activity {
         if(!foreground||!running.get()||stopping||code<0||code>31)return false;
         InteractiveKeyPump pump=keyPump;if(pump==null)return false;health.input();return pump.offer(String.format(Locale.ROOT,"0x%02x",code));
     }
+    private boolean nativeWorkerAlive(){
+        File output=nativeDirectory;if(output==null||!running.get()||stopping)return false;
+        try{
+            int pid=json(new File(output,"native-menu.json"),16384).getInt("process_id");if(pid<=0)return false;
+            android.system.Os.kill(pid,0);
+            byte[] command=Files.readAllBytes(new File("/proc/"+pid+"/cmdline").toPath());
+            String arguments=new String(command,StandardCharsets.UTF_8);
+            return arguments.contains(new File(getApplicationInfo().nativeLibraryDir,"libtech2_mdi.so").getAbsolutePath())&&arguments.contains(output.getAbsolutePath());
+        }catch(Exception unavailable){return false;}
+    }
     private void stop(String reason){
         requests.cancel();permissionPending=false;stopping=true;health.expectedStop();
         InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();
@@ -329,6 +341,7 @@ public final class MdiUsbActivity extends Activity {
     private void originalMenus(String name){new AlertDialog.Builder(this).setTitle(name).setMessage("Use the original firmware menus for this MDI operation. Automatic menu shortcuts are not available yet.").setPositiveButton("Continue firmware",null).show();}
     private void appMenu(){
         SessionSheet.Menu menu=new SessionSheet.Menu(this);
+        menu.add("AI control (MCP)",()->AndroidMcp.show(this));
         if(running.get()||permissionPending)menu.add("Stop emulation",()->stop("Stopped by operator"));
         else menu.add("Connect and start",this::discover);
         menu.add("Back to adapter selection",()->{stop("Returning to adapter selection");finish();});
@@ -342,7 +355,7 @@ public final class MdiUsbActivity extends Activity {
             .add("About / Support",()->ProjectSupport.show(this))
             .add("Firmware controls help",controls::showHelp).show("App menu");
     }
-    @Override protected void onStart(){super.onStart();foreground=true;}
-    @Override protected void onStop(){foreground=false;if(running.get()||permissionPending)stop("App left foreground");super.onStop();}
+    @Override protected void onStart(){super.onStart();foreground=true;AndroidMcp.bind(this,mcpOwner);}
+    @Override protected void onStop(){AndroidMcp.unbind(this);foreground=false;if(running.get()||permissionPending)stop("App left foreground");super.onStop();}
     @Override protected void onDestroy(){closed=true;stop("Session closed");ui.removeCallbacksAndMessages(null);lcdPump.close();security.close();reports.close();observer.shutdown();unregisterReceiver(receiver);super.onDestroy();}
 }

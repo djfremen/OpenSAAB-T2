@@ -5,12 +5,13 @@ import json
 import hashlib
 import zipfile
 import re
+from datetime import date
 from pathlib import PurePosixPath, Path
 from build_profiles import PROFILES, validate_elf
 
 KOTLIN_RESOURCES = json.loads((Path(__file__).resolve().parents[2] / 'android/shared/kotlin-runtime-resources.json').read_text())
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
-def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None):
+def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None):
     profile = PROFILES[profile_name]
     native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     connection_core = 'lib/arm64-v8a/libopensaab_connection.so'
@@ -21,6 +22,9 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
     if mdi_module_sha256 is not None:
         if profile_name!='arm64' or any(not re.fullmatch('[0-9a-f]{64}',p) for p in (mdi_module_sha256,mdi_bridge_sha256)):raise ValueError('MDI ARM64 pins required')
         mdi_pins={'lib/arm64-v8a/libopensaab_mdi_android.so':mdi_module_sha256,'lib/arm64-v8a/libtech2_mdi.so':mdi_bridge_sha256}
+    if recovered_core_sha256 is not None:
+        if profile_name!='arm64' or not re.fullmatch('[0-9a-f]{64}',recovered_core_sha256): raise ValueError('Recovered core requires exact ARM64 pin')
+        mdi_pins['lib/arm64-v8a/libtech2_recovered.so']=recovered_core_sha256
     with zipfile.ZipFile(path) as apk:
         names = apk.namelist()
         if len(names) != len(set(names)):
@@ -68,10 +72,13 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if info.file_size > 4096:
                     raise ValueError('Oversized build metadata')
                 receipt = json.loads(apk.read(name))
-                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
+                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview','release_date','release_channel'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
                     raise ValueError('Unexpected source metadata')
                 if any(key in receipt and type(receipt[key]) is not bool for key in ('source_dirty','private_preview')) or (receipt.get('source_dirty') is True and receipt.get('private_preview') is not True):
                     raise ValueError('Invalid preview source metadata')
+                if 'release_date' in receipt:
+                    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',receipt['release_date']) or receipt.get('release_channel')!='developer_preview':raise ValueError('Invalid release identity')
+                    date.fromisoformat(receipt['release_date'])
                 continue
             if name in mdi_pins:
                 data=apk.read(name);validate_elf(data[:20],profile)
@@ -103,4 +110,5 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             raise ValueError('Missing pinned vLinker connection executable')
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256)
+    parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256')
+    parser.add_argument('--recovered-core-sha256');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256)

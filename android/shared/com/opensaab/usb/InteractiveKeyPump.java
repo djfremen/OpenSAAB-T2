@@ -35,6 +35,7 @@ public final class InteractiveKeyPump implements AutoCloseable {
         if(accepted)android.util.Log.i("OpenSaabPerf","INPUT queued command="+command+" wall_ms="+System.currentTimeMillis());
         return accepted;
     }
+    public boolean idle(){return !closed && queue.isEmpty() && !mailbox.exists();}
     private void run(){
         try {
             while(!closed){

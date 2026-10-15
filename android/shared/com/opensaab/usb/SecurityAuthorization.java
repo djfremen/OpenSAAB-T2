@@ -29,7 +29,7 @@ public final class SecurityAuthorization {
         return gen.generateKey();
     }
     static void validate(String text){
-        if(text==null||!text.matches("[A-Za-z0-9_-]{1,64}"))throw new IllegalArgumentException("Enter the case-sensitive service password. Do not add spaces.");
+        if(!"OpenSAAB".equals(text))throw new IllegalArgumentException("Enter the case-sensitive security access password OpenSAAB.");
     }
     public static void save(Context c,String text)throws Exception{
         validate(text);Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,key());
@@ -41,10 +41,12 @@ public final class SecurityAuthorization {
         File f=file(c);if(!f.isFile()||f.length()>256)throw new IOException("Security access password required");
         byte[] data=Files.readAllBytes(f.toPath());if(data.length<29)throw new IOException("Saved password invalid");
         Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,Arrays.copyOf(data,12)));
-        String text=new String(cipher.doFinal(Arrays.copyOfRange(data,12,data.length)),StandardCharsets.US_ASCII);validate(text);return text;
+        String text=new String(cipher.doFinal(Arrays.copyOfRange(data,12,data.length)),StandardCharsets.US_ASCII);
+        try{validate(text);}catch(IllegalArgumentException e){forget(c);throw e;}
+        return text;
     }
     public static String bearer(Context c)throws IOException{
-        try{return load(c);}catch(Exception e){throw new IOException("Enter your security access password before processing.");}
+        try{return load(c);}catch(Exception e){throw new IOException("Enter the case-sensitive security access password OpenSAAB before processing.");}
     }
     public static void forget(Context c){file(c).delete();}
     public static boolean available(Context c){try{load(c);return true;}catch(Exception e){return false;}}

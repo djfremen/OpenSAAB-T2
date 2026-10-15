@@ -124,11 +124,12 @@ public class VlinkerVehicleConnection {
         long deadline=SystemClock.elapsedRealtime()+30000;
         JSONObject ready=packet(deadline,true);transportIdentity=ready;
         boolean macSpp=transportKind.equals("android-emulator-local-m4-bluetooth")&&SimulatorVehicleConnection.available(context)
-            &&ready.optString("transport").equals("macos-classic-spp")&&ready.optString("uuid").equals(VlinkerSppTransport.SPP_UUID.toString())&&ready.optString("device_name").equals("Carista EVO");
+            &&ready.optString("transport").equals("macos-classic-spp")&&ready.optString("uuid").equals(VlinkerSppTransport.SPP_UUID.toString())&&VlinkerDevicePicker.androidName(ready.optString("device_name"));
         boolean profile=transportKind.equals("android-classic-spp")
             ?ready.optString("transport").equals("android-classic-spp")&&ready.optString("uuid").equals(VlinkerSppTransport.SPP_UUID.toString())
             :macSpp||(ready.optString("service").equals("18F0")&&ready.optString("write").equals("2AF1")&&ready.optString("notify").equals("2AF0")&&ready.optString("write_type").equals("withResponse"));
         if(!ready.optString("type").equals("ready")||!profile)throw new IOException("Selected Bluetooth transport unavailable");
+        if(ready.optString("device_name").trim().toLowerCase(java.util.Locale.ROOT).startsWith("obdlink mx")){JSONObject selected=protocol(op("select_profile").put("model","obdlink_mxp"));if(!selected.optString("state").equals("idle"))throw new IOException(selected.optString("error","MX+ profile unavailable"));}
         JSONObject state=protocol(op("start"));protocolStarted=true;
         while(true){
             if(cancelled.get())throw new IOException("Connection cancelled");

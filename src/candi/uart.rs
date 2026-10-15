@@ -9,11 +9,16 @@ pub struct Uart {
     pub(super) rx: VecDeque<Option<u8>>,
     pub(super) tx_irq: bool,
     pub(super) line_ack: bool,
+    pub(super) activity: bool,
     pub(super) stopped: bool,
 }
 impl Uart {
+    pub fn is_thr_write(&self, address: u32) -> bool {
+        ((address >> 1) & 7) == 0 && (self.registers[3] & 0x80) == 0
+    }
     pub fn receive_idle(&self) -> bool {
-        self.rx.is_empty()
+        self.tx.is_empty()
+            && (self.rx.is_empty() || (self.activity && matches!(self.rx.front(), Some(None))))
     }
     pub fn needs_processor(&self, address: u32, value: u8) -> bool {
         let index = ((address >> 1) & 7) as usize;
@@ -48,6 +53,12 @@ impl Uart {
             0 => {
                 self.line_ack = false;
                 let byte = self.rx.pop_front();
+                if byte.is_some_and(|b| b.is_some())
+                    && self.tx.is_empty()
+                    && matches!(self.rx.front(), None | Some(None))
+                {
+                    self.activity = true;
+                }
                 events.push(format!(
                     "UART receive read event={byte:02x?} origin=tech2-firmware"
                 ));
@@ -92,12 +103,16 @@ impl Uart {
                 if self.registers[3] & 0x3f == 0x3f && value == 0 {
                     // Guest sends zero with space parity (LCR 0x3f): the low
                     // parity bit occupies SCI's stop bit, terminating the frame.
+                    self.activity = true;
                     frame = Some((std::mem::take(&mut self.tx), "space-parity-zero"));
                 } else if self.registers[4] & 0x10 != 0 {
                     if self.rx.len() < 4096 {
                         self.rx.push_back(Some(value));
                     }
                 } else if self.tx.len() < 4096 {
+                    if self.tx.is_empty() {
+                        self.activity = false;
+                    }
                     self.tx.push(value);
                 } else {
                     self.stopped = true;
@@ -110,13 +125,15 @@ impl Uart {
                 self.registers[1] = value;
             }
             2 => {
-                if value & 2 != 0 {
-                    self.rx.clear();
-                    self.line_ack = false;
-                }
+                // OEM 0x44F380 unconditionally clears RX/TX counts and sets activity=1 on DLAB=0 FCR write.
+                self.rx.clear();
+                self.tx.clear();
+                self.line_ack = false;
+                self.activity = true;
             }
             3 => {
                 if value & 0x40 != 0 && self.registers[3] & 0x40 == 0 {
+                    self.activity = true;
                     frame = Some((std::mem::take(&mut self.tx), "break"));
                 }
                 self.registers[3] = value;
@@ -150,12 +167,16 @@ mod tests {
         u.write(0x400808, 0, &mut events);
         assert!(u.needs_processor(0x400800, 0x90));
         assert!(u.write(0x400800, 0x90, &mut events).is_none());
+        assert!(!u.activity);
+        assert!(!u.receive_idle());
         u.write(0x400800, 0x70, &mut events);
         assert!(u.needs_processor(0x400806, 0x43));
         let (bytes, why) = u.write(0x400806, 0x43, &mut events).unwrap();
         assert_eq!(bytes, [0x90, 0x70]);
         assert_eq!(why, "break");
         assert!(u.tx.is_empty());
+        assert!(u.activity);
+        assert!(u.receive_idle());
     }
     #[test]
     fn irq_ack_and_divisor_do_not_require_running_processor() {
@@ -169,5 +190,29 @@ mod tests {
         u.write(0x400806, 0x80, &mut events);
         u.write(0x400802, 0xff, &mut events);
         assert!(!u.irq());
+    }
+    #[test]
+    fn final_checksum_byte_before_break_marker_and_fcr_set_activity_idle() {
+        let mut u = Uart::default();
+        let mut events = Vec::new();
+        u.rx.extend([Some(0x2f), Some(0xd2), Some(0xff), None]);
+        u.activity = false;
+        assert!(!u.receive_idle());
+        assert_eq!(u.read(0x400800, &mut events), 0x2f);
+        assert!(!u.receive_idle());
+        assert_eq!(u.read(0x400800, &mut events), 0xd2);
+        assert!(!u.receive_idle());
+        assert_eq!(u.read(0x400800, &mut events), 0xff);
+        // Checksum byte consumed before trailing break marker sets activity=true and receive_idle()=true.
+        assert!(u.activity);
+        assert!(u.receive_idle());
+        u.tx.push(0x90);
+        u.activity = false;
+        assert!(!u.receive_idle());
+        u.write(0x400804, 0x00, &mut events); // Normal FCR write clears RX/TX and sets activity=true.
+        assert!(u.rx.is_empty());
+        assert!(u.tx.is_empty());
+        assert!(u.activity);
+        assert!(u.receive_idle());
     }
 }

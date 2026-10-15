@@ -14,7 +14,8 @@ public final class SimulatorHscanInstrumentedTest extends Instrumentation {
    Context c=getTargetContext();check(SimulatorVehicleConnection.available(c),"Use Debug M4 emulator with shared connection executable");
    c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit();
    activity=(com.opensaab.tech2.MainActivity)startActivitySync(new Intent().setClassName(c,"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
-   final com.opensaab.tech2.MainActivity a=activity;int before=attempts();main(()->check(a.showHscanProbe()!=null,"Probe sheet unavailable"));waitForIdleSync();
+   final com.opensaab.tech2.MainActivity a=activity;main(()->{View notice=a.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
+   int before=attempts();main(()->check(a.showHscanProbe()!=null,"Probe sheet unavailable"));waitForIdleSync();
    if(live){
     main(()->a.hscanDialog.findViewById(android.R.id.content).findViewWithTag(mode.equals("ecm_dtc")?"hscan-read-codes":"hscan-read-info").performClick());
     long limit=SystemClock.elapsedRealtime()+40000;final boolean[] done={false};

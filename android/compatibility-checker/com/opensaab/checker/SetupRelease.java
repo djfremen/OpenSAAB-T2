@@ -23,9 +23,12 @@ public final class SetupRelease {
         boolean arm32="armeabi-v7a".equals(abi);
         if(!arm32 && !"arm64-v8a".equals(abi))throw new IOException("Unknown architecture");
         String pkg=arm32?"com.opensaab.tech2.headunit32":"com.opensaab.tech2";
-        String tag=arm32?"headunit-v"+version:"v"+version;
-        String file=arm32?"OpenSAAB-T2-headunit-armeabi-v7a.apk":"OpenSAAB-T2-arm64-v8a.apk";
-        if(!pkg.equals(packageName)||!url.equals(ROOT+tag+"/"+file)||!sha.matches("[a-f0-9]{64}")||bytes<100000||bytes>32*1024*1024||code<1
+        String tag=arm32?"headunit-v"+version:"v"+version,prefix=ROOT+tag+"/",q=java.util.regex.Pattern.quote(version);
+        String file=url.startsWith(prefix)?url.substring(prefix.length()):"";
+        boolean validFile=arm32
+            ?("OpenSAAB-T2-headunit-armeabi-v7a.apk".equals(file)||("OpenSAAB-T2-headunit-"+version+"-armeabi-v7a.apk").equals(file)||file.matches("OpenSAAB_32_[0-9]{2}[A-Z]{3}[0-9]{2}_v"+q+"\\.apk"))
+            :("OpenSAAB-T2-arm64-v8a.apk".equals(file)||("OpenSAAB-T2-"+version+"-arm64-v8a.apk").equals(file)||file.matches("OpenSAAB_64_[0-9]{2}[A-Z]{3}[0-9]{2}_v"+q+"\\.apk"));
+        if(!pkg.equals(packageName)||!validFile||!sha.matches("[a-f0-9]{64}")||bytes<100000||bytes>32*1024*1024||code<1
                 ||!version.matches(arm32?"[0-9]+\\.[0-9]+\\.[0-9]+-headunit\\.[0-9]+":"[0-9]+\\.[0-9]+\\.[0-9]+(?:-preview\\.[0-9]+)?"))throw new IOException("Invalid release information");
     }
     static boolean releaseSigned(PackageInfo installed) {

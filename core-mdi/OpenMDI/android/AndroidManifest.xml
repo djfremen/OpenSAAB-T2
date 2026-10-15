@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.opensaab.openmdi" android:versionCode="17" android:versionName="0.1-research.17">
+  <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="36" />
+  <uses-feature android:name="android.hardware.usb.host" android:required="true" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:label="OpenMDI research" android:debuggable="true" android:extractNativeLibs="true" android:theme="@android:style/Theme.Material.NoActionBar">
+    <activity android:name=".MainActivity" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+  </application>
+</manifest>

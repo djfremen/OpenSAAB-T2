@@ -30,3 +30,5 @@ pub use adapters::vcx_nano::native as nano_native;
 pub use adapters::vcx_nano::protocol as nano_usb;
 
 pub use adapters::vcx_nano::backend as nano_backend;
+
+pub mod native_menu;

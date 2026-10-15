@@ -1,0 +1,7 @@
+{
+  "origin": "OpenSAAB-0.1.0-preview.70-android-matching-source.zip",
+  "archive": "/Users/mini4/.local/share/opensaab/android-rounds-release-20261013/assets/OpenSAAB-0.1.0-preview.70-android-matching-source.zip",
+  "archive_sha256": "8c27a20b657e73ae17a1253fe673802e7739eeaf62f7bc8ac098f7674cbacb25",
+  "changes": "Shared native-menu producer and input consumption sequence; adapter carrier/protocol/capture policy retained",
+  "version": "0.1.0-preview.85"
+}

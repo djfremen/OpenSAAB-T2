@@ -295,5 +295,16 @@ mod tests {
         assert!(parse_log(&empty.replace("81-00-00-00-FF", "81-00-00"), Module::Cim).is_err());
         let rejected = empty.replace("REQUEST module=CIM CAN=241 payload=A9-81-12", "REQUEST module=CIM CAN=241 payload=A9-81-12\nRX status=0x00000000 protocol=32775 timestamp_us=1 bytes=00-00-06-41-7F-A9-31");
         assert!(parse_log(&rejected, Module::Cim).is_err());
+        assert_eq!(
+            parse_log(&s.replace("81-00-00-00-FF", "81-00-00-00-17"), Module::Cim)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(parse_log(
+            &fixture(Module::Bcm).replace("81-00-00-00-FF", "81-00-00-00-17"),
+            Module::Bcm
+        )
+        .is_err());
     }
 }

@@ -22,6 +22,9 @@ import android.view.WindowManager;
  * No authorization replay or other diagnostic TX is admitted.
  */
 public class NanoProbeActivity extends Activity {
+    private volatile java.lang.Process mcpProcess;
+    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get()&&!this.cancelled,()->this.nativeKeyPump!=null&&this.nativeKeyPump.idle()&&this.nativeDirectory!=null&&!new File(this.nativeDirectory,"native-key.txt").exists(),()->this.mcpProcess!=null&&this.mcpProcess.isAlive(),this::sendMenuKey,this::cancel,"vcx_nano");
+
     volatile ConnectionAttempt connectionAttempt;
     Button reportConnection;
     String PERMISSION;
@@ -139,6 +142,7 @@ public class NanoProbeActivity extends Activity {
             Button menu=new Button(this);menu.setText("App menu");
             menu.setOnClickListener(v->new SessionSheet.Menu(this)
                 .add("Preferences",controls::showPreferences)
+                .add("AI control (MCP)",()->AndroidMcp.show(this))
                 .add("Console",controls::showConsole)
                 .add("Firmware controls help",controls::showHelp).show("App menu"));
             recovery.addView(menu,new LinearLayout.LayoutParams(0,-2,1));
@@ -178,7 +182,7 @@ public class NanoProbeActivity extends Activity {
             });
             lcdHandler.postDelayed(new Runnable(){public void run(){updateNativeLcd();if(!isFinishing())lcdHandler.postDelayed(this,1000);}},1000);
         }
-        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->{if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});controls.setActions(this::showActions);root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        scroll=new ScrollView(this); text=new TextView(this); text.setTextSize(13);text.setTypeface(android.graphics.Typeface.MONOSPACE); scroll.addView(text); if(nativeFirmware()){controls=new Tech2Controls(this,nativeLcd,scroll,code->{AndroidMcp.manual();if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});controls.setActions(this::showActions);root.addView(controls,new LinearLayout.LayoutParams(-1,0,1));}else root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         HeadunitLayout.apply(root);
         setContentView(root);
         IntentFilter f=new IntentFilter(PERMISSION); f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED); f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
@@ -416,7 +420,7 @@ public class NanoProbeActivity extends Activity {
             if(nativeFirmware())progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);
             if(nativeFirmware())builder.environment().put("OPENSAAB_PERFORMANCE_DIR",nativeDirectory.getAbsolutePath());
             DemandStartup.configure(this,builder);
-            child=builder.redirectErrorStream(true).start();
+            child=builder.redirectErrorStream(true).start();mcpProcess=child;
             final java.lang.Process probeChild=child;
             final File processLog=new File(nativeFirmware()?nativeDirectory:getFilesDir(),nativeFirmware()?"native-process.log":resultFile.getName()+".process.log");
             outputReader=new Thread(()->{
@@ -575,6 +579,7 @@ public class NanoProbeActivity extends Activity {
     }
     android.app.Dialog showActions(){
         SessionSheet.Menu menu=new SessionSheet.Menu(this);
+        menu.add("AI control (MCP)",()->AndroidMcp.show(this));
         if(securityAccess!=null)menu.add(securityAccess.readyToProcess()?"Process existing data":"Get security access",securityAccess::requestAccess);
         return menu.add("Reboot Nano",this::requestReboot).add("Console",controls::showConsole).show("Actions");
     }
@@ -648,6 +653,7 @@ public class NanoProbeActivity extends Activity {
         Runnable restart=this::startSameSecurityAdapter;
         if(foreground)restart.run();else pendingSecurityStart=restart;
     }
+    boolean sendMenuKey(int code){if(!foreground||!running.get()||cancelled||nativeStop.pending()||nativeDirectory==null||nativeKeyPump==null)return false;if(health!=null)health.input();return nativeKeyPump.offer(String.format(java.util.Locale.ROOT,"0x%02x",code));}
     void nativeKey(String code){
         if(!nativeFirmware() || !running.get() || cancelled || nativeStop.pending() || nativeDirectory==null){log("No active native diagnostic session.");return;}
         if(health!=null)health.input();
@@ -719,7 +725,7 @@ public class NanoProbeActivity extends Activity {
     void leaveScreen() { cancel();finish(); }
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed() { leaveScreen(); }
-    @Override protected void onStart() { super.onStart();foreground=true;if(pendingSecurityStart!=null){Runnable next=pendingSecurityStart;pendingSecurityStart=null;next.run();} }
-    @Override protected void onStop() { foreground=false;rebootHandoff.cancel();super.onStop();if(running.get() || permissionPending)cancel();else requestGate.cancel(); }
+    @Override protected void onStart() {AndroidMcp.bind(this,mcpOwner); super.onStart();foreground=true;if(pendingSecurityStart!=null){Runnable next=pendingSecurityStart;pendingSecurityStart=null;next.run();} }
+    @Override protected void onStop() {AndroidMcp.unbind(this); foreground=false;rebootHandoff.cancel();super.onStop();if(running.get() || permissionPending)cancel();else requestGate.cancel(); }
     @Override protected void onDestroy() { if(dtcReport!=null)dtcReport.close();if(securityAccess!=null)securityAccess.close();pendingSecurityStart=null;cancel();if(nativeLcdPump!=null)nativeLcdPump.close();lcdHandler.removeCallbacksAndMessages(null);unregisterReceiver(receiver);super.onDestroy(); }
 }

@@ -28,3 +28,11 @@ installer and manifest. Read displayed versions from packaged metadata. Retain
 artifact hashes and historical packages; never rename a running diagnostic app
 or alter a published signed bundle. This candidate explicitly adopts the rule
 on Android ARM64 as well as macOS. Other target adoption remains recorded pending.
+
+Owner clarification October 14, 2026: ARM64 Android previews intended for distribution
+keep `-preview.N`; `findings` is internal research nomenclature. Preserve old
+debug packages and their exact identities. Finish the current debug session
+before switching to Chipsoft, MDI and Nano tests with the Android implementation
+and new MCP controls. Prepare the next distinct preview, then install/verify its
+exact identity and bytes before those tests; do not replace the current debug
+installation or begin physical adapter testing during the active debug phase.

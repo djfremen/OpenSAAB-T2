@@ -12,14 +12,17 @@ import re
 import xml.etree.ElementTree as ET
 from build_profiles import PROFILES, validate_elf
 from report_dependencies import ReportDependencies
+from release_metadata import preview_metadata
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
+parser.add_argument('--release-date', help='Actual publication date; required for published builds (YYYY-MM-DD)')
 parser.add_argument('--private-release-signing', action='store_true', help='Sign a private debuggable build with the existing app certificate')
 parser.add_argument('--version-name', default='0.1-dev')
 parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
+release_identity = preview_metadata(not args.release, args.release_date)
 profile = PROFILES[args.profile]
 experimental = profile.abi == 'armeabi-v7a'
 demand_test = args.profile == 'headunit-arm32-test'
@@ -123,7 +126,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
             raise SystemExit('Official release builds require a clean source checkout')
     commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
     dirty = bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip())
-    z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'source_dirty':dirty,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':not args.release},sort_keys=True))
+    z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'source_dirty':dirty,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':not args.release,**release_identity},sort_keys=True))
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
     for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)

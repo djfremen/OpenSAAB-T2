@@ -1,0 +1,59 @@
+{
+  "schema": "adapter_translation_evidence_v1",
+  "date": "2026-10-03",
+  "implementation": "Independently authored behavior and consolidation of OpenSAAB's existing MPL-2.0 code; no vendor code, ECU catalog or third-party parser source imported.",
+  "items": [
+    {
+      "id": "TRANSLATION-E01",
+      "reference": "OBDocker Android 3.2.7",
+      "evidence": "Static native/Java inspection; exact GM report fixture execution remains unqualified.",
+      "adopted_behavior": "GM A9/81 collection has a separate path from ordinary ISO-TP.",
+      "owner_source": "tech2-emu/docs/OBDOCKER_GM_SWCAN_NATIVE_ANALYSIS_2026-10-02.md"
+    },
+    {
+      "id": "TRANSLATION-E02",
+      "reference": "Carista Android 10.0",
+      "evidence": "Static inspection and bounded native replay; complete termination and actual EVO behavior pending.",
+      "adopted_behavior": "Preserve CAN identities and GM records; bound multipart length/sequence; choose flow-control parameters explicitly; distinguish STN and MIC command profiles.",
+      "owner_source": "tech2-emu/docs/SWCAN_ROUTINE_COMPARISON_2026-10-02.md"
+    },
+    {
+      "id": "TRANSLATION-E03",
+      "reference": "OBDLink/STN official command documentation and owner-provided Rogue33 observations",
+      "evidence": "Manufacturer documentation plus attributed Android MX+ reports; exact command recipe, iOS and full guest scope unqualified.",
+      "adopted_behavior": "Use an adapter-specific STN family below the common CAN contract; qualify capabilities/readback per exact profile rather than substitute STN for every MIC command.",
+      "primary_source": "https://www.scantool.net/scantool/downloads/682/obdlink_frpm_f.pdf",
+      "owner_source": "tech2-emu/docs/ADAPTER_SWCAN_DEVELOPMENT_MASTER_2026-10-02.md"
+    },
+    {
+      "id": "TRANSLATION-E04",
+      "reference": "Pinned WiCAN and MeatPi components",
+      "evidence": "Source review and five compiled parser fixture cases; usable native pin-1 route not qualified.",
+      "adopted_behavior": "Keep raw CAN and assembled payload representations distinct; ISO-TP alone cannot collect raw81 reports.",
+      "primary_source": "https://github.com/meatpiHQ/meatpi-components/tree/75516c47655d2cbd3f3611b8d9513e1f357533a0",
+      "owner_source": "tech2-emu/audit/2026-10-02/wican/review-evidence.json"
+    },
+    {
+      "id": "TRANSLATION-E05",
+      "reference": "BlueDriver Android 8.12.2",
+      "evidence": "Static GM asset/report/generation inspection; exact hardware category and reliable full parser replay unresolved.",
+      "adopted_behavior": "Retain exact firmware/profile scope and raw DTC status/failure bytes; do not infer support or catalog correctness from a brand name.",
+      "owner_source": "tech2-emu/audit/2026-10-02/bluedriver/analysis-findings.json"
+    },
+    {
+      "id": "TRANSLATION-E06",
+      "reference": "Existing OpenSAAB Chipsoft, Nano, J2534 and vLinker implementations",
+      "evidence": "Capture-backed transport definitions and prior exact-artifact observations; new shared source has offline qualification only.",
+      "adopted_behavior": "Preserve original guest requests, raw payloads, controller/electrical context, tickets, completion provenance, existing command guards and cleanup; consolidate existing VIN and GM decoders.",
+      "owner_source": "tech2-emu/docs/ADAPTER_SWCAN_DEVELOPMENT_MASTER_2026-10-02.md"
+    },
+    {
+      "id": "TRANSLATION-E07",
+      "reference": "Linux kernel ISO-TP documentation",
+      "evidence": "Primary transport documentation; not adapter or vehicle qualification.",
+      "adopted_behavior": "Separate addresses and representations; enforce sequence/length bounds; select block size/separation and renew FC per block; reject reserved STmin values.",
+      "primary_source": "https://www.kernel.org/doc/html/latest/networking/iso15765-2.html"
+    }
+  ],
+  "remaining": ["Qualified additional driver dialects", "Verified settings transitions/readback", "Physical SW-CAN routing/wake", "Adapter buffering and complete-bus capture", "Platform installed-artifact regression", "Cross-adapter and held-out real/model comparisons"]
+}

@@ -14,7 +14,7 @@ public final class ReleaseParityInstrumentedTest extends Instrumentation {
         Context c=getTargetContext();
         check(new FirmwareStore(c.getFilesDir()).missing().isEmpty(),"Offline fixture firmware not installed");
         check(EmulatorArchitecture.label(new File(c.getApplicationInfo().nativeLibraryDir,"libtech2_emu.so")).equals("Emulator: 64-bit ARM"),"Native architecture label");
-        main=startActivitySync(new Intent().setClassName(c,"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
+        main=startActivitySync(new Intent().setClassName(c,"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync(); final Activity launchOwner=main; runOnMainSync(()->{android.view.View notice=launchOwner.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
         final Activity app=main;final String[] labels={""};runOnMainSync(()->labels[0]=text(app.getWindow().getDecorView()));
         check(labels[0].contains("System check")&&labels[0].contains("Emulator: 64-bit ARM")&&labels[0].contains("Support OpenSAAB"),"Shared main UI features");
         check(!labels[0].contains("32-bit development"),"ARM32 branding leaked into ARM64");

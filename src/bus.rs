@@ -253,6 +253,10 @@ pub struct Tech2Bus {
     pub pit_pending: bool,
     pit_next_tick: Option<u64>,
     tpu_countdown: crate::tpu::Countdown,
+    pub tpu_selected_irq: Option<(u8, u32)>,
+    pub switch_rows: [u8; 16],
+    pub switch_cols: [u16; 8],
+    pub switch_configured: bool,
     pub research_in_app: bool,
     pub research_struct_buf: u32,
     pub research_path_depth: u32,
@@ -349,6 +353,10 @@ impl Tech2Bus {
             pit_pending: self.pit_pending,
             pit_next_tick: self.pit_next_tick,
             tpu_countdown: self.tpu_countdown.clone(),
+            tpu_selected_irq: self.tpu_selected_irq,
+            switch_rows: self.switch_rows,
+            switch_cols: self.switch_cols,
+            switch_configured: self.switch_configured,
             research_in_app: self.research_in_app,
             research_struct_buf: self.research_struct_buf,
             research_path_depth: self.research_path_depth,
@@ -567,6 +575,10 @@ impl Tech2Bus {
             pit_pending: false,
             pit_next_tick: None,
             tpu_countdown: crate::tpu::Countdown::default(),
+            tpu_selected_irq: None,
+            switch_rows: [0; 16],
+            switch_cols: [0; 8],
+            switch_configured: false,
             research_in_app: false,
             research_struct_buf: 0x0030_0000,
             research_path_depth: 0,
@@ -951,6 +963,7 @@ impl Tech2Bus {
         } else {
             0
         };
+        self.tpu_selected_irq = crate::tpu::interrupt(&self.sim);
         timer
             .max(if self.candi_link.as_ref().is_some_and(|link| link.irq()) {
                 5
@@ -959,7 +972,27 @@ impl Tech2Bus {
             })
             .max(if self.pending_candi.as_ref().is_some_and(|pending| pending.uart.irq()) { 5 } else { 0 })
             .max(u8::from(self.key_irq_pending()))
-            .max(crate::tpu::interrupt(&self.sim).map_or(0, |(level, _)| level))
+            .max(self.tpu_selected_irq.map_or(0, |(level, _)| level))
+    }
+
+    fn write_switch(&mut self, address: u32, value: u8) {
+        self.switch_configured = true;
+        let row = ((address >> 1) & 15) as usize;
+        let col = ((address >> 5) & 7) as usize;
+        if (value & 3) == 3 {
+            self.switch_rows = [0; 16];
+            self.switch_cols = [0; 8];
+        } else if (value & 1) != 0 {
+            self.switch_rows[row] |= 1 << col;
+            self.switch_cols[col] |= 1 << row;
+        } else {
+            self.switch_rows[row] &= !(1 << col);
+            self.switch_cols[col] &= !(1 << row);
+        }
+    }
+
+    pub fn uartb_connected(&self) -> bool {
+        !self.switch_configured || self.switch_cols[6] != 0 || self.switch_cols[7] != 0
     }
 
     /// Visible text cells at the programmed font height and address pitch.
@@ -987,9 +1020,23 @@ impl Tech2Bus {
 
     pub fn guest_splash_reached(&self) -> bool {
         let text = self.screen_text();
-        (text.contains("Press [ENTER]") || text.contains("Press ENTER"))
+        let nao = (text.contains("Press [ENTER]") || text.contains("Press ENTER"))
             && text.contains("Software Version")
-            && text.contains("North American Operations")
+            && text.contains("North American Operations");
+        // The 148.000 catalog cards translate the prompt and version label;
+        // English also replaces the manufacturer line with Ignition Cycles.
+        // Verify the selected card's typed Saab manufacturer record, and the
+        // version and ENTER prompt in the active text layer. Card metadata or
+        // inactive VRAM alone cannot announce a welcome. ENTER is invariant,
+        // but its punctuation varies: <ENTER>, [ENTER], (ENTER), or plain ENTER.
+        // This only arms deferred initialization: the first guest dependency
+        // still starts CANdi through the existing byte-verified loader guards.
+        let saab_148 = self.card.starts_with(b"T2  ")
+            && self.card.get(0x1ff00..0x1ff18)
+                == Some(b"\x00\x01\x00\x01\x00\x12SAAB Automobile AB")
+            && text.split_ascii_whitespace().any(|word| word == "148.000")
+            && text.split(|c: char| !c.is_ascii_alphanumeric()).any(|word| word == "ENTER");
+        nao || saab_148
     }
 
     pub fn guest_boot_failed(&self) -> bool {
@@ -1733,7 +1780,10 @@ impl AddressBus for Tech2Bus {
             return 0x1d;
         }
 
-        if let Some((tpu_level, vector)) = crate::tpu::interrupt(&self.sim) {
+        if let Some((tpu_level, vector)) = self
+            .tpu_selected_irq
+            .or_else(|| crate::tpu::interrupt(&self.sim))
+        {
             if level == tpu_level {
                 return vector;
             }
@@ -1752,6 +1802,9 @@ impl AddressBus for Tech2Bus {
     fn read_byte(&mut self, address: u32) -> u8 {
         let a = address & A24;
         self.trace_eram_access('R', a, None);
+        if (0x401000..0x401800).contains(&a) {
+            return 0xff;
+        }
         if (0x400800..0x400810).contains(&a) {
             if let Some(pending) = &mut self.pending_candi {
                 return pending.uart.read(a, &mut Vec::new());
@@ -1961,7 +2014,22 @@ impl AddressBus for Tech2Bus {
     fn write_byte(&mut self, address: u32, value: u8) {
         let a = address & A24;
         self.trace_eram_access('W', a, Some(value));
+        if (0x401000..0x401800).contains(&a) {
+            self.write_switch(a, value);
+            return;
+        }
         if (0x400800..0x400810).contains(&a) {
+            let thr = self
+                .pending_candi
+                .as_ref()
+                .is_some_and(|p| p.uart.is_thr_write(a))
+                || self
+                    .candi_link
+                    .as_ref()
+                    .is_some_and(|l| l.is_thr_write(a));
+            if thr && !self.uartb_connected() {
+                return;
+            }
             if let Some(pending) = &mut self.pending_candi {
                 if !pending.uart.needs_processor(a, value) {
                     pending.uart.write(a, value, &mut Vec::new());
@@ -2193,6 +2261,10 @@ impl AddressBus for Tech2Bus {
     }
 
     fn read_word(&mut self, address: u32) -> u16 {
+        let a = address & A24;
+        if (0x401000..0x401800).contains(&a) {
+            return 0x0000;
+        }
         #[cfg(feature = "load-test")]
         if let Some(bytes) = self.load_test_plain_read(address) { return u16::from_be_bytes(bytes); }
         let hi = self.read_byte(address) as u16;
@@ -2209,9 +2281,15 @@ impl AddressBus for Tech2Bus {
     }
 
     fn write_word(&mut self, address: u32, value: u16) {
+        let a = address & A24;
+        if (0x401000..0x401800).contains(&a) {
+            if (a & 1) == 0 {
+                self.write_switch(a, value as u8);
+            }
+            return;
+        }
         #[cfg(feature = "load-test")]
         {
-            let a = address & A24;
             if (RAM_BASE..=RAM_BASE + RAM_SIZE - 2).contains(&a) {
                 self.ram[(a-RAM_BASE) as usize..(a-RAM_BASE+2) as usize].copy_from_slice(&value.to_be_bytes());
                 return;
@@ -2240,6 +2318,57 @@ mod tests {
     use super::*;
 
     #[cfg(feature = "load-test")]
+    #[test]
+    fn translated_saab_welcome_arms_startup_only_in_the_active_text_layer() {
+        let mut card = vec![0; 0x20000];
+        card[..4].copy_from_slice(b"T2  ");
+        card[0x1ff00..0x1ff18].copy_from_slice(b"\x00\x01\x00\x01\x00\x12SAAB Automobile AB");
+        let mut bus = Tech2Bus::new(vec![0; 0x40000], card, ExecutionMode::Fidelity);
+        let rows = [
+            "Tryck <ENTER> f r att g Vidare",
+            "Mjukvaruversion: 148.000",
+            "SAAB Automobile AB",
+        ];
+        for (row, text) in rows.iter().enumerate() {
+            let start = 0x3000 + row * 40;
+            bus.lcd.vram[start..start + text.len()].copy_from_slice(text.as_bytes());
+        }
+        assert!(!bus.guest_splash_reached());
+        bus.lcd.sad1 = 0x3000;
+        assert!(bus.guest_splash_reached());
+        // English 148 is a separate card; its visible third row is different.
+        bus.lcd.vram[0x3000..0x3050].fill(b' ');
+        let prompt = b"Press <ENTER> to continue";
+        bus.lcd.vram[0x3000..0x3000 + prompt.len()].copy_from_slice(prompt);
+        let version = b"Software Version: 148.000";
+        bus.lcd.vram[0x3028..0x3028 + version.len()].copy_from_slice(version);
+        bus.lcd.vram[0x3050..0x3078].fill(b' ');
+        bus.lcd.vram[0x3050..0x3060].copy_from_slice(b"Ignition Cycles:");
+        assert!(bus.guest_splash_reached());
+        // An incomplete welcome, another product/version, a later acknowledgement,
+        // hidden LCD or graphics-only layer must not announce startup readiness.
+        for (row, replacement) in [(0, "Press to continue"), (1, "Software Version: 149.000")] {
+            let start = 0x3000 + row * 40;
+            let saved = bus.lcd.vram[start..start + 40].to_vec();
+            bus.lcd.vram[start..start + 40].fill(b' ');
+            bus.lcd.vram[start..start + replacement.len()].copy_from_slice(replacement.as_bytes());
+            assert!(!bus.guest_splash_reached());
+            bus.lcd.vram[start..start + 40].copy_from_slice(&saved);
+        }
+        for prompt in ["Weiter mit [ENTER] Taste", "Pulsar (ENTER) para continuar", "Paina (ENTER) jatkaaksesi", "Appuyer sur ENTER pour continuer", "Premere [ENTER] per continuare", "Druk op [ENTER] om door te gaan", "[ENTER]"] {
+            bus.lcd.vram[0x3000..0x3028].fill(b' ');
+            bus.lcd.vram[0x3000..0x3000 + prompt.len()].copy_from_slice(prompt.as_bytes());
+            assert!(bus.guest_splash_reached(), "{prompt}");
+        }
+        bus.card[0x1ff06] = b'O';
+        assert!(!bus.guest_splash_reached());
+        bus.card[0x1ff06] = b'S';
+        bus.card[0] = b'O';
+        assert!(!bus.guest_splash_reached());
+        bus.card[0] = b'T';
+        bus.lcd.display_on = false;
+        assert!(!bus.guest_splash_reached());
+    }
     #[test]
     fn load_test_wide_bus_matches_byte_bus_at_overlays_and_boundaries() {
         for mode in [ExecutionMode::ResearchHarness, ExecutionMode::Fidelity] {
@@ -2356,6 +2485,34 @@ mod tests {
         assert_eq!(bus.poll_interrupt(110_001), 4);
         bus.write_word(SIM7 + 0xe20, 0xfff7);
         assert_eq!(bus.poll_interrupt(110_002), 0);
+    }
+
+    #[test]
+    fn candi_switch_matrix_routes_crosspoints_and_gates_uartb_thr_writes() {
+        let mut bus = Tech2Bus::new(vec![0; 0x40000], vec![], ExecutionMode::Fidelity);
+        bus.pending_candi = Some(crate::candi::demand::Pending::default());
+        assert_eq!(bus.read_byte(0x401000), 0xff);
+        assert_eq!(bus.read_word(0x401000), 0x0000);
+        // Connect row 13, col 6 (0x4010DA) via word write (low byte 0x01 used once, high byte 0x03 ignored).
+        bus.write_word(0x4010da, 0x0301);
+        assert_eq!(bus.switch_rows[13], 1 << 6);
+        assert_eq!(bus.switch_cols[6], 1 << 13);
+        assert!(bus.uartb_connected());
+        // Clear all via value & 3 == 3.
+        bus.write_byte(0x4017ff, 3);
+        assert_eq!(bus.switch_rows, [0; 16]);
+        assert_eq!(bus.switch_cols, [0; 8]);
+        assert!(!bus.uartb_connected());
+        // Enable UART loopback and verify DLAB-clear THR write is blocked while columns 6/7 are 0.
+        bus.write_byte(0x400808, 0x10);
+        bus.write_byte(0x400800, 0x5a);
+        assert_eq!(bus.read_byte(0x40080a), 0x60);
+        // Connect column 7 via mirror 0x4015E2 (row 1, col 7).
+        bus.write_byte(0x4015e2, 1);
+        assert!(bus.uartb_connected());
+        bus.write_byte(0x400800, 0x5a);
+        assert_eq!(bus.read_byte(0x40080a), 0x61);
+        assert_eq!(bus.read_byte(0x400800), 0x5a);
     }
 
     #[test]
