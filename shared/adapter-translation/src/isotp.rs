@@ -92,21 +92,40 @@ impl Receiver {
 pub struct VinReply {
     receiver: Receiver,
     vin: Option<String>,
+    failed: bool,
 }
 impl Default for VinReply {
     fn default() -> Self {
         Self {
             receiver: Receiver::new(19).unwrap(),
             vin: None,
+            failed: false,
         }
     }
 }
 impl VinReply {
+    /// Returns true only when the caller must send flow control. A service-1A
+    /// response-pending reply waits for the first frame within the caller's
+    /// existing absolute deadline; it never starts a transfer or requests FC.
     pub fn feed(&mut self, data: &[u8]) -> Result<bool, String> {
+        if self.failed || self.vin.is_some() {
+            return Err("VIN receiver is terminal".into());
+        }
+        let result = self.consume(data);
+        if result.is_err() {
+            self.failed = true;
+            self.vin = None;
+        }
+        result
+    }
+    fn consume(&mut self, data: &[u8]) -> Result<bool, String> {
         if data.len() != 8 {
             return Err("VIN CAN response must contain eight bytes".into());
         }
         if data[..3] == [3, 0x7f, 0x1a] {
+            if data[3] == 0x78 && !self.receiver.started() {
+                return Ok(false);
+            }
             return Err(format!("ECU rejected VIN request: NRC {:02X}", data[3]));
         }
         if !self.receiver.started() && data[..4] != [0x10, 19, 0x5a, 0x90] {
@@ -132,6 +151,9 @@ impl VinReply {
         }
     }
     pub fn vin(&self) -> Result<Option<String>, String> {
+        if self.failed {
+            return Err("VIN receiver failed".into());
+        }
         Ok(self.vin.clone())
     }
 }
