@@ -15,7 +15,7 @@ HERE = Path(__file__).resolve().parent
 SOURCES = HERE / "shared"
 EMULATOR = HERE.parents[1]
 ROOT = EMULATOR.parent
-VERSION = "0.2.26-intel-preview.6"
+VERSION = "0.2.26-intel-preview.7"
 TARGETS = {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}
 
 def run(*args, **kwargs):
@@ -85,7 +85,7 @@ def main():
         for binary in ("tech2-emu", "chipsoft-probe", "chipsoft-vin", "nano-usb-probe", "opensaab-security", "opensaab-reports", "opensaab-connection", "opensaab-mdi"):
             shutil.copy2(rust_target_dir / target_triple / "release" / binary, binaries / binary)
         run("xcrun", "swiftc", "-O", "-target", f"{architecture}-apple-macos12.0", "-framework", "AppKit", "-framework", "Security", "-framework", "CoreBluetooth", "-framework", "IOBluetooth", "-framework", "IOKit",
-            SOURCES / "Launcher.swift", SOURCES / "ShellCore.swift", SOURCES / "NanoAdapterWorkflow.swift", SOURCES / "MdiAdapterWorkflow.swift", SOURCES / "PrivateAutomation.swift", SOURCES / "BundledRuntime.swift", SOURCES / "ShellChecks.swift", SOURCES / "SecurityStatus.swift", SOURCES / "VehicleStatusView.swift", SOURCES / "UIParityChecks.swift", SOURCES / "USBAdapterDiscovery.swift", SOURCES / "USBAdapterChooser.swift", SOURCES / "USBChooserChecks.swift", SOURCES / "SecurityWorkflow.swift", SOURCES / "DtcReports.swift", SOURCES / "SupportReports.swift", SOURCES / "MenuShortcuts.swift", SOURCES / "EngineStartup.swift", SOURCES / "MacBluetoothTransport.swift", SOURCES / "MacBluetoothWorkflow.swift", SOURCES / "BluetoothActions.swift", SOURCES / "MacBluetoothChecks.swift", ROOT / "shared/apple-bluetooth/AppleBLETransport.swift", "-o", binaries / "OpenSAAB")
+            SOURCES / "Launcher.swift", SOURCES / "ShellCore.swift", SOURCES / "NanoAdapterWorkflow.swift", SOURCES / "MdiAdapterWorkflow.swift", SOURCES / "PrivateAutomation.swift", SOURCES / "BundledRuntime.swift", SOURCES / "ShellChecks.swift", SOURCES / "DesignChecks.swift", SOURCES / "SecurityStatus.swift", SOURCES / "VehicleStatusView.swift", SOURCES / "UIParityChecks.swift", SOURCES / "USBAdapterDiscovery.swift", SOURCES / "USBAdapterChooser.swift", SOURCES / "USBChooserChecks.swift", SOURCES / "SecurityWorkflow.swift", SOURCES / "DtcReports.swift", SOURCES / "SupportReports.swift", SOURCES / "MenuShortcuts.swift", SOURCES / "EngineStartup.swift", SOURCES / "MacBluetoothTransport.swift", SOURCES / "MacBluetoothWorkflow.swift", SOURCES / "BluetoothActions.swift", SOURCES / "MacBluetoothChecks.swift", ROOT / "shared/apple-bluetooth/AppleBLETransport.swift", "-o", binaries / "OpenSAAB")
         shutil.copy2(EMULATOR / "ui/firmware-catalog.json", resources / "firmware-catalog.json")
         support_dir = resources / "system"
         support_dir.mkdir()

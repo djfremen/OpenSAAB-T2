@@ -44,6 +44,7 @@ final class PrivateAutomation {
       let op = value["op"] as? String else { throw ShellError.message("Invalid private command.") }
     let keys: [String: Set<String>] = [
       "status": [], "snapshot": [], "setup": [], "download": [], "security": [], "stop": [], "original_menus": [],
+      "keypad": [], "expand": [],
       "cancel_setup": [], "select_software": ["firmware"], "key": ["code"], "alert": ["button"], "connect": ["port", "mode"]]
     guard let allowed = keys[op], Set(value.keys).isSubset(of: allowed.union(["id", "op"])) else {
       throw ShellError.message("Unsupported private command fields; credentials belong only in the FIFO.")
@@ -111,6 +112,8 @@ final class PrivateAutomation {
       switch op {
       case "status": break
       case "snapshot": try capture()
+      case "keypad": shell.keypad()
+      case "expand": shell.toggleExpanded()
       case "setup": shell.firmwareDialog()
       case "select_software":
         guard !shell.busy, let firmware = command["firmware"] as? String,
@@ -206,6 +209,7 @@ final class PrivateAutomation {
       "status": shell.status.stringValue, "vehicle": shell.vehicle.stringValue,
       "selected_firmware": shell.store.selected?.id ?? "", "session_running": shell.session?.running ?? false,
       "run": shell.session?.run.path ?? "", "key_queue_available": shell.session?.canAcceptMenuKey ?? false,
+      "keypad_visible": shell.keypadVisible, "expanded": shell.expanded,
       "alert_labels": labels, "alert_buttons": buttons,
       "secure_prompt": all.contains { $0 is NSSecureTextField }, "firmware_selection_open": shell.firmwareWindow != nil,
       "credential_fifo": directory.appendingPathComponent("credential.fifo").path]

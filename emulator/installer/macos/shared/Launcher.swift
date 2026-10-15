@@ -4,8 +4,33 @@ import Darwin
 import Foundation
 
 let shellVersion = Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "development"
-let background = NSColor(calibratedRed: 0.051, green: 0.086, blue: 0.125, alpha: 1)
-let foreground = NSColor(calibratedRed: 0.929, green: 0.957, blue: 0.980, alpha: 1)
+// The packaged common contract is the design source for both Mac architectures.
+enum WorkspaceTheme {
+  static let colors: [String: String] = {
+    guard let url = Bundle.main.url(forResource: "interface-contract", withExtension: "json"),
+      let data = try? Data(contentsOf: url),
+      let spec = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let layout = spec["layout"] as? [String: Any] else { return [:] }
+    return layout["colors"] as? [String: String] ?? [:]
+  }()
+  static func color(_ name: String, _ fallback: String) -> NSColor {
+    let hex = colors[name] ?? fallback
+    let value = UInt32(hex.dropFirst(), radix: 16) ?? 0
+    return NSColor(srgbRed: CGFloat((value >> 16) & 255) / 255,
+      green: CGFloat((value >> 8) & 255) / 255, blue: CGFloat(value & 255) / 255, alpha: 1)
+  }
+  static let background = color("background", "#101318")
+  static let foreground = color("foreground", "#f3f6fb")
+  static let muted = color("muted", "#adb8c6")
+  static let surface = color("surface", "#191e26")
+  static let button = color("button", "#293240")
+  static let primary = color("primary_button", "#256c98")
+  static let border = color("border", "#3b4656")
+  static let primaryBorder = color("primary_border", "#75c9f2")
+  static let display = color("display", "#080c11")
+}
+let background = WorkspaceTheme.background
+let foreground = WorkspaceTheme.foreground
 final class TopAlignedClip: NSClipView {
   override var isFlipped: Bool { true }
 }
@@ -13,10 +38,16 @@ final class HeaderStack: NSStackView {
   override var isFlipped: Bool { true }
 }
 final class ActionButton: NSButton {
+  override var acceptsFirstResponder: Bool { true }
+  override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
   var summaryStyle = false
+  var quietStyle = false
+  var activeStyle = false { didSet { needsDisplay = true } }
+  private var hovering = false
+  private var hoverArea: NSTrackingArea?
   var textColor: NSColor = foreground { didSet { needsDisplay = true } }
   var actionBlock: () -> Void
-  init(_ title: String, _ block: @escaping () -> Void) {
+  init(_ title: String, minHeight: CGFloat = 36, _ block: @escaping () -> Void) {
     actionBlock = block
     super.init(frame: .zero)
     self.title = title
@@ -24,32 +55,66 @@ final class ActionButton: NSButton {
     action = #selector(invoke)
     isBordered = false
     setButtonType(.momentaryPushIn)
-    controlSize = .large
-    font = .systemFont(ofSize: 13)
+    controlSize = .regular
+    font = .systemFont(ofSize: 13, weight: .medium)
+    if ["S1", "S2", "S3", "S4", "EXIT", "HELP", "↑", "↓", "←", "→", "YES", "NO", "ENTER",
+        "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9"].contains(title) {
+      font = .monospacedSystemFont(ofSize: 12.5, weight: .semibold)
+    }
+    focusRingType = .exterior
     contentTintColor = foreground
     setAccessibilityLabel(title)
-    heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
+    heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight).isActive = true
   }
   required init?(coder: NSCoder) { fatalError() }
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    if let area = hoverArea { removeTrackingArea(area) }
+    let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+    addTrackingArea(area)
+    hoverArea = area
+  }
+  override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true }
+  override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
+  override var focusRingMaskBounds: NSRect { bounds }
+  override func drawFocusRingMask() {
+    NSBezierPath(roundedRect: bounds.insetBy(dx: 2, dy: 2), xRadius: 8, yRadius: 8).fill()
+  }
   override func draw(_ dirtyRect: NSRect) {
     let primary = title == "Connect and start"
-    let fill = primary
-      ? NSColor(calibratedRed: 0.125, green: 0.361, blue: 0.514, alpha: 1)
-      : NSColor(calibratedRed: 0.106, green: 0.169, blue: 0.231, alpha: 1)
-    (isHighlighted ? fill.blended(withFraction: 0.2, of: .white)! : fill).setFill()
+    let base = primary ? WorkspaceTheme.primary : (activeStyle ? WorkspaceTheme.button : (quietStyle ? WorkspaceTheme.surface : WorkspaceTheme.button))
+    let fill = isEnabled ? base : base.blended(withFraction: 0.45, of: background) ?? base
+    // Darken pressed controls to preserve text contrast, including the primary action.
+    let feedback: CGFloat = isEnabled ? (isHighlighted ? 0.12 : (hovering ? 0.04 : 0)) : 0
+    (fill.blended(withFraction: feedback, of: isHighlighted ? .black : .white) ?? fill).setFill()
     let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
     shape.fill()
-    (primary ? NSColor(calibratedRed: 0.263, green: 0.510, blue: 0.667, alpha: 1)
-             : NSColor(calibratedRed: 0.231, green: 0.298, blue: 0.369, alpha: 1)).setStroke()
+    let edge = (primary || activeStyle) && isEnabled ? (activeStyle ? WorkspaceTheme.primaryBorder : WorkspaceTheme.primary) : WorkspaceTheme.border
+    edge.withAlphaComponent(quietStyle && !activeStyle && !hovering && !isHighlighted ? 0.45 : 1).setStroke()
     shape.stroke()
+    if summaryStyle {
+      let lines = title.components(separatedBy: "\n")
+      for (index, line) in lines.prefix(3).enumerated() {
+        let style = NSMutableParagraphStyle(); style.lineBreakMode = .byTruncatingTail
+        let attrs: [NSAttributedString.Key: Any] = [.paragraphStyle: style,
+          .font: NSFont.systemFont(ofSize: index == 0 ? 13 : 11.5, weight: index == 0 ? .semibold : .regular),
+          .foregroundColor: index == 0 ? foreground : textColor]
+        let y = isFlipped ? 8 + CGFloat(index) * 15 : bounds.height - 21 - CGFloat(index) * 15
+        (line as NSString).draw(in: NSRect(x: 10, y: y,
+          width: max(1, bounds.width - 36), height: 16), withAttributes: attrs)
+      }
+      ("›" as NSString).draw(in: NSRect(x: bounds.maxX - 18, y: bounds.midY - 11, width: 12, height: 22),
+        withAttributes: [.font: NSFont.systemFont(ofSize: 17), .foregroundColor: WorkspaceTheme.muted])
+      return
+    }
     let paragraph = NSMutableParagraphStyle()
     paragraph.alignment = summaryStyle ? .left : .center
     paragraph.lineBreakMode = summaryStyle ? .byTruncatingTail : .byWordWrapping
     let attrs: [NSAttributedString.Key: Any] = [.paragraphStyle: paragraph, .font: font ?? NSFont.systemFont(ofSize: 13),
-      .foregroundColor: isEnabled ? textColor : NSColor.secondaryLabelColor]
+      .foregroundColor: isEnabled ? textColor : WorkspaceTheme.muted.withAlphaComponent(0.65)]
     let text = title as NSString
-    let size = text.boundingRect(with: NSSize(width: max(1, bounds.width - 16), height: 100), options: [.usesLineFragmentOrigin], attributes: attrs).size
-    text.draw(in: NSRect(x: 8, y: (bounds.height-size.height)/2, width: max(1, bounds.width-16), height: size.height), withAttributes: attrs)
+    let size = text.boundingRect(with: NSSize(width: max(1, bounds.width - 12), height: 100), options: [.usesLineFragmentOrigin], attributes: attrs).size
+    text.draw(in: NSRect(x: 6, y: (bounds.height-size.height)/2, width: max(1, bounds.width-12), height: size.height), withAttributes: attrs)
   }
   @objc func invoke() { actionBlock() }
 }
@@ -71,31 +136,45 @@ final class FirmwareLCD: NSView {
     super.setFrameSize(newSize)
     needsDisplay = true
   }
+  private var renderedImageRect: CGRect {
+    let scale = min(max(1, bounds.width - 20) / 320, max(1, bounds.height - 20) / 240)
+    let w = scale * 320
+    let h = scale * 240
+    return CGRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
+  }
   override func draw(_ dirtyRect: NSRect) {
-    NSColor(calibratedRed: 0.031, green: 0.059, blue: 0.09, alpha: 1).setFill()
-    bounds.fill()
+    let bezel = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
+    WorkspaceTheme.display.setFill(); bezel.fill()
+    WorkspaceTheme.border.setStroke(); bezel.stroke()
     guard let image = image, let ctx = NSGraphicsContext.current?.cgContext else {
       let failed = caption != nil
       let text = (caption ?? "Your Tech 2 screen appears here") as NSString
       let style = NSMutableParagraphStyle()
       style.alignment = .center
       let attrs: [NSAttributedString.Key: Any] = [
-        .foregroundColor: failed ? NSColor.systemOrange : NSColor.secondaryLabelColor,
-        .font: NSFont.systemFont(ofSize: 14, weight: failed ? .semibold : .regular), .paragraphStyle: style,
+        .foregroundColor: failed ? NSColor.systemOrange : foreground,
+        .font: NSFont.systemFont(ofSize: 15, weight: .semibold), .paragraphStyle: style,
       ]
       let box = bounds.insetBy(dx: 24, dy: 0)
       let height = text.boundingRect(with: NSSize(width: box.width, height: .greatestFiniteMagnitude),
         options: [.usesLineFragmentOrigin], attributes: attrs).height
       text.draw(with: NSRect(x: box.minX, y: bounds.midY - height / 2, width: box.width, height: height),
         options: [.usesLineFragmentOrigin], attributes: attrs)
+      if !failed {
+        // An original line illustration, separate from the real firmware framebuffer.
+        let icon = NSBezierPath(roundedRect: NSRect(x: bounds.midX - 23, y: bounds.midY + 38, width: 46, height: 34), xRadius: 6, yRadius: 6)
+        WorkspaceTheme.primaryBorder.setStroke(); icon.lineWidth = 1.5; icon.stroke()
+        let keys = NSBezierPath()
+        for x in [-14, -5, 5, 14] { keys.move(to: NSPoint(x: bounds.midX + CGFloat(x), y: bounds.midY + 30)); keys.line(to: NSPoint(x: bounds.midX + CGFloat(x) + 4, y: bounds.midY + 30)) }
+        keys.lineWidth = 2; keys.stroke()
+        let helper = "Connect and start, or explore the original menus offline." as NSString
+        helper.draw(in: NSRect(x: box.minX, y: bounds.midY - height / 2 - 42, width: box.width, height: 34),
+          withAttributes: [.foregroundColor: WorkspaceTheme.muted, .font: NSFont.systemFont(ofSize: 12), .paragraphStyle: style])
+      }
       return
     }
-    let scale = min(bounds.width / 320, bounds.height / 240)
-    let w = scale * 320
-    let h = scale * 240
     ctx.interpolationQuality = .none
-    ctx.draw(
-      image, in: CGRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h))
+    ctx.draw(image, in: renderedImageRect)
   }
   override func mouseDown(with event: NSEvent) {
     window?.makeFirstResponder(self)
@@ -108,6 +187,15 @@ final class FirmwareLCD: NSView {
       send(d > 0 ? 9 : 12)
     } else if Date().timeIntervalSince(began) >= 0.45 {
       send(16)
+    } else if image != nil {
+      // REA Tech2Win parity: clicking the bottom softkey strip of the 320x240 LCD triggers S1..S4.
+      let local = convert(event.locationInWindow, from: nil)
+      let rect = renderedImageRect
+      let softHeight = rect.height * (28.0 / 240.0)
+      if rect.contains(local), local.y <= rect.minY + softHeight {
+        let col = min(3, max(0, Int((local.x - rect.minX) / (rect.width / 4.0))))
+        send([10, 6, 7, 8][col])
+      }
     }
   }
   override func scrollWheel(with event: NSEvent) {
@@ -164,8 +252,12 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     vehicle = NSTextField(wrappingLabelWithString: "Connect an adapter to identify it"),
     selection = NSTextField(wrappingLabelWithString: "")
   let rail = HeaderStack(), body = NSStackView(), main = NSStackView()
+  let emulatorColumn = NSStackView(), workspaceArea = NSStackView(), keypadPanel = NSView()
   let railScroll = NSScrollView()
-  var expanded = false, layoutMode = ""
+  let railPanel = NSView(), workspaceHeader = NSStackView()
+  var sessionSectionLabel: NSTextField?
+  var expandButton: ActionButton?, keypadToggleButton: ActionButton?
+  var expanded = false, keypadVisible = false, layoutMode = ""
   var layoutConstraints: [NSLayoutConstraint] = []
   var offline: ActionButton!, connect: ActionButton!, firmwareButton: ActionButton!
   var downloadTask: URLSessionDownloadTask?, downloadSession: URLSession?,
@@ -189,10 +281,20 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     l.textColor = foreground
     return l
   }
+  func sectionLabel(_ text: String) -> NSTextField {
+    let l = label(text, size: 10)
+    l.attributedStringValue = NSAttributedString(string: text, attributes: [
+      .font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: WorkspaceTheme.muted, .kern: 1.1])
+    return l
+  }
+  func toggleExpanded() {
+    expanded.toggle()
+    arrange()
+  }
   func stack(_ views: [NSView], vertical: Bool = false) -> NSStackView {
     let s = NSStackView(views: views)
     s.orientation = vertical ? .vertical : .horizontal
-    s.spacing = 8
+    s.spacing = 6
     s.alignment = vertical ? .leading : .centerY
     if !vertical { s.distribution = .fillEqually }
     return s
@@ -236,75 +338,183 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     window.title = "OpenSAAB \(shellVersion) \(shellArchitectureLabel)"
     window.minSize = NSSize(width: 500, height: 600)
     window.backgroundColor = background
+    window.contentView?.wantsLayer = true
+    window.contentView?.layer?.backgroundColor = background.cgColor
     window.delegate = self
     window.isReleasedWhenClosed = false
-    let brand = label("OpenSAAB T2", size: 16)
-    brand.font = .boldSystemFont(ofSize: 16)
+    let brand = label("OpenSAAB T2", size: 15)
+    brand.font = .boldSystemFont(ofSize: 15)
+    brand.maximumNumberOfLines = 1
     let identity = label(shellVersion + " · " + shellArchitectureLabel, size: 10)
-    identity.textColor = .secondaryLabelColor
+    identity.textColor = WorkspaceTheme.muted
     let branding = stack([brand,identity],vertical:true); branding.spacing = 2
-    let more = ActionButton("⋮") { [weak self] in self?.appMenu() }
+    let more = ActionButton("⋮", minHeight: 36) { [weak self] in self?.appMenu() }
+    more.quietStyle = true
     more.setAccessibilityLabel("App menu")
     appMenuButton = more
-    more.widthAnchor.constraint(equalToConstant: 48).isActive = true
+    more.widthAnchor.constraint(equalToConstant: 36).isActive = true
     let logo = NSImageView()
     logo.image = NSImage(contentsOf: Bundle.main.resourceURL!.appendingPathComponent("opensaab.png"))
     logo.imageScaling = .scaleProportionallyUpOrDown
     logo.setAccessibilityLabel("OpenSAAB logo")
     logo.widthAnchor.constraint(equalToConstant: 32).isActive = true
     logo.heightAnchor.constraint(equalToConstant: 32).isActive = true
-    let title = NSStackView(views: [logo, branding, more])
+    branding.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+    let title = NSStackView(views: [logo, branding, NSView(), more])
     title.spacing = 6
     connect = ActionButton("Connect and start") { [weak self] in self?.detectAdapter() }
     dtcReportButton = ActionButton("Saved DTC reports") { [weak self] in self?.savedDtcReports() }
     dtcReportButton.isHidden = true
     offline = ActionButton("Run without an adapter") { [weak self] in self?.start() }
+    offline.quietStyle = true
     firmwareButton = ActionButton("Firmware selection") { [weak self] in self?.firmwareDialog() }
-    let support = ActionButton("Donate · Support OpenSAAB") { [weak self] in self?.projectSupport() }
+    let support = ActionButton("Donate · Support OpenSAAB", minHeight: 32) { [weak self] in self?.projectSupport() }
+    support.quietStyle = true
+    support.font = .systemFont(ofSize: 12, weight: .medium)
     for l in [vehicle, status, selection] {
       l.textColor = foreground
       l.font = .systemFont(ofSize: 13)
     }
-    status.textColor = NSColor(calibratedRed: 0.61, green: 0.80, blue: 0.92, alpha: 1)
+    status.textColor = WorkspaceTheme.primaryBorder
     rail.orientation = .vertical
     rail.alignment = .leading
     rail.spacing = 6
     securityButton = ActionButton("Security: [N/A]") { self.securityDetails() }
-    let summary = ActionButton("Ready\nNo vehicle connected") { self.securityDetails() }
+    let summary = ActionButton("Ready\nNo vehicle connected", minHeight: 58) { self.securityDetails() }
     summary.summaryStyle = true; summary.font = .systemFont(ofSize:12)
-    summary.heightAnchor.constraint(equalToConstant:64).isActive = true
+    summary.textColor = WorkspaceTheme.muted
+    summary.heightAnchor.constraint(equalToConstant:58).isActive = true
     vehicleSummaryButton = summary
     securityActionButton = ActionButton("Get security access") { self.securityAction() }
-    // Common ready header; firmware and security stay in App menu / Actions.
-    for v in [title, summary, connect!, offline!] {
+    let sessionLabel = sectionLabel("SESSION")
+    sessionSectionLabel = sessionLabel
+    let softwareLabel = sectionLabel("DIAGNOSTIC SOFTWARE")
+    selection.font = .systemFont(ofSize: 12, weight: .medium)
+    let softwareHelp = label("Change software in App menu.", size: 12)
+    softwareHelp.textColor = WorkspaceTheme.muted
+    let offlineHelp = label("Offline mode does not connect to a vehicle.", size: 12)
+    offlineHelp.textColor = WorkspaceTheme.muted
+    let divider = NSView()
+    divider.wantsLayer = true
+    divider.layer?.backgroundColor = WorkspaceTheme.border.cgColor
+    divider.heightAnchor.constraint(equalToConstant: 1).isActive = true
+    let software = stack([divider, softwareLabel, selection, softwareHelp], vertical: true)
+    software.spacing = 6
+    for v in [divider, softwareLabel, selection, softwareHelp] {
+      v.widthAnchor.constraint(equalTo: software.widthAnchor).isActive = true
+    }
+    // Android reference hierarchy; firmware selection remains in App menu.
+    for v in [title, sessionLabel, summary, connect!, securityActionButton!, offline!, offlineHelp, software] {
       rail.addArrangedSubview(v)
       v.widthAnchor.constraint(equalTo: rail.widthAnchor).isActive = true
     }
+    rail.setCustomSpacing(12, after: offlineHelp)
     railScroll.hasVerticalScroller = true
+    railScroll.autohidesScrollers = true
     railScroll.drawsBackground = false
     railScroll.contentView = TopAlignedClip()
     railScroll.contentView.drawsBackground = false
     railScroll.documentView = rail
     rail.translatesAutoresizingMaskIntoConstraints = false
     rail.widthAnchor.constraint(equalTo: railScroll.contentView.widthAnchor).isActive = true
+    railPanel.wantsLayer = true
+    railPanel.layer?.backgroundColor = WorkspaceTheme.surface.cgColor
+    railPanel.layer?.borderColor = WorkspaceTheme.border.cgColor
+    railPanel.layer?.borderWidth = 1
+    railPanel.layer?.cornerRadius = 12
+    railPanel.addSubview(railScroll)
+    pin(railScroll, inside: railPanel, inset: 10)
     main.orientation = .vertical
     main.alignment = .leading
-    main.spacing = 8
+    main.spacing = 6
+    let workspaceTitle = stack([sectionLabel("TECH 2"), label("Diagnostic workspace", size: 16)], vertical: true)
+    workspaceTitle.spacing = 2
+    let expand = ActionButton("Expand screen", minHeight: 32) { [weak self] in self?.toggleExpanded() }
+    expand.quietStyle = true; expand.font = .systemFont(ofSize: 12, weight: .medium)
+    expand.widthAnchor.constraint(equalToConstant: 124).isActive = true
+    expandButton = expand
+    workspaceHeader.orientation = .horizontal
+    workspaceHeader.alignment = .centerY
+    workspaceHeader.addArrangedSubview(workspaceTitle)
+    workspaceHeader.addArrangedSubview(NSView())
+    workspaceHeader.addArrangedSubview(expand)
     let soft = stack(
       zip(["S1", "S2", "S3", "S4"], [10, 6, 7, 8]).map { name, code in
-        ActionButton(name) { [weak self] in self?.key(code) }
+        ActionButton(name, minHeight: 36) { [weak self] in self?.key(code) }
       })
-    let hint = label("Scroll / swipe ↑ ↓ · Hold for ENTER · EXIT goes back", size: 11)
+    let hint = label("Scroll / swipe ↑ ↓ · Hold for ENTER · Click LCD softkeys or S1–S4 · EXIT goes back", size: 11)
     hint.alignment = .center
-    hint.textColor = .secondaryLabelColor
-    let actionMenu = ActionButton("Actions") { [weak self] in self?.actions() }
+    hint.textColor = WorkspaceTheme.muted
+    let actionMenu = ActionButton("Actions", minHeight: 36) { [weak self] in self?.actions() }
+    actionMenu.quietStyle = true
     actionsButton = actionMenu
+    let keypadButton = ActionButton("Keypad", minHeight: 36) { [weak self] in self?.keypad() }
+    keypadButton.quietStyle = true
+    keypadToggleButton = keypadButton
     let controls = stack([
-      ActionButton("EXIT") { [weak self] in self?.key(1) },
-      ActionButton("Keypad") { [weak self] in self?.keypad() },
+      ActionButton("EXIT", minHeight: 36) { [weak self] in self?.key(1) },
+      keypadButton,
       actionMenu,
     ])
+    emulatorColumn.orientation = .vertical
+    emulatorColumn.alignment = .leading
+    emulatorColumn.spacing = 6
     for v in [lcd, soft, hint, controls] {
+      emulatorColumn.addArrangedSubview(v)
+      v.widthAnchor.constraint(equalTo: emulatorColumn.widthAnchor).isActive = true
+    }
+    // REA Tech2Win docked 3-column hardware keypad (never covers the 320x240 LCD).
+    let keypadRows: [[(String, Int)]] = [
+      [("HELP", 25), ("↑", 9), ("YES", 14)],
+      [("←", 11), ("ENTER", 16), ("→", 13)],
+      [("", -1), ("↓", 12), ("NO", 20)],
+      [("F1", 4), ("F2", 19), ("F3", 23)],
+      [("F4", 3), ("F5", 18), ("F6", 22)],
+      [("F7", 2), ("F8", 17), ("F9", 21)],
+      [("", -1), ("F0", 24), ("", -1)],
+    ]
+    let kpHeader = NSStackView(views: [sectionLabel("KEYPAD"), NSView()])
+    kpHeader.orientation = .horizontal
+    kpHeader.alignment = .centerY
+    var kpViews: [NSView] = [kpHeader]
+    for (rowIndex, row) in keypadRows.enumerated() {
+      if rowIndex == 3 {
+        let sep = NSView()
+        sep.wantsLayer = true
+        sep.layer?.backgroundColor = WorkspaceTheme.border.cgColor
+        sep.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        kpViews.append(sep)
+      }
+      let r = stack(row.map { name, code in
+        if code < 0 { return NSView() }
+        return ActionButton(name, minHeight: 32) { [weak self] in self?.key(code) }
+      })
+      r.spacing = 6
+      kpViews.append(r)
+    }
+    let kpStack = HeaderStack(views: kpViews)
+    kpStack.orientation = .vertical
+    kpStack.alignment = .leading
+    kpStack.spacing = 6
+    for v in kpViews { v.widthAnchor.constraint(equalTo: kpStack.widthAnchor).isActive = true }
+    keypadPanel.wantsLayer = true
+    keypadPanel.layer?.backgroundColor = WorkspaceTheme.surface.cgColor
+    keypadPanel.layer?.borderColor = WorkspaceTheme.border.cgColor
+    keypadPanel.layer?.borderWidth = 1
+    keypadPanel.layer?.cornerRadius = 12
+    keypadPanel.addSubview(kpStack)
+    pin(kpStack, inside: keypadPanel, inset: 10)
+    keypadPanel.translatesAutoresizingMaskIntoConstraints = false
+    keypadPanel.widthAnchor.constraint(equalToConstant: 192).isActive = true
+    keypadPanel.isHidden = true
+    workspaceArea.orientation = .horizontal
+    workspaceArea.alignment = .top
+    workspaceArea.distribution = .fill
+    workspaceArea.spacing = 12
+    workspaceArea.addArrangedSubview(emulatorColumn)
+    workspaceArea.addArrangedSubview(keypadPanel)
+    emulatorColumn.heightAnchor.constraint(equalTo: workspaceArea.heightAnchor).isActive = true
+    for v in [workspaceHeader, workspaceArea] {
       main.addArrangedSubview(v)
       v.widthAnchor.constraint(equalTo: main.widthAnchor).isActive = true
     }
@@ -314,8 +524,8 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     body.orientation = .horizontal
     body.alignment = .top
     body.distribution = .fill
-    body.spacing = 8
-    body.addArrangedSubview(railScroll)
+    body.spacing = 12
+    body.addArrangedSubview(railPanel)
     body.addArrangedSubview(main)
     let shell = NSStackView(views: [body, support])
     shell.orientation = .vertical
@@ -323,9 +533,9 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     shell.spacing = 8
     body.widthAnchor.constraint(equalTo: shell.widthAnchor).isActive = true
     support.widthAnchor.constraint(equalTo: shell.widthAnchor).isActive = true
-    support.heightAnchor.constraint(equalToConstant: 48).isActive = true
+    support.heightAnchor.constraint(equalToConstant: 32).isActive = true
     window.contentView!.addSubview(shell)
-    pin(shell, inside: window.contentView!)
+    pin(shell, inside: window.contentView!, inset: 10)
     arrange()
     let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.tick() }
     timer = t
@@ -335,6 +545,11 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self = self, self.window.isKeyWindow, !event.modifierFlags.contains(.command) else {
         return event
+      }
+      if event.keyCode == 48 {
+        if event.modifierFlags.contains(.shift) { self.window.selectPreviousKeyView(nil) }
+        else { self.window.selectNextKeyView(nil) }
+        return nil
       }
       let codes: [UInt16: Int] = [
         36: 16, 76: 16, 53: 1, 126: 9, 125: 12, 123: 11, 124: 13, 122: 24, 120: 4, 99: 19, 118: 23,
@@ -359,23 +574,37 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let size = content.bounds.size
     let wide = size.width >= 720 && size.width > size.height
     let mode = expanded ? "expanded" : (wide ? "wide" : "compact")
-    guard mode != layoutMode else { return }
+    keypadPanel.isHidden = !keypadVisible
+    keypadToggleButton?.activeStyle = keypadVisible
+    guard mode != layoutMode else { lcd.needsDisplay = true; return }
     layoutMode = mode
+    // The summary already names its state. Compact chrome saves enough space
+    // for a complete Connect target even at the minimum supported window size.
+    sessionSectionLabel?.isHidden = !wide && !expanded
+    rail.spacing = !wide && !expanded ? 5 : 6
     NSLayoutConstraint.deactivate(layoutConstraints)
-    railScroll.isHidden = expanded
+    railPanel.isHidden = expanded
+    workspaceHeader.isHidden = !wide && !expanded
+    expandButton?.title = expanded ? "Show header" : "Expand screen"
+    expandButton?.setAccessibilityLabel(expandButton?.title ?? "Expand screen")
     body.orientation = wide || expanded ? .horizontal : .vertical
     body.alignment = wide || expanded ? .top : .leading
     if expanded {
       layoutConstraints = [main.widthAnchor.constraint(equalTo: body.widthAnchor),
                            main.heightAnchor.constraint(equalTo: body.heightAnchor)]
     } else if wide {
-      layoutConstraints = [railScroll.widthAnchor.constraint(equalToConstant: 248),
-        railScroll.heightAnchor.constraint(equalTo: body.heightAnchor),
+      layoutConstraints = [railPanel.widthAnchor.constraint(equalToConstant: 248),
+        railPanel.heightAnchor.constraint(equalTo: body.heightAnchor),
         main.heightAnchor.constraint(equalTo: body.heightAnchor),
         main.trailingAnchor.constraint(equalTo: body.trailingAnchor)]
     } else {
-      layoutConstraints = [railScroll.widthAnchor.constraint(equalTo: body.widthAnchor),
-        railScroll.heightAnchor.constraint(equalToConstant: 230),
+      // A proportional, scrollable header preserves the minimum window size.
+      // Fixed preferred heights also participate in AppKit's window fitting size.
+      let height = railPanel.heightAnchor.constraint(equalTo: body.heightAnchor, multiplier: 0.37)
+      height.priority = .defaultHigh
+      layoutConstraints = [railPanel.widthAnchor.constraint(equalTo: body.widthAnchor),
+        height,
+        railPanel.heightAnchor.constraint(lessThanOrEqualToConstant: 202),
         main.widthAnchor.constraint(equalTo: body.widthAnchor),
         main.bottomAnchor.constraint(equalTo: body.bottomAnchor)]
     }
@@ -522,7 +751,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       return
     }
     session = nil
-    // Session evidence retains the final frame; the live display is now stopped.
+    // The last screen remains in the session evidence, not in the live display.
     lcd.image = nil
     lcd.caption = nil
     busy = true
@@ -541,6 +770,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.status.stringValue = clean ? "Stopped · Ready" :
           stopping.stopOutcome?.forcedProcessExit == true ? "Session stopped forcibly. See Console." :
           "Stopped · Adapter cleanup not confirmed. See Console."
+        self.lcd.caption = clean ? nil : self.status.stringValue
         self.refresh()
         if (stopping.adapter?.kind != .nano && stopping.adapter?.kind != .mdi) || clean { completion() }
         else {
@@ -675,30 +905,14 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     ]
     items.append(("Vehicle and security details", { self.securityDetails() }))
     items.append((expanded ? "Show header" : "Expand screen", {
-      self.expanded.toggle()
-      self.arrange()
+      self.toggleExpanded()
     }))
     items.append(("App menu", { self.appMenu() }))
     popup(items,anchor:actionsButton)
   }
   func keypad() {
-    let a = NSAlert()
-    a.messageText = "Tech 2 keypad"
-    a.addButton(withTitle: "Done")
-    let rows: [[(String, Int)]] = [
-      [("HELP", 25), ("↑", 9), ("YES", 14)], [("←", 11), ("ENTER", 16), ("→", 13)],
-      [("↓", 12), ("NO", 20), ("EXIT", 1)], [("F0", 24), ("F1", 4), ("F2", 19)],
-      [("F3", 23), ("F4", 3), ("F5", 18)], [("F6", 22), ("F7", 2), ("F8", 17)],
-      [("F9", 21), ("S1", 10), ("S2", 6)], [("S3", 7), ("S4", 8)],
-    ]
-    let s = stack(
-      rows.map { row in stack(row.map { name, code in ActionButton(name) { self.key(code) } }) },
-      vertical: true)
-    for v in s.arrangedSubviews { v.widthAnchor.constraint(equalTo: s.widthAnchor).isActive = true }
-    s.frame = NSRect(x: 0, y: 0, width: 340, height: 480)
-    s.widthAnchor.constraint(equalToConstant: 340).isActive = true
-    a.accessoryView = s
-    a.beginSheetModal(for: window)
+    keypadVisible.toggle()
+    arrange()
   }
   func importDialog() {
     guard !busy, session == nil else {
@@ -1015,6 +1229,11 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       if args == ["--mdi-workflow-test"] { try MdiWorkflowChecks.run();return }
       if args == ["--self-test"] {
         try ShellChecks.unit(catalog: catalog)
+        return
+      }
+      if args.count == 3 && args[0] == "--design-checks" {
+        try DesignChecks.run(state: URL(fileURLWithPath: args[1], isDirectory: true),
+          output: URL(fileURLWithPath: args[2], isDirectory: true), binaries: binaries, catalog: catalog)
         return
       }
       if args == ["--nano-binding-test"] { try ShellChecks.nanoBinding(); return }
