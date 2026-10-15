@@ -8,13 +8,21 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 [Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.89) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
+## October 15 release scope and progress
+
+Android **0.1.0-preview.89 ARM64** is published with its signed APK, exact matching source, manifest and checksums. [Release notes and known gaps](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.89) · [All platform channels](https://www.opensaab.com/static/t2/download.html#current-channels) · [Brief 48-hour update](https://www.opensaab.com/static/t2/news.html#update-2026-10-15).
+
+The signed APK matches the installed Pixel/emulator copies, and its password/startup/import/fallback checks pass. **Exact signed preview.89 vehicle repeats remain pending:** some recent Nano MCP results used a debug APK, while the retained Chipsoft/MDI vehicle receipts are from preview.87. Saved DTC exports can be partial. Those development observations do not qualify every current package or vehicle.
+
+The separate Intel **0.2.26-intel-preview.3** experiment tests language/CANdi startup with existing native MDI/Nano. Apple silicon **0.2.23-ui-parity.3**, Windows **0.2.17 preview.1**, ARM32 **0.1.0-headunit.17**, and personal Mongoose **0.1.1-preview.3** retain their own release/test scope. Newer M4/MCP/recovered-core work is separate. Full parity, wider hardware reliability and hub-versus-direct-OTG cause testing remain unfinished.
+
 **Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
 
 ## Intel macOS developer preview
 
 [OpenSAAB 0.2.26-intel-preview.3 for Intel Mac](https://github.com/djfremen/OpenSAAB-T2/releases/tag/macos-v0.2.26-intel-preview.3) is a separate experimental macOS 12+ download with matching source, checksums and exact installed test scope. It addresses Saab 148 deferred CANdi startup and tests English/Swedish software activation; it also requires the shared security processing/import password gate. Physical Nano/vehicle results and the contributor's Ventura/OCLP English immediate-failure report remain pending for this exact version. Application controls remain English; diagnostic languages use separate firmware cards. Choose **Download and continue** to activate a selection; Cancel keeps the previous active card.
 
-This Intel experiment does not change the Android recommendation or the website's existing desktop recommendation. Read the release limits before testing.
+This Intel experiment remains a separate channel on the updated website; it does not change the Android ARM64 package or qualify older Mac downloads. Read the release limits before testing.
 
 ## What you can test
 
@@ -22,7 +30,7 @@ This Intel experiment does not change the Android recommendation or the website'
 - Direct Chipsoft Pro USB connection, VIN/session identification, ECU information and DTC reading.
 - Saved DTC reports grouped by module, user-reviewed sharing, and an optional donation link.
 - Guided security-data collection and processing through the OpenSAAB API (case-sensitive password `OpenSAAB` required before processing or importing).
-- Experimental Classic MDI USB transport in the main app, without a running Windows relay or standalone helper. A local connection profile is required.
+- Experimental Classic MDI USB transport in the main app, without a running Windows relay or standalone helper. Automatic classic-MDI initialization retrieves the adapter identity; no user connection-profile import is required for the tested route.
 - First-run software download, extraction, verification and local storage; English Saab NAO is the default.
 
 **Security access requires internet access to the OpenSAAB security-access API and the case-sensitive password `OpenSAAB`. It cannot be processed offline.** Installed firmware, local USB diagnostics and saved reports work without internet. Online VIN enrichment, downloads and sending email also need connectivity.
