@@ -44,7 +44,7 @@ final class PrivateAutomation {
       let op = value["op"] as? String else { throw ShellError.message("Invalid private command.") }
     let keys: [String: Set<String>] = [
       "status": [], "snapshot": [], "setup": [], "download": [], "security": [], "stop": [], "original_menus": [],
-      "select_software": ["firmware"], "key": ["code"], "alert": ["button"], "connect": ["port", "mode"]]
+      "cancel_setup": [], "select_software": ["firmware"], "key": ["code"], "alert": ["button"], "connect": ["port", "mode"]]
     guard let allowed = keys[op], Set(value.keys).isSubset(of: allowed.union(["id", "op"])) else {
       throw ShellError.message("Unsupported private command fields; credentials belong only in the FIFO.")
     }
@@ -121,6 +121,15 @@ final class PrivateAutomation {
         shell.languageChoices?.selectItem(at: language); shell.languageChanged()
         guard let index = shell.firmwareEntries.firstIndex(where: { $0.id == firmware }) else { throw ShellError.message("Software entry unavailable.") }
         shell.choices?.selectItem(at: index)
+      case "cancel_setup":
+        guard !shell.busy, let content = shell.firmwareWindow?.contentView else {
+          throw ShellError.message("No idle firmware selection to cancel.")
+        }
+        let buttons = views(content).compactMap { $0 as? NSButton }.filter {
+          $0.title == "Set up later / Cancel download" && $0.isEnabled && !$0.isHidden
+        }
+        guard buttons.count == 1 else { throw ShellError.message("Firmware cancel action unavailable.") }
+        buttons[0].performClick(nil)
       case "download":
         guard !shell.busy, shell.firmwareWindow != nil, let button = shell.downloadButton else { throw ShellError.message("No software download action available.") }
         button.performClick(nil)
@@ -189,6 +198,11 @@ final class PrivateAutomation {
     let value: [String: Any] = ["schema": 1, "private_operator_binding": true,
       "utc": ISO8601DateFormatter().string(from: Date()), "busy": shell.busy,
       "operator_action_pending": actionPending,
+      "window_title": shell.window.title,
+      "program_name": Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "",
+      "pending_firmware": shell.choices.flatMap { choices in
+        shell.firmwareEntries.indices.contains(choices.indexOfSelectedItem) ? shell.firmwareEntries[choices.indexOfSelectedItem].id : nil
+      } ?? "",
       "status": shell.status.stringValue, "vehicle": shell.vehicle.stringValue,
       "selected_firmware": shell.store.selected?.id ?? "", "session_running": shell.session?.running ?? false,
       "run": shell.session?.run.path ?? "", "key_queue_available": shell.session?.canAcceptMenuKey ?? false,

@@ -1,4 +1,4 @@
-# Intel development preview 0.2.26-intel-preview.1
+# Intel development preview 0.2.26-intel-preview.2
 
 This candidate continues the native Intel MDI/reporting/reconnect lineage at
 843b402, adopts the shared Saab 148 deferred-CANdi welcome fix from 65b379f
@@ -43,3 +43,8 @@ Native installed Intel checks and exact artifact hashes are retained in the
 release receipt. Physical VCX Nano/MDI/Chipsoft sessions, sustained vehicle use,
 Viktor's Ventura/OCLP environment and the claimed English immediate failure
 remain pending for this exact candidate. It is ad-hoc signed and not notarized.
+
+The current common USB catalog retains the previously implemented MDI candidate,
+reconciled with today's other contract changes. The private observer records the
+actual window title and pending software; its cancel operation clicks the real
+idle setup Cancel button.
