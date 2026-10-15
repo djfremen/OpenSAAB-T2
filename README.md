@@ -4,9 +4,9 @@
 
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
-**Public Android beta: v0.1.0-preview.62.**
+**Public Android beta: v0.1.0-preview.89 (`OpenSAAB_64_14OCT26_v0.1.0-preview.89.apk`, versionCode `100089`).**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.62) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.89) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
 **Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
 
@@ -15,11 +15,11 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 - Original Tech2 firmware menus with touch gestures, a collapsible keypad and console.
 - Direct Chipsoft Pro USB connection, VIN/session identification, ECU information and DTC reading.
 - Saved DTC reports grouped by module, user-reviewed sharing, and an optional donation link.
-- Guided security-data collection and processing through the OpenSAAB API.
+- Guided security-data collection and processing through the OpenSAAB API (case-sensitive password `OpenSAAB` required before processing or importing).
 - Experimental Classic MDI USB transport in the main app, without a running Windows relay or standalone helper. A local connection profile is required.
 - First-run software download, extraction, verification and local storage; English Saab NAO is the default.
 
-**Security access requires internet access to the OpenSAAB security-access API. It cannot be processed offline.** Installed firmware, local USB diagnostics and saved reports work without internet. Online VIN enrichment, downloads and sending email also need connectivity.
+**Security access requires internet access to the OpenSAAB security-access API and the case-sensitive password `OpenSAAB`. It cannot be processed offline.** Installed firmware, local USB diagnostics and saved reports work without internet. Online VIN enrichment, downloads and sending email also need connectivity.
 
 ## Compatibility and limits
 
@@ -27,9 +27,9 @@ Android 8+ with a 64-bit ARM Android system is required. Pixel 7 is the current 
 
 | Adapter / feature | Preview status |
 |---|---|
-| Chipsoft Pro | Current test path; original-firmware ECU information, DTC and selected security/configuration workflows previously exercised on project vehicles |
-| VCX Nano | Public beta includes fresh session initialization, security collection and responsive firmware controls; Pixel 7 / firmware 1.9.4.2 milestone and exact release testing are recorded separately |
-| Classic GM MDI | Experimental native USB transport in the main app; configured Pixel7 fixture completed original SPA Add and key-status reading. MDI2 and universal setup are untested |
+| Chipsoft Pro | Current test path; Pixel 7 verified on 2004 Saab 9-3 T8 for fresh VIN preflight, host HS-CAN engine DTC read, All Fault Codes, Check Ignition Key Status, security access import, and SPA Add |
+| VCX Nano | Public beta includes fresh session initialization, NRC 0x78 (`ResponsePending`) VIN handling (verified on 2008 9-3 V6 ME9.6), All Fault Codes, and bounded Read-mode Check Ignition Key Status (`0x241` `03 AE 03 02`) verified on 2004 9-3 T8 |
+| Classic GM MDI | Experimental native USB transport in the main app; configured Pixel 7 fixture completed All Fault Codes, Check Ignition Key Status, and original SPA Add on 2004 9-3 T8. MDI2 and universal setup are untested |
 | Live data and module programming | Incomplete coverage; success on one vehicle is not general compatibility |
 
 Use **Run in emulation mode** to explore menus without connecting to a vehicle. Start physical testing with VIN/ECU information and DTC reading. A displayed DTC list is not proof every module was scanned. This preview does not promise universal module programming or configuration recovery.

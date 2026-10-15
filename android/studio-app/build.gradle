@@ -8,7 +8,7 @@ def localFile = rootProject.file('local.properties')
 if (localFile.isFile()) localFile.withInputStream { localInputs.load(it) }
 def supportRoot = providers.environmentVariable('OPENSAAB_SUPPORT_ROOT')
     .getOrElse(localInputs.getProperty('opensaab.supportRoot', repo.path))
-def bundleSupport = providers.gradleProperty('bundleSupport').map { it.toBoolean() }.getOrElse(true)
+def bundleSupport = providers.gradleProperty('bundleSupport').map { it.toBoolean() }.getOrElse(false)
 
 tasks.register('buildRust', Exec) {
     workingDir repo
@@ -26,9 +26,12 @@ tasks.register('buildVlinkerWorkflow', Exec) {
     commandLine 'sh', new File(repo, 'scripts/android/build-vlinker-workflow.sh')
 }
 tasks.register('prepareAndroidInputs', Exec) {
-    dependsOn 'buildRust', 'buildVlinkerWorkflow'
+    dependsOn 'buildRust', 'buildVlinkerWorkflow', 'buildRecoveredCore', 'buildMdiMcpBridge'
     workingDir repo
     environment 'OPENSAAB_SUPPORT_ROOT', supportRoot
+    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.0-preview.89')
+    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('100089')
+    environment 'OPENSAAB_RELEASE_DATE', providers.gradleProperty('appReleaseDate').getOrElse('2026-10-14')
     commandLine python, new File(repo, 'scripts/android/prepare-studio-inputs.py'), generated.get().asFile
     if (bundleSupport) args '--bundle-support'
 }
@@ -40,13 +43,13 @@ android {
         applicationId 'com.opensaab.tech2'
         minSdk 26
         targetSdk 36
-        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(1)
-        versionName providers.gradleProperty('appVersionName').getOrElse('0.1-dev')
+        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(100089)
+        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.0-preview.89')
         ndk { abiFilters 'arm64-v8a' }
     }
     sourceSets.main {
         java.srcDirs = [new File(repo, 'android/tech2-app'), new File(repo, 'android/shared'),
-                        new File(repo, 'android/adapters/chipsoft'), new File(repo, 'android/adapters/vcx_nano')]
+                        new File(repo, 'android/adapters/chipsoft'), new File(repo, 'android/adapters/vcx_nano'), new File(repo, 'android/adapters/mdi')]
         java.exclude 'res/**'
         res.srcDirs = [new File(repo, 'android/tech2-app/res')]
         manifest.srcFile generated.map { it.file('AndroidManifest.xml') }.get().asFile
@@ -57,8 +60,16 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    signingConfigs {
+        preview {
+            storeFile file(new File(System.getProperty('user.home'), '.local/share/opensaab/release-signing/opensaab-release.p12'))
+            storePassword new File(System.getProperty('user.home'), '.local/share/opensaab/release-signing/password.txt').text.trim()
+            keyAlias 'opensaab-release'
+            keyPassword storePassword
+        }
+    }
     buildTypes {
-        debug { debuggable true }
+        debug { debuggable true; signingConfig signingConfigs.preview }
         release { debuggable false; minifyEnabled false }
     }
     packaging.jniLibs {
@@ -74,8 +85,19 @@ tasks.register('verifyDebugApk', Exec) {
     commandLine python, new File(repo, 'scripts/android/check-apk-firmware.py'),
         layout.buildDirectory.file('outputs/apk/debug/app-debug.apk').get().asFile
     if (bundleSupport) args '--allow-bundled-support'
+    doFirst {
+        args '--recovered-core-sha256', new File(repo,'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu').bytes.digest('SHA-256')
+        args '--mdi-module-sha256', new File(repo,'retained-native/libopensaab_mdi_android.so').bytes.digest('SHA-256')
+        args '--mdi-bridge-sha256', new File(repo,'core-mdi/mdi-firmware-engine/OpenSAAB-T2/target/aarch64-linux-android/release/tech2-emu').bytes.digest('SHA-256')
+    }
     def connectionCore = providers.environmentVariable('OPENSAAB_VLINKER_CONNECTION_CORE').orElse(providers.environmentVariable('OPENSAAB_SIMULATOR_CONNECTION_CORE')).getOrElse(new File(repo,'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection').path)
     doFirst { args '--connection-core-sha256', new File(connectionCore).bytes.digest('SHA-256') }
+}
+tasks.register('buildMdiMcpBridge', Exec) {
+    workingDir repo
+    environment 'ANDROID_NDK_HOME', providers.environmentVariable('ANDROID_NDK_HOME').getOrElse(new File(android.sdkDirectory, 'ndk/android-ndk-r29').path)
+    environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
+    commandLine 'sh', new File(repo, 'scripts/android/build-mdi-mcp-bridge.sh')
 }
 
 // Native report review/rotation state; versions shared with command-line builds.
@@ -97,4 +119,11 @@ tasks.register('exportReportDependencies') {
             .sort { it.coordinate }
         destination.text = groovy.json.JsonOutput.toJson(artifacts)
     }
+}
+
+tasks.register('buildRecoveredCore', Exec) {
+    workingDir repo
+    environment 'ANDROID_NDK_HOME', providers.environmentVariable('ANDROID_NDK_HOME').getOrElse(new File(android.sdkDirectory, 'ndk/android-ndk-r29').path)
+    environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
+    commandLine 'sh', new File(repo, 'scripts/android/build-recovered-core.sh')
 }

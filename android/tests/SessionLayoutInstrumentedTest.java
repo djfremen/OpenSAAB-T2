@@ -26,7 +26,7 @@ public final class SessionLayoutInstrumentedTest extends Instrumentation {
   getTargetContext().getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit();
   for(String name:new String[]{"com.opensaab.tech2.MainActivity","com.opensaab.usb.ChipsoftUsbActivity"}){
    Intent intent=new Intent().setClassName(getTargetContext(),name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);if(name.contains("Chipsoft"))intent.putExtra("full_native",true);
-   current=startActivitySync(intent);final Activity a=current;waitForIdleSync();
+   current=startActivitySync(intent);final Activity a=current;waitForIdleSync(); runOnMainSync(()->{android.view.View notice=a.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
    ui(()->{
     if(a instanceof ChipsoftUsbActivity){ChipsoftUsbActivity c=(ChipsoftUsbActivity)a;c.lcdHandler.removeCallbacksAndMessages(null);check(!c.running.get(),"Unexpected USB session");}
     layouts(a);View root=a.getWindow().getDecorView();

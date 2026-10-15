@@ -7,7 +7,7 @@ if [ -n "$core" ]; then
     test -f "$core" || { echo "Missing explicit vLinker connection core: $core" >&2; exit 2; }
     exit 0
 fi
-source_root=${OPENSAAB_VLINKER_SOURCE_ROOT:-"$repo/../OpenSAAB/emulator"}
+source_root=${OPENSAAB_VLINKER_SOURCE_ROOT:-"$repo/core-recovered/emulator"}
 test -f "$source_root/Cargo.toml" || { echo 'The canonical OpenSAAB/emulator checkout is required for vLinker. Set OPENSAAB_VLINKER_SOURCE_ROOT to its location.' >&2; exit 2; }
 : "${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME to an installed Android NDK directory}"
 case "$(uname -s)" in

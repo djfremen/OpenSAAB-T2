@@ -677,6 +677,8 @@ pub fn run_headless(
     let mut replay_index = 0;
     let mut next_live_frame = std::time::Instant::now();
     let mut live_screen = String::new();
+    let mut native_menu_state=String::new();
+    let mut native_input_sequence=0u64;
     let mut live_frame = artifacts::LiveFrame::default();
     let mut working_ssa = artifacts::WorkingSsa::default();
     let mut collected_ssa = artifacts::WorkingSsa::default();
@@ -714,6 +716,30 @@ pub fn run_headless(
                 let capture = (|| -> std::io::Result<()> {
                     live_frame.publish(bus, settings.output_dir)?;
                     let screen = bus.screen_text();
+            let (columns, rows) = bus.lcd.text_dimensions();
+            let fy = bus.lcd.fy.max(1) as usize;
+            // Read the guest's XOR graphics bar directly, before image scaling.
+            // A border or a few glyph pixels do not establish a selected row.
+            let highlighted: Vec<usize> = if bus.lcd.overlay_mode & 3 == 1 && bus.lcd.display_mode & 0x30 != 0 {
+                (0..rows).filter(|row| {
+                    let solid = (row*fy..((row+1)*fy).min(240)).filter(|y| {
+                        let count = (0..40).map(|x| bus.lcd.vram[(bus.lcd.sad2+y*bus.lcd.ap+x)%bus.lcd.vram.len()].count_ones()).sum::<u32>();
+                        count >= 240
+                    }).count();
+                    solid >= fy.div_ceil(2)
+                }).collect()
+            } else { Vec::new() };
+            let mut menu = tech2_emu::native_menu::inspect(&screen, &highlighted, columns, fy);
+            menu["key_encoders"] = serde_json::json!(tech2_emu::native_menu::KEYS);
+            menu["input_sequence"] = serde_json::json!(native_input_sequence);
+            menu["input_idle"] = serde_json::json!(bus.key_queue.is_empty() && bus.key_active.is_none());
+            let encoded = menu.to_string();
+            if encoded != native_menu_state {
+                std::fs::write(settings.output_dir.join("native-menu.json.tmp"), &encoded)?;
+                std::fs::rename(settings.output_dir.join("native-menu.json.tmp"), settings.output_dir.join("native-menu.json"))?;
+                native_menu_state = encoded;
+            }
+
                     if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
                         working_ssa.publish(&bus.card, settings.output_dir)?;
                         let normalized = screen.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
@@ -958,6 +984,7 @@ pub fn run_headless(
                             outcome = Outcome::OutputFailure;
                             break;
                         }
+                        native_input_sequence+=1;
                         bus.trace_event("native_operator_key", &format!("encoder={code:#04x}"));
                         if code == bus::KEY_EXIT {
                             bus.exit_key();

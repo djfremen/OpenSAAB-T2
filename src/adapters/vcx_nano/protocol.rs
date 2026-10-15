@@ -11,6 +11,13 @@ pub struct Frame {
     pub payload: Vec<u8>,
 }
 
+pub fn control(channel: u8, opcode: u8, payload: &[u8]) -> Frame {
+    Frame {
+        header: [0x80, 0, opcode, channel],
+        payload: payload.to_vec(),
+    }
+}
+
 impl Frame {
     pub fn command(opcode: u8, payload: &[u8]) -> Self {
         Self {
@@ -45,10 +52,26 @@ pub struct Decoder {
     started: bool,
     escaped: bool,
     body: Vec<u8>,
+    failed: bool,
 }
 
 impl Decoder {
     pub fn feed(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, String> {
+        if self.failed {
+            return Err("Nano decoder requires a fresh stream after framing error".into());
+        }
+        let result = self.feed_chunk(bytes);
+        if result.is_err() {
+            // A delimiter is not proof that stale/corrupt traffic belongs to a
+            // new request. Only a freshly owned transport gets a fresh decoder.
+            self.failed = true;
+            self.body.clear();
+            self.escaped = false;
+        }
+        result
+    }
+
+    fn feed_chunk(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, String> {
         let mut result = Vec::new();
         for &byte in bytes {
             if byte == 0xbb {
@@ -101,7 +124,9 @@ impl Decoder {
     }
 
     pub fn finish(&self) -> Result<(), String> {
-        if self.escaped || !self.body.is_empty() {
+        if self.failed {
+            Err("Nano decoder requires a fresh stream after framing error".into())
+        } else if self.escaped || !self.body.is_empty() {
             Err("Truncated Nano frame".into())
         } else {
             Ok(())
@@ -254,6 +279,26 @@ mod tests {
         let mut d = Decoder::default();
         d.feed(&[0xbb]).unwrap();
         assert!(d.feed(&vec![1; MAX_BODY + 1]).is_err());
+    }
+    #[test]
+    fn corruption_is_terminal_until_a_fresh_decoder() {
+        let valid = Frame::command(0x8c, &[]).encode().unwrap();
+        for corrupt in [
+            b"\xbb\x80\0\x8c\0\x0d\xbb".to_vec(),
+            b"\xbb\xdd\x55".to_vec(),
+            b"\xbb\xdd\xbb".to_vec(),
+            b"noise".to_vec(),
+            [vec![0xbb], vec![1; MAX_BODY + 1]].concat(),
+        ] {
+            let mut decoder = Decoder::default();
+            assert!(decoder.feed(&corrupt).is_err());
+            assert!(decoder.finish().is_err(), "corruption must not look complete");
+            assert!(decoder.feed(&valid).is_err(), "corrupt stream was reused");
+            assert!(decoder.feed(&[]).is_err(), "empty read hid corruption");
+            let mut fresh = Decoder::default();
+            assert_eq!(fresh.feed(&valid).unwrap(), vec![Frame::command(0x8c, &[])]);
+            fresh.finish().unwrap();
+        }
     }
     #[test]
     fn identity_requires_correct_status_size_and_device_name() {

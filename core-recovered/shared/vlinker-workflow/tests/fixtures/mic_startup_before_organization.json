@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "scope": "Pre-refactor reviewed MIC startup command order; offline preservation only",
+  "previous_source_pin_sha256": "d34004c8c619947b9edb61ea710c5c59791ccda87d425bb060bdce2a8f73d65e",
+  "commands": [
+    "ATZ",
+    "ATE0",
+    "VTI",
+    "VTVERS",
+    "ATRV",
+    "ATSP6",
+    "VTPRON",
+    "VTPBRD",
+    "VTSWGP CAF0,CFC1,H1,S1,D0,L0,AT0,GR0",
+    "VTSET_HD 7E0,7E8,FF",
+    "VTSET_CAN_FC 300000,1,7E0",
+    "021A900000000000",
+    "VTPC"
+  ]
+}

@@ -25,12 +25,16 @@ public final class OfflineSessionEvidence {
         StringBuilder out=new StringBuilder();for(byte b:hash.digest())out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();
     }
     public void begin(File run,File executable,File firmware){
+        begin(run,executable,firmware,"offline_research");
+    }
+    public void begin(File run,File executable,File firmware,String profile){
+        if(!Arrays.asList("offline_research","offline_native","mxp_research").contains(profile))throw new IllegalArgumentException("Unknown emulation profile");
         synchronized(this){directory=run;started=SystemClock.elapsedRealtime();inputs=frames=0;lastInput=lastFrame=-1;stopIntent="none";}
         try{
             JSONObject hashes=new JSONObject();
             for(String name:new String[]{"eprom.bin","opsys.dwn","candi.bin","card.bin"})hashes.put(name,digest(new File(firmware,name)));
             FirmwareStore.writeJson(new File(run,"emulation-context.json"),new JSONObject().put("schema",1)
-                .put("session_id",id(run)).put("profile","offline_research").put("started_utc",java.time.Instant.now().toString())
+                .put("session_id",id(run)).put("profile",profile).put("started_utc",java.time.Instant.now().toString())
                 .put("engine_sha256",digest(executable)).put("firmware_sha256",hashes)
                 .put("instruction_limit",INSTRUCTION_LIMIT).put("deadline_ms",DEADLINE_MS));
         }catch(Exception unavailable){
@@ -71,9 +75,9 @@ public final class OfflineSessionEvidence {
         }return safe;
     }
     static JSONObject context(JSONObject raw)throws JSONException{
-        JSONObject safe=new JSONObject();if(raw.optInt("schema")!=1||(!raw.optBoolean("unavailable")&&!raw.optString("profile").equals("offline_research")))return safe.put("unavailable",true);
+        JSONObject safe=new JSONObject();if(raw.optInt("schema")!=1||(!raw.optBoolean("unavailable")&&!Arrays.asList("offline_research","offline_native","mxp_research").contains(raw.optString("profile"))))return safe.put("unavailable",true);
         safe.put("schema",1);String id=raw.optString("session_id");if(id.matches("offline-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))safe.put("session_id",id);
-        label(raw,safe,"profile","offline_research");numbers(raw,safe,"instruction_limit","deadline_ms");
+        label(raw,safe,"profile","offline_research","offline_native","mxp_research");numbers(raw,safe,"instruction_limit","deadline_ms");
         String hash=raw.optString("engine_sha256");if(hash.matches("[a-f0-9]{64}"))safe.put("engine_sha256",hash);
         try{safe.put("started_utc",java.time.Instant.parse(raw.getString("started_utc")).toString());}catch(Exception ignored){}
         JSONObject hashes=raw.optJSONObject("firmware_sha256"),h=new JSONObject();if(hashes!=null)for(String name:new String[]{"eprom.bin","opsys.dwn","candi.bin","card.bin"}){

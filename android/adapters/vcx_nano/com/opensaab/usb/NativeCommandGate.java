@@ -44,7 +44,7 @@ public final class NativeCommandGate {
     /** Explain this exact local policy rejection; do not turn it into an ECU rejection or grant. */
     public static String collectionRejectedExplanation(String line,boolean readMode){
         if(!readMode || line==null || !line.contains("Native USB command rejected by collection profile"))return null;
-        return "This request is outside Read-only Nano mode. The blocked request was not sent to the vehicle. Tap Back, then App menu → Get security access and select Nano to collect fresh security data.";
+        return "This request is outside Read-only Nano mode. The blocked request was not sent to the vehicle. Use the matching operation in Actions. Choose Get security access only when you intend to collect security data.";
     }
     /** Adapter-specific mapping into the existing verified VehicleIdentity contract. */
     public static boolean securityVinReady(String status,String origin,String requestOrigin,
@@ -60,12 +60,12 @@ public final class NativeCommandGate {
         public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,long now){
             return allowed(wire,seeds,clearDtc,false,now);
         }
-        /** Explicit Service key-status mode adds one captured DeviceControl only. */
+        /** Normal reads and explicit key-status mode share one bounded captured DeviceControl. */
         public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,boolean keyStatus,long now){
             if((seeds && clearDtc) || (keyStatus && (seeds || clearDtc)))return false;
             Decoded p=decode(wire);if(p==null)return false;
             byte[] b=p.b;int pci=b[14]&255;
-            if(keyStatus && p.channel==1 && p.id==0x241 && p.count==8
+            if(!seeds && !clearDtc && p.channel==1 && p.id==0x241 && p.count==8
                 && b[4]==0 && b[5]==0 && b[6]==0 && b[7]==0
                 && b[14]==3 && b[15]==(byte)0xae && b[16]==3 && b[17]==2
                 && b[18]==0 && b[19]==0 && b[20]==0 && b[21]==0){

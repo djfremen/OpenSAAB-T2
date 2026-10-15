@@ -242,6 +242,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         }
     }
     private void processAttempt(File run,boolean allowFallback,VehicleIdentity identity,SecurityAccessStatus attempt,byte[] selection)throws Exception{
+        SecurityAuthorization.bearer(activity);
         File card=new File(activity.getFilesDir(),"firmware/card.bin");
         byte[] input=SecuritySessionData.processingInput(run,card,identity,selection);
         byte[] before=SecurityCollectionCard.beforeImport(run);
@@ -262,6 +263,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         attempt.save(receiptFile());
         Files.write(new File(evidence,"post-auth.bin").toPath(),after);
         // Only the original guest SSA data region changes, with a verified backup.
+        SecurityAuthorization.bearer(activity);
         String updatedHash=SsaCardImport.apply(card,before,after,originalHash,evidence,
             ()->!closed&&!running.getAsBoolean()&&session.get()==run);
         attempt.imported(after,java.time.Instant.now());attempt.save(receiptFile());
@@ -277,6 +279,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         Files.write(new File(evidence,"result.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
     }
     private SecurityApiClient.Response postSecurityData(String endpoint,byte[] payload)throws IOException{
+        String bearer=SecurityAuthorization.bearer(activity);
         boolean fallback=SecurityApiClient.FALLBACK.equals(endpoint);
         activity.runOnUiThread(()->{if(!closed)message.setText(fallback
             ?"OpenSAAB is unavailable. Contacting Bojer using the fallback you allowed…"
@@ -286,7 +289,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         try{
             if(closed)throw new IOException("Security processing cancelled");
             http.setConnectTimeout(15000);http.setReadTimeout(30000);http.setInstanceFollowRedirects(false);
-            if(!fallback){http.setRequestProperty("Authorization","Bearer "+SecurityAuthorization.bearer(activity));http.setRequestProperty("X-OpenSAAB-Consent","security-storage-24h-v1");}
+            if(!fallback){http.setRequestProperty("Authorization","Bearer "+bearer);http.setRequestProperty("X-OpenSAAB-Consent","security-storage-24h-v1");}
             http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
             try(OutputStream out=http.getOutputStream()){out.write(payload);}
             int status=http.getResponseCode();

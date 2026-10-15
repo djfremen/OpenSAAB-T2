@@ -20,7 +20,7 @@ public final class EmulatorHealthInstrumentedTest extends Instrumentation {
   s.ui(300000);check("emulator_heartbeat_missing".equals(s.reason(300000)),"Dead loop missed");
   s.reset(0);s.ui(179999);check(s.reason(179999)==null,"Slow boot flagged early");s.ui(180000);check("emulator_heartbeat_missing".equals(s.reason(180000)),"No startup heartbeat missed");
   s.reset(0);s.heartbeat(20000);check("ui_unresponsive".equals(s.reason(20000)),"Blocked UI missed");s.alerted=true;check(s.reason(1000000)==null,"Repeated alert");
-  a=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));final Activity activity=a;
+  a=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));final Activity activity=a; runOnMainSync(()->{android.view.View notice=activity.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
   final EmulatorHealthMonitor[] holder={null};final boolean[] stopped={false};
   runOnMainSync(()->holder[0]=new EmulatorHealthMonitor(activity,()->stopped[0]=true));monitor=holder[0];
   File run=new File(activity.getCacheDir(),"health-synthetic");run.mkdirs();monitor.begin(run);monitor.ended();waitForIdleSync();

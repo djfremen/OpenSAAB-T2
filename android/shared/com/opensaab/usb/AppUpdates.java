@@ -62,17 +62,25 @@ public final class AppUpdates {
         Selection(int code,String tag,String url){this(code,tag,url,null);}
         Selection(int code,String tag,String url,JSONObject entry){this.code=code;this.tag=tag;this.url=url;this.entry=entry;}
     }
+    static boolean validAsset(boolean head,String version,String url){
+        String tag=(head?"headunit-v":"v")+version,prefix=REPO+"/releases/download/"+tag+"/";
+        if(!url.startsWith(prefix))return false;
+        String file=url.substring(prefix.length()),q=java.util.regex.Pattern.quote(version);
+        if(head)return "OpenSAAB-T2-headunit-armeabi-v7a.apk".equals(file)||("OpenSAAB-T2-headunit-"+version+"-armeabi-v7a.apk").equals(file)||file.matches("OpenSAAB_32_[0-9]{2}[A-Z]{3}[0-9]{2}_v"+q+"\\.apk");
+        return "OpenSAAB-T2-arm64-v8a.apk".equals(file)||("OpenSAAB-T2-"+version+"-arm64-v8a.apk").equals(file)||file.matches("OpenSAAB_64_[0-9]{2}[A-Z]{3}[0-9]{2}_v"+q+"\\.apk");
+    }
     static Selection select(JSONArray releases,boolean previews)throws JSONException{
         int best=-1;String name="",releaseUrl=null;
                 for(int i=0;i<releases.length();i++){
                     JSONObject r=releases.getJSONObject(i);if(r.optBoolean("draft")||(!previews&&r.optBoolean("prerelease")))continue;
                     String tag=r.optString("tag_name"),url=r.optString("html_url");int code=ReleaseVersion.code(tag);
                     if(code<=best || !url.equals(REPO+"/releases/tag/"+tag))continue;
+                    String ver=tag.startsWith("v")?tag.substring(1):tag;
                     boolean apk=false;JSONArray assets=r.optJSONArray("assets");
                     if(assets!=null)for(int j=0;j<assets.length();j++){
                         JSONObject asset=assets.getJSONObject(j);
-                        if("OpenSAAB-T2-arm64-v8a.apk".equals(asset.optString("name"))
-                            && asset.optString("browser_download_url").equals(REPO+"/releases/download/"+tag+"/OpenSAAB-T2-arm64-v8a.apk"))apk=true;
+                        String aName=asset.optString("name"),aUrl=asset.optString("browser_download_url");
+                        if(!aName.isEmpty()&&aUrl.equals(REPO+"/releases/download/"+tag+"/"+aName)&&validAsset(false,ver,aUrl))apk=true;
                     }
                     if(apk){best=code;name=tag;releaseUrl=url;}
                 }
@@ -90,13 +98,13 @@ public final class AppUpdates {
         JSONArray list=catalog.getJSONArray("releases");Selection best=new Selection(-1,"",null);
         for(int i=0;i<list.length();i++){
             JSONObject v=list.getJSONObject(i);if(!pkg.equals(v.optString("package"))||!abi.equals(v.optString("abi")))continue;
-            String version=v.optString("version"),tag,asset;int code;
+            String version=v.optString("version"),tag;int code;
             if(head){
                 if(!version.matches("[0-9]{1,2}\\.[0-9]{1,2}\\.[0-9]{1,2}-headunit\\.[1-9][0-9]?"))continue;
-                code=ReleaseVersion.code(version.replace("-headunit.","-preview."));tag="headunit-v"+version;asset="OpenSAAB-T2-headunit-armeabi-v7a.apk";
-            }else{code=ReleaseVersion.code(version);tag="v"+version;asset="OpenSAAB-T2-arm64-v8a.apk";}
+                code=ReleaseVersion.code(version.replace("-headunit.","-preview."));tag="headunit-v"+version;
+            }else{code=ReleaseVersion.code(version);tag="v"+version;}
             if(code<=best.code||code!=v.optInt("version_code",-1)||v.optLong("bytes",0)<=0||v.optLong("bytes",0)>100000000
-                ||!v.optString("sha256").matches("[a-f0-9]{64}")||!v.optString("url").equals(REPO+"/releases/download/"+tag+"/"+asset))continue;
+                ||!v.optString("sha256").matches("[a-f0-9]{64}")||!validAsset(head,version,v.optString("url")))continue;
             best=new Selection(code,version,REPO+"/releases/tag/"+tag,new JSONObject(v.toString()));
         }
         return best;

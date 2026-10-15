@@ -22,7 +22,7 @@ public final class VlinkerDevicePicker {
     private TextView status;private Spinner picker;private Button choose,scan;private CheckBox compatibility;
     private Dialog dialog;private boolean scanning,registered,closed;private boolean scanAfterPermission;
     private final Runnable deadline=()->finishScan("Search finished. Press the adapter's button and search again if needed.");
-    static boolean androidName(String name){if(name==null)return false;String n=name.trim().toLowerCase(Locale.ROOT);return n.equals("vlinker mc")||n.equals("vlinker mc-android")||n.equals("carista evo");}
+    static boolean androidName(String name){if(name==null)return false;String n=name.trim().toLowerCase(Locale.ROOT);return n.equals("obdlink mx+")||n.startsWith("obdlink mx+ ")||n.equals("obdlink mx")||n.startsWith("obdlink mx ")||n.equals("vlinker mc")||n.equals("vlinker mc-android")||n.equals("carista evo");}
     public VlinkerDevicePicker(Activity activity,Selection selection){this.activity=activity;this.selection=selection;}
     private BluetoothAdapter adapter(){BluetoothManager manager=(BluetoothManager)activity.getSystemService(Context.BLUETOOTH_SERVICE);return manager==null?null:manager.getAdapter();}
     private boolean permission(String name){return activity.checkSelfPermission(name)==PackageManager.PERMISSION_GRANTED;}
@@ -32,7 +32,7 @@ public final class VlinkerDevicePicker {
     public void show(){
         LinearLayout content=new LinearLayout(activity);content.setOrientation(LinearLayout.VERTICAL);
         status=new TextView(activity);status.setTextSize(14);status.setTextColor(0xffedf4fa);content.addView(status);
-        TextView help=new TextView(activity);help.setText("Pair Carista EVO or vLinker MC+ in Bluetooth settings, then select it here. Close other diagnostic apps first. OpenSAAB checks the model and firmware after connecting.");help.setTextColor(0xffedf4fa);content.addView(help);
+        TextView help=new TextView(activity);help.setText("Pair Carista EVO, vLinker MC+ or OBDLink MX+ in Bluetooth settings, then select it here. Close other diagnostic apps first. OpenSAAB checks the model and firmware after connecting.");help.setTextColor(0xffedf4fa);content.addView(help);
         picker=new Spinner(activity);picker.setTag("vlinker-device-list");content.addView(picker);
         button(content,"Refresh paired adapters",()->{if(!connectPermission())requestPermission(false);else refresh();});
         scan=button(content,"Find nearby adapters",this::findNearby);
@@ -93,7 +93,7 @@ public final class VlinkerDevicePicker {
             if(Build.VERSION.SDK_INT>=33)activity.registerReceiver(receiver,filter,Context.RECEIVER_EXPORTED);else activity.registerReceiver(receiver,filter);registered=true;
             bt.cancelDiscovery();scanning=true;
             if(!bt.startDiscovery()){finishScan("Bluetooth search could not start. Check permission and Bluetooth settings.");return;}
-            status.setText("Searching for Carista EVO and vLinker MC+…");scan.setEnabled(false);ui.postDelayed(deadline,15000);
+            status.setText("Searching for Carista EVO, vLinker MC+ and OBDLink MX+…");scan.setEnabled(false);ui.postDelayed(deadline,15000);
         }catch(SecurityException denied){finishScan("Bluetooth permission was revoked. Allow it and search again.");}
         catch(Exception error){finishScan("Bluetooth search unavailable. Check permissions and settings.");}
     }

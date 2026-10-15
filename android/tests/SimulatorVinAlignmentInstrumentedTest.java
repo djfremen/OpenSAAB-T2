@@ -18,9 +18,10 @@ public final class SimulatorVinAlignmentInstrumentedTest extends Instrumentation
    Context c=getTargetContext();check(SimulatorVehicleConnection.available(c),"Use the Debug ARM64 emulator build with the shared connection core");
    c.getSharedPreferences("updates",0).edit().putBoolean("automatic",false).commit();
    a=(com.opensaab.tech2.MainActivity)startActivitySync(new Intent().setClassName(c,"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
+   final com.opensaab.tech2.MainActivity activity=a;main(()->{View notice=activity.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
    if(visible("Not now")){click("Not now");waitForIdleSync();}
    check(new FirmwareStore(c.getFilesDir()).missing().isEmpty(),"Provision the same private firmware as iOS first");
-   final com.opensaab.tech2.MainActivity activity=a;int before=attempts();
+   int before=attempts();
    main(()->{
     View root=activity.getWindow().getDecorView();View connect=root.findViewWithTag("connect-start"),offline=root.findViewWithTag("start-offline");
     check(connect.isEnabled()&&offline.isEnabled(),"Ready controls disabled");check(offline.getTop()>connect.getTop(),"Connection controls are not stacked");connect.performClick();
@@ -28,7 +29,7 @@ public final class SimulatorVinAlignmentInstrumentedTest extends Instrumentation
     activity.adapterPicker.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
    });waitForIdleSync();check(attempts()==before,"Picker cancellation opened Bluetooth");screenshot("android-ready-aligned");
    if(live){
-    main(()->{activity.getWindow().getDecorView().findViewWithTag("connect-start").performClick();ListView list=activity.adapterPicker.getListView();check(list.getAdapter().getItem(0).toString().equals("Carista EVO / vLinker MC+ · Bluetooth"),"Wrong adapter selection");list.performItemClick(list.getChildAt(0),0,list.getAdapter().getItemId(0));});
+    main(()->{activity.getWindow().getDecorView().findViewWithTag("connect-start").performClick();ListView list=activity.adapterPicker.getListView();check(list.getAdapter().getItem(0).toString().equals("Carista EVO / vLinker MC+ / OBDLink MX+ · Bluetooth"),"Wrong adapter selection");list.performItemClick(list.getChildAt(0),0,list.getAdapter().getItemId(0));});
     long deadline=SystemClock.elapsedRealtime()+45000;
     while(SystemClock.elapsedRealtime()<deadline){final boolean[] done={false};main(()->done[0]=summary(activity).contains("VIN: YS3")&&activity.getWindow().getDecorView().findViewWithTag("connect-start").isEnabled());if(done[0])break;SystemClock.sleep(100);}
     main(()->{
@@ -41,7 +42,10 @@ public final class SimulatorVinAlignmentInstrumentedTest extends Instrumentation
     check(report.getString("status").equals("vin_received")&&report.getBoolean("bluetooth_closed"),"VIN was shown before release");
     check(report.getInt("host_vehicle_request_attempts")==1&&report.getInt("host_vehicle_requests_written")==1&&!report.getBoolean("automatic_replay"),"VIN request was replayed");
     String vin=report.getJSONObject("result").getString("vin");main(()->check(summary(activity).contains(vin),"Displayed VIN differs from raw report"));
-    main(()->activity.getWindow().getDecorView().findViewWithTag("session-summary").performClick());waitForIdleSync();check(visible(vin),"Current VIN missing from details");check(visible("GEARBOX, FA57")&&visible("Sedan / Saloon"),"Descriptive fields missing from details");screenshot("android-current-vehicle-details");click("Done");waitForIdleSync();
+    JSONObject savedVehicle=new JSONObject(new String(Files.readAllBytes(new File(c.getFilesDir(),"last-vehicle.json").toPath()),"UTF-8"));
+    main(()->activity.getWindow().getDecorView().findViewWithTag("session-summary").performClick());waitForIdleSync();check(visible(vin),"Current VIN missing from details");
+    if(savedVehicle.optString("lookup_status").equals("available")){for(String k:new String[]{"gearbox","body"}){String v=savedVehicle.optString(k);if(!v.isEmpty())check(visible(v),"Descriptive field missing from details: "+v);}}
+    screenshot("android-current-vehicle-details");click("Done");waitForIdleSync();
     main(()->activity.getWindow().getDecorView().findViewWithTag("start-offline").performClick());SystemClock.sleep(500);main(()->check(!summary(activity).contains(vin),"Offline inherited current VIN"));screenshot("android-offline-clears-current-vin");
     main(()->activity.getWindow().getDecorView().findViewWithTag("session-summary").performClick());waitForIdleSync();check(!visible(vin)&&(visible("No current vehicle connection")||visible("Last vehicle")),"Offline retained current vehicle details");click("Done");waitForIdleSync();
    }

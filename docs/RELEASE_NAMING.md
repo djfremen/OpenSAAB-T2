@@ -2,6 +2,13 @@
 
 Public APK names use **OpenSAAB_<Setup|32|64>_<DDMONYY>_v<versionName>.apk**.
 
+Owner clarification, October 14, 2026: distributed ARM64 Android development versions
+keep the `-preview.N` suffix. Names such as `findings` describe internal research
+and historical debug attempts; do not introduce them into new public-facing
+version names. Assign the next unused revision and a monotonically increasing
+versionCode. The full version and architecture still appear in the installed
+program name and splash; its version date comes from packaged metadata.
+
 - `Setup` is the universal Java-only installer; `32` means ARMv7, `64` means ARM64.
 - Date is the original publication date in America/Los_Angeles. Use uppercase English month abbreviations with `SEPT` for September, e.g. `15SEPT26`.
 - Version must equal the Android manifest's versionName, including preview/headunit suffixes. Do not relabel an older APK as a new version. A future genuine 0.5.1 ARM64 release could be `OpenSAAB_64_15SEPT26_v0.5.1.apk` if actually published that day.

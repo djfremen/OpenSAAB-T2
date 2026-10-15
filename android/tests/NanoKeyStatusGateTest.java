@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 
 /** Tests the actual USB envelope and per-session gate; no Android/device effects. */
 public final class NanoKeyStatusGateTest {
-    static int checks;
+    static int checks;static boolean explicit;
     static void check(boolean ok){checks++;if(!ok)throw new AssertionError("check "+checks);}
     static byte[] body(int channel,int id,int... data){
         ByteArrayOutputStream b=new ByteArrayOutputStream();
@@ -21,12 +21,15 @@ public final class NanoKeyStatusGateTest {
         out.write(0xbb);return out.toByteArray();
     }
     static byte[] exact(){return wire(body(1,0x241,3,0xae,3,2,0,0,0,0));}
-    static boolean enabled(NativeCommandGate.Stream s,byte[] w){return s.allowed(w,false,false,true,1);}
-    public static void main(String[] args)throws Exception{
+    static boolean enabled(NativeCommandGate.Stream s,byte[] w){return s.allowed(w,false,false,explicit,1);}
+    static void exercise(boolean explicitMode)throws Exception{
+        explicit=explicitMode;
         byte[] request=exact();
         check(!NativeCommandGate.allowed(request,false));
-        check(!new NativeCommandGate.Stream().allowed(request,false,false,0));
-        check(!new NativeCommandGate.Stream().allowed(request,false,false,false,0));
+        check(new NativeCommandGate.Stream().allowed(request,false,false,0));
+        check(new NativeCommandGate.Stream().allowed(request,false,false,false,0));
+        check(!new NativeCommandGate.Stream().allowed(request,true,false,false,0));
+        check(!new NativeCommandGate.Stream().allowed(request,false,true,false,0));
         check(!new NativeCommandGate.Stream().allowed(request,true,false,true,0));
         check(!new NativeCommandGate.Stream().allowed(request,false,true,true,0));
         check(!new NativeCommandGate.Stream().allowed(wire(body(1,0x241,2,0x1a,0x90)),true,false,true,0));
@@ -61,6 +64,9 @@ public final class NanoKeyStatusGateTest {
         check(line.startsWith("TX "));check(enabled(new NativeCommandGate.Stream(),UsbBridgeCodec.unhex(line.substring(3),NanoStartupGate.MAX_TX_HEX_CHARS)));
         // Ordinary Read remains unchanged for every captured key-status context poll.
         for(int dpid:new int[]{1,0x0b,8,6})check(new NativeCommandGate.Stream().allowed(wire(body(1,0x241,3,0xaa,1,dpid,0,0,0,0)),false,false,0));
-        System.out.println("NANO_KEY_STATUS_GATE PASS checks="+checks+"; hardware not opened");
+    }
+    public static void main(String[] args)throws Exception{
+        exercise(false);exercise(true);
+        System.out.println("NANO_KEY_STATUS_GATE PASS checks="+checks+"; normal and explicit profiles; hardware not opened");
     }
 }

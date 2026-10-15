@@ -22,7 +22,9 @@ pub(crate) fn full_native_allowed(controller: usize, tx: &CanTransmission) -> bo
 }
 
 /// The original Service > Check Ignition Key Status DeviceControl request.
-/// This permission is local to an explicit Nano session, never a Read rule.
+/// Normal Nano read diagnostics and explicit key-status sessions share this
+/// exact three-request allowance. It never extends the generic DeviceControl
+/// policy or the seed/clear profiles.
 #[derive(Default)]
 pub(crate) struct KeyStatusGate {
     enabled: bool,

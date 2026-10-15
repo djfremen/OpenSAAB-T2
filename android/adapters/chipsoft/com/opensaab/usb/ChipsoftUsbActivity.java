@@ -25,6 +25,8 @@ public final class ChipsoftUsbActivity extends Activity {
     boolean onlineDetails;
     final Object identityLock=new Object();
     AlertDialog vehicleStartPrompt;
+    private volatile java.lang.Process mcpProcess;
+    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get()&&!this.cancelled,()->!this.keyPending.get()&&this.nativeDirectory!=null&&!new File(this.nativeDirectory,"native-key.txt").exists(),()->this.mcpProcess!=null&&this.mcpProcess.isAlive(),this::sendMenuKey,this::stop,"chipsoft");
     NativeLcdPump lcdPump;
     EmulatorHealthMonitor health;
     SecurityAccessView securityAccess;
@@ -116,9 +118,9 @@ public final class ChipsoftUsbActivity extends Activity {
         if(nativeFirmware){
             root.removeViewAt(0);root.removeView(actions);actions.removeAllViews();
             sessionDetails=root;SessionStyle.stack(sessionDetails);sessionDetails.setPadding(0,0,0,0);sessionDetails.setOnApplyWindowInsetsListener(null);
-            controls=new Tech2Controls(this,nativeLcd,scroll,code->{if(menuShortcut!=null)menuShortcut.cancel();if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});
+            controls=new Tech2Controls(this,nativeLcd,scroll,code->{AndroidMcp.manual();if(menuShortcut!=null)menuShortcut.cancel();if(securityAccess!=null)securityAccess.manualNavigation();nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));});
             controls.setActions(this::showActions);
-            workspace=new SessionWorkspace(this,"OpenSAAB T2 · Chipsoft",controls,this::showAppMenu,()->SessionSheet.show(this,"Vehicle and security details",sessionDetails));
+            workspace=new SessionWorkspace(this,AppBuildProfile.programName(this)+" · Chipsoft",controls,this::showAppMenu,()->SessionSheet.show(this,"Vehicle and security details",sessionDetails));
             launchFirmware=identify;workspace.addLaunch(identify);updateWorkspace();setContentView(workspace);
         }else{
             if(dtcRead){engineCodes=new TextView(this);engineCodes.setTextSize(16);engineCodes.setTextIsSelectable(true);engineCodes.setText("Connect Chipsoft to the powered Trionic 8 ECM. Reads current/history engine codes over HS-CAN; does not clear codes.");scroll.removeAllViews();scroll.addView(engineCodes);}
@@ -181,6 +183,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void showAppMenu(){
         SessionSheet.Menu menu=new SessionSheet.Menu(this);
+        menu.add("AI control (MCP)",()->AndroidMcp.show(this));
         if(running.get())menu.add("Stop emulation / USB",this::stop);
         menu.add("Return to home",()->{stop();finish();})
             .add("Firmware selection",()->{if(idleTool())startActivity(new Intent(this,FirmwareActivity.class));})
@@ -353,7 +356,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(keyStatus)builder.environment().put("TECH2_CHIPSOFT_KEY_STATUS","1");
                 if(nativeFirmware){progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);builder.environment().put("OPENSAAB_PERFORMANCE_DIR",run.getAbsolutePath());}
                 DemandStartup.configure(this,builder);
-                child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();
+                child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();mcpProcess=child;
                 client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
                 if(!UsbBridgeCodec.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(dtcRead?"READY chipsoft-dtc":fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
                 long until=fullNative?Long.MAX_VALUE:SystemClock.elapsedRealtime()+(nativeFirmware?330000:receiveTest?45000:8000);boolean sent=false;long received=0,transmits=0,diagnosticTransmits=0;
@@ -527,13 +530,13 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
     void stop(){if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null&&!unexpectedDisconnect)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
-    protected void onResume(){super.onResume();foreground=true;
+    protected void onResume(){super.onResume();AndroidMcp.bind(this,mcpOwner);foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){
             UsbDevice current=manager.getDeviceList().get(selected.getDeviceName());
             if(current!=null && manager.hasPermission(current)){pending=false;start(current,permissionEpoch);}
         }
     }
-    protected void onPause(){foreground=false;super.onPause();}
+    protected void onPause(){AndroidMcp.unbind(this);foreground=false;super.onPause();}
     protected void onDestroy(){if(menuShortcut!=null)menuShortcut.close();if(dtcReport!=null)dtcReport.close();if(securityAccess!=null)securityAccess.close();stop();keyWorker.shutdownNow();if(lcdPump!=null)lcdPump.close();lcdHandler.removeCallbacksAndMessages(null);unregisterReceiver(receiver);super.onDestroy();}
 }

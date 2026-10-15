@@ -1,0 +1,10 @@
+[package]
+name = "opensaab-adapter-translation"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.93"
+description = "Shared raw CAN and bounded host diagnostic translation contracts"
+
+[build-dependencies]
+sha2 = "0.10"

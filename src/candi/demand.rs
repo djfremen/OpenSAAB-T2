@@ -27,6 +27,20 @@ pub struct Pending {
     pub transport_trace: bool,
     monitor_ignition: bool,
 }
+impl Default for Pending {
+    fn default() -> Self {
+        Self {
+            uart: Default::default(),
+            adc_channel: 0,
+            presence_announced: false,
+            firmware: PathBuf::new(),
+            adapter: Adapter::None,
+            output: PathBuf::new(),
+            transport_trace: false,
+            monitor_ignition: false,
+        }
+    }
+}
 impl Pending {
     pub fn from_options(opts: &Options) -> Self {
         let adapter = if let Some(token) = &opts.candi_nano_usb_token {
