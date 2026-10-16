@@ -493,7 +493,7 @@ public final class MainActivity extends Activity {
             String line; long saved=0;
             while((line=in.readLine())!=null) {
                 if(line.length()>4096) line=line.substring(0,4096);
-                if(saved<2*1024*1024) { byte[] bytes=(line+"\n").getBytes(StandardCharsets.UTF_8);output.write(bytes);saved+=bytes.length; }
+                if(com.opensaab.usb.SupportReports.retainProcessLogLine(saved,line)) { byte[] bytes=(line+"\n").getBytes(StandardCharsets.UTF_8);output.write(bytes);saved+=bytes.length; }
                 if(startup!=null && line.startsWith("STARTUP_READY:")) {
                     startup.ready(line.substring("STARTUP_READY:".length()));
                     ui.post(()->{if(process==child&&running&&!stopping.get()){status.setText("Ready · CANdi starts when needed · offline test");lcd.invalidate();}});

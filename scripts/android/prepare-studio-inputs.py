@@ -45,8 +45,8 @@ shutil.copy2(repo/'core-mdi/mdi-firmware-engine/OpenSAAB-T2/target/aarch64-linux
 shutil.copy2(repo/'android/adapters/mdi/MDI_NOTICES.txt',legal/'MDI_NOTICES.txt')
 import subprocess
 from release_metadata import preview_metadata
-version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.0-preview.90')
-code=int(os.environ.get('OPENSAAB_VERSION_CODE','100090'))
+version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.0-preview.91')
+code=int(os.environ.get('OPENSAAB_VERSION_CODE','100091'))
 (output/'assets/build.json').write_text(json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'source_dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip()),'version_name':version,'version_code':code,'architecture':'arm64-v8a','source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':True,**preview_metadata(True)},sort_keys=True))
 # Keep the existing manifest authoritative; SDK/debug attributes belong to AGP.
 ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')

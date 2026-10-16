@@ -427,7 +427,7 @@ public class NanoProbeActivity extends Activity {
                 try(BufferedReader reader=new BufferedReader(new InputStreamReader(probeChild.getInputStream(),StandardCharsets.UTF_8));
                     BufferedWriter savedOutput=new BufferedWriter(new FileWriter(processLog))) {
                     String line;int count=0;long savedBytes=0;while((line=reader.readLine())!=null){
-                        if(savedBytes<2*1024*1024){savedOutput.write(line);savedOutput.newLine();savedOutput.flush();savedBytes+=line.length()+1;}
+                        if(SupportReports.retainProcessLogLine(savedBytes,line)){savedOutput.write(line);savedOutput.newLine();savedOutput.flush();savedBytes+=line.length()+1;}
                         if(line.startsWith("ERROR:"))nativeFailure=line.substring(6).trim();
                         String rejected=NativeCommandGate.collectionRejectedExplanation(line,nativeDtc && !nativeClearDtc && !nativeSeeds && !nativeKeyStatus && !nativeFullNative);
                         if(rejected!=null){nativeFailure=rejected;readModeRejected=true;}

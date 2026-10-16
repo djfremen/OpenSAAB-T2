@@ -45,6 +45,7 @@ PANIC_FILE = re.compile(r'[A-Za-z0-9_.+-]{1,80}(?:/[A-Za-z0-9_.+-]{1,80}){0,2}')
 def validate_panic_location(v):
     if (not isinstance(v, dict) or set(v) != {'file', 'line', 'column', 'thread'}
             or not isinstance(v['file'], str) or not PANIC_FILE.fullmatch(v['file'])
+            or any(part in ('.', '..') for part in v['file'].split('/'))
             or any(type(v[k]) is not int or not 0 <= v[k] <= 999999 for k in ('line', 'column'))
             or not isinstance(v['thread'], str) or not re.fullmatch(r'[A-Za-z0-9_.:<> -]{0,64}', v['thread'])):
         raise ValueError('Invalid panic location')

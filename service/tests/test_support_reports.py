@@ -70,6 +70,12 @@ class Reports(unittest.TestCase):
         self.assertEqual(400,self.send(dict(self.report,device_resources={'file':'x'})).status_code)
         self.assertEqual(400,self.send(dict(self.report,recent_sessions=[{'adapter':'offline','line':3}])).status_code)
 
+    def test_panic_location_rejects_relative_traversal(self):
+        for path in ('../src/a.rs', './src/a.rs', 'src/../a.rs', 'src/./a.rs'):
+            where={'file':path,'line':412,'column':17,'thread':'main'}
+            report=dict(self.report,recent_sessions=[{'adapter':'chipsoft','logs':[{'source':'rust.log','panic_location':where}]}])
+            self.assertEqual(400,self.send(report).status_code)
+
     def test_desktop_reports(self):
         desktop={'format':1,'app':'com.opensaab.desktop','platform':'macos','arch':'arm64','version':'0.2.18',
                  'build':'abc1234','os_version':'Version 15.1','description':'Mac QC',

@@ -90,6 +90,23 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             Files.write(errorLog.toPath(),("ERROR: Unvalidated Chipsoft firmware version "+secret+"\nERROR: other "+secret).getBytes("UTF-8"));
             JSONObject classified=SupportReports.logSummary(errorLog);
             check(classified.getJSONArray("failure_categories").getJSONObject(0).getString("category").equals("adapter_firmware_not_validated")&&!classified.toString().contains(secret),"Failure classification leaks values or loses reason");
+            String panic="thread 'main' panicked at /opensaab/emulator/src/chipsoft.rs:412:17:";
+            check(SupportReports.retainProcessLogLine(0,"routine output"),"Initial log output dropped");
+            check(!SupportReports.retainProcessLogLine(2*1024*1024,"routine output"),"Routine log cap bypassed");
+            check(SupportReports.retainProcessLogLine(3*1024*1024,panic),"Late panic header dropped");
+            for(String name:new String[]{"console.log","native-process.log"}){
+                File capped=new File(dir,name);
+                try(FileOutputStream out=new FileOutputStream(capped)){
+                    byte[] padding=new byte[2*1024*1024];Arrays.fill(padding,(byte)'x');out.write(padding);out.write('\n');
+                    long saved=padding.length+1;
+                    for(String line:new String[]{"routine output",panic,secret})if(SupportReports.retainProcessLogLine(saved,line)){
+                        byte[] bytes=(line+"\n").getBytes("UTF-8");out.write(bytes);saved+=bytes.length;
+                    }
+                }
+                JSONObject late=SupportReports.logSummary(capped),where=late.getJSONObject("panic_location");
+                check(late.getBoolean("tail_only")&&where.getString("file").equals("emulator/src/chipsoft.rs")&&where.getInt("line")==412&&where.getInt("column")==17&&where.getString("thread").equals("main"),"Late panic location missing: "+name);
+                check(!late.toString().contains(secret)&&!late.toString().contains("/opensaab")&&!late.toString().contains("xxxxxxxx"),"Late panic summary leaks local output");
+            }
             JSONArray unsafe=new JSONArray();for(int i=0;i<40;i++)unsafe.put(new JSONObject().put("event","PAUSED").put("utc","2026-09-30T00:00:00Z").put("secret",secret));
             unsafe.put(new JSONObject().put("event",secret).put("utc","2026-09-30T00:00:00Z"));
             JSONArray safe=SessionDiagnostics.sanitize(unsafe);check(safe.length()==31&&!safe.toString().contains(secret),"Timeline not bounded or sanitized");
