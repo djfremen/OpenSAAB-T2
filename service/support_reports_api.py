@@ -69,7 +69,7 @@ SCREEN_STAGES = {'link_unavailable','firmware_missing','vehicle_link_wait','main
 CANDI_REASONS = {'unsupported_access','cpu_fault','instruction_budget','host_cancelled','none','unknown'}
 EMULATION_PROFILES = {'offline_research', 'offline_native', 'mxp_research'}
 CANDI_NUMBERS = {'attempted','completed','cycles','pc','serial_rx_bytes','serial_rx_breaks','serial_tx_bytes','adapter_tx_confirmations','address','width'}
-END_REASONS = {'background_stop','user_stop','startup_failure','host_deadline','forced_stop','process_exit','exited','adapter_stopped','wake_rejected','unsupported_command','app_quit'}
+END_REASONS = {'background_stop','user_stop','normal_stop','startup_failure','host_deadline','forced_stop','process_exit','exited','adapter_stopped','wake_rejected','unsupported_command','app_quit'}
 END_NUMBERS = {'elapsed_ms','input_count','frame_count','last_input_elapsed_ms','last_frame_elapsed_ms'}
 def evidence_object(v, allowed, labels=None, numbers=(), booleans=()):
     if not isinstance(v, dict) or set(v) - set(allowed):

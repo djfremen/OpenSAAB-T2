@@ -20,7 +20,7 @@ Build with `docker build --platform linux/amd64 --file service/Dockerfile.suppor
 
 ## Report compatibility and privacy
 
-Format 1 retains the deployed validation and canonical receipt bytes. Format 2 requires preparer and session-launch identities; the core may never have started. Panic locations and all three offline profiles remain accepted. Identity metadata goes to derived `support-index/v1/` and `support-submissions/v1/` objects; original reports stay under `support-reports/v1/`. A failed sidecar write does not reject a confirmed report. Old reports are not automatically backfilled by deploying this module.
+Format 1 retains canonical receipt bytes. The known `normal_stop` reason is accepted for older iOS clients; arbitrary reason text is still rejected. Format 2 requires preparer and session-launch identities; the core may never have started. Panic locations and all three offline profiles remain accepted. Identity metadata goes to derived `support-index/v1/` and `support-submissions/v1/` objects; original reports stay under `support-reports/v1/`. A failed sidecar write does not reject a confirmed report. Old reports are not automatically backfilled by deploying this module.
 
 Claims match a trusted release manifest only when its recorded hashes/version/revision agree. This is a metadata comparison, not remote attestation that a client actually ran those bytes. No trusted manifest is generated or published by this patch. Without one, claims remain explicitly unverified.
 
