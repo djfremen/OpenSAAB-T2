@@ -1,4 +1,10 @@
-# Existing deployment preserved; no credentials or database copied from this checkout.
-FROM djfremen/saab-security-api:t2-arm32-landscape-2026-09-15
-COPY support_reports_api.py support_entrypoint.py /app/
-CMD ["sh", "-c", "uvicorn support_entrypoint:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Required: the exact image digest currently serving this deployment.
+# Inherit its collector entrypoint, API/password gates and website unchanged.
+ARG OPENSAAB_SUPPORT_BASE_IMAGE
+FROM ${OPENSAAB_SUPPORT_BASE_IMAGE}
+ARG OPENSAAB_SUPPORT_VERSION
+ARG OPENSAAB_SUPPORT_SOURCE_REVISION
+LABEL org.opencontainers.image.title="OpenSAAB support API" \
+      org.opencontainers.image.version="${OPENSAAB_SUPPORT_VERSION}" \
+      org.opencontainers.image.revision="${OPENSAAB_SUPPORT_SOURCE_REVISION}"
+COPY support_reports_api.py /app/support_reports_api.py

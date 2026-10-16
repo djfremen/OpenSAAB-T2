@@ -36,7 +36,9 @@ class Reports(unittest.TestCase):
         self.assertEqual(201,first.status_code)
         self.assertTrue(first.json()['stored'])
         self.assertEqual(first.json(),self.send().json())
-        self.assertEqual(1,len(self.store.objects))
+        # One content-addressed report body; each send adds only a separate submission event.
+        self.assertEqual(1,len([k for k in self.store.objects if k.startswith('support-reports/v1/')]))
+        self.assertEqual(2,len([k for k in self.store.objects if k.startswith('support-submissions/v1/')]))
         route='/api/admin/support/reports/'+first.json()['report_id']
         self.assertEqual(401,self.client.get(route).status_code)
         self.assertEqual(self.report,self.client.get(route,headers={'Authorization':'Bearer test-only-admin'}).json())
@@ -165,6 +167,18 @@ class Reports(unittest.TestCase):
     def test_existing_ios_client_preserved(self):
         self.assertEqual(201,self.send({'format':1,'app':'com.opensaab.t2.ios.preview','platform':'ios','arch':'arm64',
             'description':'Synthetic existing client','model':'iPhone17,1','failure_stage':'unexpected_emulator_exit'}).status_code)
+
+    def test_existing_ios_normal_stop_report_is_preserved(self):
+        report={'format':1,'app':'com.opensaab.t2.ios.preview','platform':'ios','arch':'arm64',
+                'version':'0.1.1','description':'Synthetic existing iOS report',
+                'recent_sessions':[{'adapter':'offline','session_end':{'reason':'normal_stop'}}]}
+        response=self.send(report)
+        self.assertEqual(201,response.status_code)
+        stored=json.loads(self.store.objects['support-reports/v1/'+response.json()['report_id']+'.json'][0])
+        self.assertEqual(report,stored)
+        for reason in ('raw bus bytes 01 02 03','normal_stop/../private','not_a_known_reason'):
+            bad=json.loads(json.dumps(report));bad['recent_sessions'][0]['session_end']['reason']=reason
+            self.assertEqual(400,self.send(bad).status_code)
 
     def test_consent_and_media_type(self):
         self.assertEqual(400,self.client.post('/api/support/reports',json=self.report).status_code)
