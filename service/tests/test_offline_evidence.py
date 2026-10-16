@@ -33,6 +33,13 @@ class OfflineEvidence(unittest.TestCase):
     def test_new_evidence_round_trip(self):
         actual=json.loads(validator.parse_report(json.dumps(self.report).encode()))
         self.assertEqual(actual,self.report)
+    def test_existing_android_context_profiles_remain_accepted(self):
+        for profile in ('offline_research', 'offline_native', 'mxp_research'):
+            with self.subTest(profile=profile):
+                self.session['emulation_context']['profile']=profile
+                self.assertEqual(self.report,json.loads(validator.parse_report(json.dumps(self.report).encode())))
+        self.session['emulation_context']['profile']='PRIVATE RAW PROFILE'
+        with self.assertRaises(ValueError):validator.parse_report(json.dumps(self.report).encode())
     def test_legacy_and_missing_records_remain_accepted(self):
         self.session['emulation_context']={'unavailable':True}
         self.session['session_end']={'unavailable':True}

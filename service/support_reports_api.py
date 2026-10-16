@@ -67,6 +67,7 @@ forced_stop submitter_notes_provided retained_sample_count samples_truncated max
 STOP_CODES = {'output_failure','adapter_failure','candi_stopped','instruction_budget','operator_or_deadline','operator_stop','guest_bootstrap_failure','guest_cpu_fault','link_unavailable','completed','unknown'}
 SCREEN_STAGES = {'link_unavailable','firmware_missing','vehicle_link_wait','main_menu','model_year','dtc_menu','diagnostics_menu','other_unknown'}
 CANDI_REASONS = {'unsupported_access','cpu_fault','instruction_budget','host_cancelled','none','unknown'}
+EMULATION_PROFILES = {'offline_research', 'offline_native', 'mxp_research'}
 CANDI_NUMBERS = {'attempted','completed','cycles','pc','serial_rx_bytes','serial_rx_breaks','serial_tx_bytes','adapter_tx_confirmations','address','width'}
 END_REASONS = {'background_stop','user_stop','startup_failure','host_deadline','forced_stop','process_exit','exited','adapter_stopped','wake_rejected','unsupported_command','app_quit'}
 END_NUMBERS = {'elapsed_ms','input_count','frame_count','last_input_elapsed_ms','last_frame_elapsed_ms'}
@@ -101,8 +102,8 @@ def validate_emulation(v):
             evidence_object(e['candi'], CANDI_NUMBERS|{'reason','native_uart','external_tx','access'}, {'reason':CANDI_REASONS,'access':{'read','write'}}, CANDI_NUMBERS, {'native_uart','external_tx'})
     if 'emulation_context' in v:
         e=v['emulation_context']
-        evidence_object(e, {'schema','session_id','profile','started_utc','engine_sha256','firmware_sha256','instruction_limit','deadline_ms','unavailable'}, {'profile':{'offline_research'}}, {'schema','instruction_limit','deadline_ms'})
-        if not e.get('unavailable') and (e.get('schema') != 1 or e.get('profile') != 'offline_research'):
+        evidence_object(e, {'schema','session_id','profile','started_utc','engine_sha256','firmware_sha256','instruction_limit','deadline_ms','unavailable'}, {'profile':EMULATION_PROFILES}, {'schema','instruction_limit','deadline_ms'})
+        if not e.get('unavailable') and (e.get('schema') != 1 or e.get('profile') not in EMULATION_PROFILES):
             raise ValueError('Invalid emulation context schema')
         if 'engine_sha256' in e and (not isinstance(e['engine_sha256'],str) or not re.fullmatch('[a-f0-9]{64}',e['engine_sha256'])):
             raise ValueError('Invalid executable fingerprint')
