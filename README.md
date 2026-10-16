@@ -4,15 +4,15 @@
 
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
-**Public Android beta: v0.1.0-preview.90 (`OpenSAAB_64_15OCT26_v0.1.0-preview.90.apk`, versionCode `100090`).**
+**Public Android beta: v0.1.0-preview.92 (`OpenSAAB_64_16OCT26_v0.1.0-preview.92.apk`, versionCode `100092`).**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.90) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
 ## October 15 release scope and progress
 
-Android **0.1.0-preview.90 ARM64** is published with its signed APK, exact matching source, manifest and checksums. [Release notes and known gaps](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.90) · [All platform channels](https://www.opensaab.com/static/t2/download.html#current-channels) · [Brief 48-hour update](https://www.opensaab.com/static/t2/news.html#update-2026-10-15).
+Android **0.1.0-preview.92 ARM64** is published with its signed APK, exact matching source, manifest and checksums. [Release notes and known gaps](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [All platform channels](https://www.opensaab.com/static/t2/download.html#current-channels) · [Brief 48-hour update](https://www.opensaab.com/static/t2/news.html#update-2026-10-16).
 
-The signed APK matches the installed Pixel/emulator copies, and its password/startup/import/fallback checks pass. **Exact signed preview.90 vehicle repeats remain pending:** some recent Nano MCP results used a debug APK, while the retained Chipsoft/MDI vehicle receipts are from preview.87. Saved DTC exports can be partial. Those development observations do not qualify every current package or vehicle.
+The exact signed APK passed Pixel 7 upgrade, original offline firmware navigation and clean Stop. Installed emulator reporting, a real Rust panic after 2 MiB, startup/password, security handoff and connection checks passed. Reviewed support reports add bounded Rust panic source locations, excluding panic messages, raw traffic, VINs and security material. Review, consent and explicit Send remain required. Native executables retain preview.90 bytes. **No physical adapter or vehicle tests were run on preview.92; those checks are deferred.** Earlier Nano development results and preview.87 Chipsoft/MDI receipts remain separately scoped; saved DTC exports can be partial.
 
 The separate Intel **0.2.26-intel-preview.3** experiment tests language/CANdi startup with existing native MDI/Nano. Apple silicon **0.2.23-ui-parity.3**, Windows **0.2.17 preview.1**, ARM32 **0.1.0-headunit.17**, and personal Mongoose **0.1.1-preview.3** retain their own release/test scope. Newer M4/MCP/recovered-core work is separate. Full parity, wider hardware reliability and hub-versus-direct-OTG cause testing remain unfinished.
 
