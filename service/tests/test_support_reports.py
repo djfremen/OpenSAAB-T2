@@ -36,7 +36,9 @@ class Reports(unittest.TestCase):
         self.assertEqual(201,first.status_code)
         self.assertTrue(first.json()['stored'])
         self.assertEqual(first.json(),self.send().json())
-        self.assertEqual(1,len(self.store.objects))
+        # One content-addressed report body; each send adds only a separate submission event.
+        self.assertEqual(1,len([k for k in self.store.objects if k.startswith('support-reports/v1/')]))
+        self.assertEqual(2,len([k for k in self.store.objects if k.startswith('support-submissions/v1/')]))
         route='/api/admin/support/reports/'+first.json()['report_id']
         self.assertEqual(401,self.client.get(route).status_code)
         self.assertEqual(self.report,self.client.get(route,headers={'Authorization':'Bearer test-only-admin'}).json())
