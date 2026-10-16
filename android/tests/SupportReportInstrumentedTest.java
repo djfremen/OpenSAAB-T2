@@ -91,6 +91,8 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
             JSONObject classified=SupportReports.logSummary(errorLog);
             check(classified.getJSONArray("failure_categories").getJSONObject(0).getString("category").equals("adapter_firmware_not_validated")&&!classified.toString().contains(secret),"Failure classification leaks values or loses reason");
             String panic="thread 'main' panicked at /opensaab/emulator/src/chipsoft.rs:412:17:";
+            String numbered=panic.replace("main' panicked", "main' (12345) panicked");
+            check(SupportReports.panicLocation(numbered).getString("thread").equals("main"),"Current Rust panic thread ID not recognized");
             check(SupportReports.retainProcessLogLine(0,"routine output"),"Initial log output dropped");
             check(!SupportReports.retainProcessLogLine(2*1024*1024,"routine output"),"Routine log cap bypassed");
             check(SupportReports.retainProcessLogLine(3*1024*1024,panic),"Late panic header dropped");
@@ -99,7 +101,7 @@ public final class SupportReportInstrumentedTest extends Instrumentation {
                 try(FileOutputStream out=new FileOutputStream(capped)){
                     byte[] padding=new byte[2*1024*1024];Arrays.fill(padding,(byte)'x');out.write(padding);out.write('\n');
                     long saved=padding.length+1;
-                    for(String line:new String[]{"routine output",panic,secret})if(SupportReports.retainProcessLogLine(saved,line)){
+                    for(String line:new String[]{"routine output",numbered,secret})if(SupportReports.retainProcessLogLine(saved,line)){
                         byte[] bytes=(line+"\n").getBytes("UTF-8");out.write(bytes);saved+=bytes.length;
                     }
                 }

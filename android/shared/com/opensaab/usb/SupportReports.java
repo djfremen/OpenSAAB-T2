@@ -27,7 +27,7 @@ public final class SupportReports {
         return savedBytes<2*1024*1024 || line.contains("panicked at");
     }
     /** Rust's default panic hook writes "thread 'x' panicked at src/f.rs:L:C:" to rust.log. Keep only where, never the message. */
-    private static final java.util.regex.Pattern RUST_PANIC=java.util.regex.Pattern.compile("thread '([A-Za-z0-9_.:<> -]{0,64})' panicked at ((?:[A-Za-z]:)?[A-Za-z0-9_.+/\\\\-]{1,240}):(\\d{1,6}):(\\d{1,6})");
+    private static final java.util.regex.Pattern RUST_PANIC=java.util.regex.Pattern.compile("thread '([A-Za-z0-9_.:<> -]{0,64})'(?: \\([0-9]+\\))? panicked at ((?:[A-Za-z]:)?[A-Za-z0-9_.+/\\\\-]{1,240}):(\\d{1,6}):(\\d{1,6})");
     static JSONObject panicLocation(String line)throws JSONException{
         java.util.regex.Matcher m=RUST_PANIC.matcher(line);if(!m.find())return null;
         String[] parts=m.group(2).replace('\\','/').split("/");StringBuilder file=new StringBuilder();
