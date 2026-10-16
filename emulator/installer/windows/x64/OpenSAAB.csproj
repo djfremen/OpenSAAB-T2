@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>OpenSAAB-0.2.18-preview.1-windows-x86_64</AssemblyName>
+    <StartupObject>Launcher</StartupObject>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <LangVersion>5</LangVersion>
+    <ApplicationIcon Condition="'$(ApplicationIcon)' == ''">../../../assets/branding/opensaab-t2-logo-official.ico</ApplicationIcon>
+    <LogoPath Condition="'$(LogoPath)' == ''">../../../assets/branding/opensaab-t2-logo-official.png</LogoPath>
+    <CatalogPath Condition="'$(CatalogPath)' == ''">../../../ui/firmware-catalog.json</CatalogPath>
+    <InterfacePath Condition="'$(InterfacePath)' == ''">../../../ui/interface-contract.json</InterfacePath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" Exclude="RuntimeChecks.cs" />
+    <Compile Include="RuntimeChecks.cs" Condition="'$(IncludeRuntimeChecks)' == 'true'" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http" />
+    <EmbeddedResource Include="$(BuildMetadataPath)" LogicalName="opensaab-build.json" />
+    <EmbeddedResource Include="$(LogoPath)" LogicalName="opensaab.png" />
+    <EmbeddedResource Include="$(CatalogPath)" LogicalName="firmware-catalog.json" />
+    <EmbeddedResource Include="$(InterfacePath)" LogicalName="interface-contract.json" />
+    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.22621.755" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

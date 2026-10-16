@@ -1,0 +1,9 @@
+{
+  "product": "OpenSAAB",
+  "version": "0.2.18-preview.1",
+  "canonical_base": "e353ed28f729a843b05eb32f14692edf2bff8918",
+  "previous_public_source_sha256": "5ea6bf6a768ec83bc343f2e5d379e2ed95e09b3311a80de6efbff665c65324f1",
+  "baseline_package_sha256": "c27b247c390a45f53cc963e7dfd5ec2f438472376137164588cad90e6ca5d173",
+  "guard_and_password_boundary_origin": "13ec26ce807430f757caddb09d8e59b5aee37a54",
+  "scope": "Windows portable preview; physical qualifications pending"
+}

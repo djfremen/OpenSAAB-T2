@@ -1,0 +1,7 @@
+*.msi
+*.wixpdb
+Payload.wxs
+payload-manifest.json
+payload/
+output/
+tools/

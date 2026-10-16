@@ -1,0 +1,9 @@
+{
+  "description": "Harmless desktop test: type a marker into an empty, operator-created Notepad window.",
+  "steps": [{
+    "label": "Type and verify smoke-test marker",
+    "expect": {"title": "Untitled - Notepad", "timeout": 3},
+    "action": {"text": "OpenSAAB persistent harness smoke test"},
+    "after": {"control_contains": "OpenSAAB persistent harness smoke test", "timeout": 3}
+  }]
+}

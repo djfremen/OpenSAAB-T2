@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "id": "opensaab-interface-1",
+  "reference": {
+    "repository": "OpenSAAB-T2",
+    "revision": "d0e9afcb2992115b0ba96aa57da89d16d02a6c89",
+    "files": {
+      "android/shared/com/opensaab/usb/SessionWorkspace.java": "2a32441d99bbd3bcc3dcd842fbb8a1d779a9412fbe140a14d0f4d0efd5e853bb",
+      "android/shared/com/opensaab/usb/SessionStyle.java": "f8f50691ced4e538ef9d9802e3d6fcf85cf45d4e40d497ad7a7e09424d7b9bda",
+      "android/shared/com/opensaab/usb/Tech2Controls.java": "040217c439ad6845e5bca618223b05b253dd09baec713e53069087a4c5c12b2f",
+      "android/tech2-app/com/opensaab/tech2/MainActivity.java": "9ccad1f3f7bdef6aee4fc8b492a7393ede1644f52cc8d359eb5208af33eb455c"
+    }
+  },
+  "principle": "One OpenSAAB interface and workflow on every supported platform. A port is incomplete until its installed interface passes the same scenarios.",
+  "layout": {
+    "framebuffer": {
+      "width": 320,
+      "height": 240,
+      "scaling": "fit without crop or stretch"
+    },
+    "wide": {
+      "minimum_width_dp": 720,
+      "width_greater_than_height": true,
+      "header_rail_width_dp": 248,
+      "order": [
+        "header_rail",
+        "firmware_workspace"
+      ]
+    },
+    "compact": {
+      "order": [
+        "header_rail",
+        "firmware_workspace"
+      ],
+      "details_scroll": "Firmware keys remain accessible"
+    },
+    "workspace_order": [
+      "firmware_display",
+      "S1_S2_S3_S4",
+      "navigation_hint",
+      "EXIT_Keypad_Actions"
+    ],
+    "button_minimum_height_dp": 48,
+    "gap_dp": 8,
+    "colors": {
+      "background": "#0d1620",
+      "foreground": "#edf4fa",
+      "button": "#1b2b3b",
+      "primary_button": "#205c83",
+      "border": "#3b4c5e",
+      "primary_border": "#4382aa"
+    }
+  },
+  "labels": {
+    "connect": "Connect and start",
+    "offline": "Run without an adapter",
+    "firmware": "Firmware selection",
+    "keypad": "Keypad",
+    "actions": "Actions",
+    "console": "Console",
+    "stop": "Stop emulation",
+    "expand": "Expand screen",
+    "restore": "Show header"
+  },
+  "key_encoders": {
+    "S1": 10,
+    "S2": 6,
+    "S3": 7,
+    "S4": 8,
+    "EXIT": 1,
+    "ENTER": 16,
+    "UP": 9,
+    "DOWN": 12,
+    "LEFT": 11,
+    "RIGHT": 13,
+    "HELP": 25,
+    "YES": 14,
+    "NO": 20,
+    "F0": 24,
+    "F1": 4,
+    "F2": 19,
+    "F3": 23,
+    "F4": 3,
+    "F5": 18,
+    "F6": 22,
+    "F7": 2,
+    "F8": 17,
+    "F9": 21
+  },
+  "semantics": [
+    "EXIT navigates back inside firmware and never stops the app.",
+    "Stop emulation belongs to the app menu.",
+    "Offline, detected adapter, opening adapter, verified live ECU and stale saved data are distinct states.",
+    "Unavailable actions explain the missing capability; a visible button is not implementation proof.",
+    "One language preference coordinates app strings and the selected diagnostic image, with explicit fallback.",
+    "Cancel and unplug release the transport; stale VIN or incomplete DTC responses never appear as fresh success.",
+    "CANdi starts only when the first guest command needs it.",
+    "Firmware selection stays reachable during emulation. Changing software offers to stop and release the adapter first; cancelling keeps the current session and selection. Selecting software never silently reconnects the vehicle.",
+    "Security seed collection is a distinct connection mode. It reads challenges through original diagnostic menus; it never implies completed security processing or ECU authorization. A locally blocked request must be distinguished from an ECU rejection or application crash.",
+    "Chipsoft session mode is explicit and passed unchanged to the shared backend: Full native control by default, a retained Read-only diagnostics choice, or separate Collect security seeds. Transport ownership must not silently change command policy. A stopped session clears the live framebuffer and connection claim, preserves evidence and offers a fresh connection."
+  ],
+  "allowed_platform_differences": [
+    "OS installer, permission and file-picker dialogs",
+    "Window chrome, system font rendering, and keyboard/mouse equivalents of touch gestures",
+    "Responsive layout following available window size, never app ABI"
+  ],
+  "scenarios": {
+    "setup": "Fresh install to ready screen; same product steps and selected language; show any OS permission dialogs.",
+    "ready": "Header, status, Connect and start, offline entry and firmware selection use the reference labels and hierarchy.",
+    "offline": "Start offline, reach real Main Menu, then Diagnostics/model year, move selection and return with EXIT. No live vehicle claim.",
+    "controls": "Show S1–S4, full keypad, Actions, Console and app menu; demonstrate EXIT versus Stop emulation.",
+    "responsive": "Capture compact and wide layouts, expanded screen and restored header; preserve 4:3 framebuffer and accessible keys.",
+    "language": "Switch English to a supported non-English diagnostic image and back; show app-language fallback, progress, cancellation and retained working selection.",
+    "connected": "Using the same supported bench fixture, detect/name Chipsoft and read a fresh VIN and complete T8 HS-CAN DTC report through the installed interface.",
+    "recovery": "Cancel work, disconnect/reconnect adapter, then stop and reopen; no stale success or held adapter handle.",
+    "advanced_actions": "Compare every reference Actions/app-menu entry and its behavior; record unsupported functionality as a gap, never a parity pass.",
+    "branding": "Official logo and always-visible Donate · Support OpenSAAB footer in compact, wide and expanded views; donation dialog requires explicit Continue and never interrupts an active session. No diagnostic data in URL.",
+    "security_status": "Display cleared, PRE-AUTH, POST-AUTH/Fresh, POST-AUTH/Stale, invalid and unavailable states using isolated synthetic data. Verify the three-hour boundary, changed card/vehicle, missing receipt, future timestamp and reopen without rejuvenating old data. Show details in expanded mode. Separately qualify real processing/import; no simulated ECU authorization claim. Collect seed data, verify PRE-AUTH refresh, stop/reopen and retain the state for the same firmware/vehicle; verify another vehicle or firmware cannot inherit it.",
+    "session_modes": "Select Chipsoft full native control and complete the original Check Ignition Key Status test. In restricted mode verify the same command is blocked before USB, the ended session is clearly displayed, and reconnect works. Keep seed-only and offline modes isolated from inherited environment flags. Qualify separately on each installed target.",
+    "security_processing": "Collect on the installed app, follow physical key prompts, consent, process, validate/import and resume. Separately test denial, outage with/without fallback consent, TLS/redirect/oversize/malformed response, cancel, changed context and reopen without rejuvenating the receipt. Hardware authorization requires observed ECU evidence. Reopen with valid PRE-AUTH at the splash screen or offline: offer Process existing data without another VIN read. POST-AUTH offers Continue firmware. Mismatched/partial/changed data must not be substituted from history.",
+    "saved_dtc_reports": "Passively capture original numbered DTC Information screens; mark partial coverage, deduplicate by module/code/suffix, retain raw observations and full detail text; reopen after restart, review/export/share without sending diagnostic commands. Do not claim a complete vehicle scan or inherit another session VIN."
+  },
+  "branding": {
+    "logo_asset": "opensaab-t2-logo-official.png",
+    "logo_sha256": "cc72c1125c283a11759c2bc140493c0fd7237a1e89461457994603100024ec69",
+    "logo_content_description": "OpenSAAB logo",
+    "header_logo_dp": 48,
+    "support": {
+      "button": "Donate · Support OpenSAAB",
+      "title": "Help keep OpenSAAB moving",
+      "message": "I’ve put my own time into bringing OpenSAAB to life. If it helps you, consider buying me a beer or supporting development. Contributions help fund adapter testing, documentation and ongoing work.\n\nSupport is voluntary. It does not unlock features, purchase vehicle security access or guarantee compatibility. Testing, documentation and code contributions are welcome too.",
+      "external": "Continue opens the project’s donation page in your browser. No vehicle data or diagnostic logs are added to the link.",
+      "pending": "The donation page is not available yet. Thank you for supporting the project through testing and feedback.",
+      "donate": "Continue to donation page",
+      "close": "Close",
+      "no_browser": "No browser is available to open the donation page.",
+      "wait": "Finish the current session before opening project support.",
+      "url": "https://ko-fi.com/djfremen",
+      "placement": "Fixed footer outside scrolling or collapsible headers; visible during setup, ready, connected, offline and expanded app views. OS dialogs may cover the app."
+    }
+  },
+  "security_status": {
+    "labels": [
+      "[INIT_AUTH]",
+      "[PRE-AUTH]",
+      "[POST-AUTH]",
+      "[INVALID]",
+      "[N/A]"
+    ],
+    "freshness": [
+      "Fresh",
+      "Stale",
+      "Age unknown"
+    ],
+    "fresh_seconds": 10800,
+    "source": "714-byte SSA at card offset 0xFE0000. Prefer the active session guest SSA checkpoint over its startup card; after exit use the last matching session. Validated legacy guest snapshots may recover collected data. Never assume the immutable download is current.",
+    "receipt": "Android schema-1 security-processing-status.properties; bind vehicle_hash to VIN and ssa_hash to current SSA. Only imported data with valid timestamps has known age.",
+    "semantics": [
+      "INIT_AUTH means cleared; PRE-AUTH means collected; POST-AUTH means processed data present. None confirms current ECU authorization.",
+      "Stale is advisory imported-data age >= 3 hours. Do not clear, reset or block a diagnostic operation based on this label.",
+      "Missing or invalid receipt, changed card, another vehicle or future import timestamp cannot produce Fresh.",
+      "Never replace imported_utc or last observed connection time with app startup, download time or file modification time.",
+      "Read-only status and details remain available through Actions while the header is hidden. Refresh while idle and running.",
+      "Unsupported processing remains explicitly unavailable; status display does not close that capability gap.",
+      "Collecting security data updates the displayed working state. Reopening a session preserves collected SSA only for matching firmware and vehicle, without altering the immutable download, old evidence or receipt timestamps. Status rendering is read-only; lifecycle restoration is separate."
+    ],
+    "reference_repository": "OpenSAAB-T2",
+    "reference_revision": "902c46fe4a35329b2f0cd83a80870a07a7e852af",
+    "reference_files": {
+      "android/shared/com/opensaab/usb/SsaState.java": "4382e50db931565c4d81e2efc5ae47bb1703927b24c98d270b302692e76eec8a",
+      "android/shared/com/opensaab/usb/SecurityAccessStatus.java": "77fc7297d68581912deefb50684069eb26d43a5e696fda32c6d126c8cdcb7555",
+      "android/shared/com/opensaab/usb/VehicleHistoryStatus.java": "90a8388c28f962b6d4c25f002b76b6645ae08b791e2953992c64d12604edd029"
+    }
+  },
+  "security_workflow": {
+    "worker": "opensaab-security schema 1 JSON on stdin/stdout",
+    "reference_revision": "6fe2c78",
+    "reference_files": [
+      "SecurityAccessView.java",
+      "SecurityApiClient.java",
+      "SsaData.java",
+      "SsaCardImport.java",
+      "SecurityMenuNavigator.java"
+    ],
+    "rules": [
+      "Processing accepts validated existing PRE-AUTH from the selected session, including offline/reopened sessions, when exact matching completed-collection evidence and unchanged firmware/vehicle are available. Offer Process existing data and Collect fresh data separately. POST-AUTH offers continuation, never forced recollection. Revalidate selected data after stop and before import; never automate physical ignition-key acknowledgements.",
+      "Explicit consent precedes disclosure of VIN and 714-byte security data. Primary first; one separately consented outage-only fallback. Password goes only to the primary service. No redirects, TLS bypass or malformed-response fallback.",
+      "Stop the emulator and release the adapter before processing. Validate the complete reply against the original seed records, back up the card, patch only the 714-byte SSA and verify surrounding bytes before atomic activation.",
+      "Cancellation or changed session/vehicle/card leaves the previously active card intact. Credentials remain in the native protected credential store when the user chooses to remember them.",
+      "Imported card data displays POST-AUTH with a bound, persistent receipt. It does not claim current vehicle authorization. Resume requires the same adapter connection; firmware retains responsibility for vehicle security exchanges."
+    ],
+    "platform_status": "Shared worker and macOS binding under qualification; Windows/Linux bindings and Android shared-core cutover pending."
+  },
+  "dtc_reports": {
+    "reference_revision": "6fe2c78",
+    "reference_files": [
+      "DtcReport.java",
+      "DtcReportView.java",
+      "DtcReportTest.java"
+    ],
+    "worker": "opensaab-reports schema 1; passive observation, durable list/read",
+    "semantics": [
+      "Maximum 8192 bytes per screen and 200 list positions. Require two stable reads.",
+      "List coverage is not module coverage; empty or unrecognized screens never mean no faults.",
+      "Group overlapping observations by module/code/suffix; retain raw screens, real duplicates and full descriptions.",
+      "New session or changed list total starts a new report; leaving a list ends its aggregation.",
+      "Only session-local VIN evidence is included. Offline sessions cannot inherit global VIN.",
+      "Review and explicit export/share preserve the active diagnostic session. No automatic upload."
+    ]
+  },
+  "engine_startup": {
+    "reference_revision": "5cf7a8fd12365923723011b5c05a6a5c2d535d5e",
+    "reference_files": [
+      "src/adapters/chipsoft/dtc.rs",
+      "src/bin/chipsoft-usb-probe.rs",
+      "android/adapters/chipsoft/com/opensaab/usb/ChipsoftUsbActivity.java"
+    ],
+    "rules": [
+      "Explicit Trionic 8 HS-CAN scope; fresh VIN before code collection. No clears, security access or programming.",
+      "A complete report requires the A9/81 terminator, session-stop acknowledgement and successful channel/device release; silence is never an empty-code success.",
+      "Preserve every code, failure-type byte and status byte; label Current/History without discarding other status bits. Save locally and expose Saved DTC reports.",
+      "Continue to diagnostic menus is offered only after successful cleanup. A new VIN check precedes handover after report review.",
+      "Bench and car fixtures can share a VIN; identify physical fixtures independently in qualification evidence."
+    ],
+    "platform_status": "Android reader ported into desktop Rust; macOS binding under bench qualification. Windows standalone comparison only; Windows GUI integration and Linux pending."
+  }
+}

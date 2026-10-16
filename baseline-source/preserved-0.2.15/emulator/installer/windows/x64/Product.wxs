@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="OpenSAAB Windows Preview" Manufacturer="OpenSAAB" Version="0.2.15"
+           UpgradeCode="1E5239DE-7336-4A0D-B9C1-351265FD939D" Scope="perUser" InstallerVersion="500">
+    <MajorUpgrade DowngradeErrorMessage="A newer OpenSAAB Windows Preview is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="OpenSAABIcon" SourceFile="$(var.PayloadDir)\opensaab.ico" />
+    <Property Id="ARPPRODUCTICON" Value="OpenSAABIcon" />
+    <Property Id="ARPCOMMENTS" Value="Android-reference interface with separate Chipsoft Pro and VCX Nano driver profiles. Private preview package." />
+    <Property Id="ARPURLINFOABOUT" Value="https://opensaab.com" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Open OpenSAAB and choose Connect and start or Run without an adapter. Logs and selected firmware are preserved when uninstalling." />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.PayloadDir)\license.rtf" />
+    <ui:WixUI Id="WixUI_Minimal" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="OpenSAABDirectory" Name="OpenSAAB">
+        <Directory Id="INSTALLDIR" Name="WindowsApp">
+          <Directory Id="RuntimeDirectory" Name="runtime" />
+          <Directory Id="AdapterDirectory" Name="adapter-tools" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="StartMenuDirectory" Name="OpenSAAB" />
+    </StandardDirectory>
+    <StandardDirectory Id="DesktopFolder" />
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="Shortcuts" Guid="*">
+        <RegistryValue Root="HKCU" Key="Software\OpenSAAB\WindowsPreview\Installer" Name="Shortcuts" Type="integer" Value="1" KeyPath="yes" />
+        <Shortcut Id="StartOffline" Directory="StartMenuDirectory" Name="OpenSAAB" Target="[#LauncherFile]" Arguments="--offline" Icon="OpenSAABIcon" WorkingDirectory="INSTALLDIR" />
+        <Shortcut Id="DesktopOffline" Directory="DesktopFolder" Name="OpenSAAB" Target="[#LauncherFile]" Arguments="--offline" Icon="OpenSAABIcon" WorkingDirectory="INSTALLDIR" />
+        <RemoveFolder Id="RemoveStartMenu" Directory="StartMenuDirectory" On="uninstall" />
+        <RemoveFolder Id="RemoveInstallDir" Directory="INSTALLDIR" On="uninstall" />
+        <RemoveFolder Id="RemoveRuntimeDir" Directory="RuntimeDirectory" On="uninstall" />
+        <RemoveFolder Id="RemoveVendorDir" Directory="OpenSAABDirectory" On="uninstall" />
+      </Component>
+    </DirectoryRef>
+    <Feature Id="Main" Title="OpenSAAB" Level="1">
+      <ComponentGroupRef Id="Payload" />
+      <ComponentRef Id="Shortcuts" />
+    </Feature>
+  </Package>
+</Wix>

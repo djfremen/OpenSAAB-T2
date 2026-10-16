@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../BluetoothWorkflow.cs" Link="BluetoothWorkflow.cs" />
+    <Compile Include="../../BluetoothProfile.cs" Link="BluetoothProfile.cs" />
+    <Compile Include="../../BluetoothTests.cs" Link="BluetoothTests.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1 @@
+{"description":"Negative test; expected title deliberately cannot match. Must send no input.","steps":[{"label":"Refuse unexpected screen","expect":{"title":"OpenSAAB impossible test title","timeout":1},"action":{"text":"THIS MUST NEVER BE TYPED"},"after":{"control_contains":"THIS MUST NEVER BE TYPED","timeout":1}}]}

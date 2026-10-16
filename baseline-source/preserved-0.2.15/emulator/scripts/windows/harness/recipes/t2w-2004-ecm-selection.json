@@ -1,0 +1,224 @@
+{
+  "description": "Saab 9.250 2004 9440. Start at Main Menu, F0 selected. Private reference templates required. Ends with ECM highlighted, without pressing Enter. Not yet validated end-to-end on this harness.",
+  "steps": [
+    {
+      "label": "Open Diagnostics",
+      "expect": {
+        "template": "t2w-main",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      },
+      "action": {
+        "sequence": [
+          {
+            "key": "ENTER"
+          }
+        ]
+      },
+      "after": {
+        "template": "t2w-year-2012",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      }
+    },
+    {
+      "label": "Select model year 2004",
+      "expect": {
+        "template": "t2w-year-2012",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      },
+      "action": {
+        "sequence": [
+          {
+            "key": "DOWN",
+            "count": 8
+          },
+          {
+            "key": "ENTER"
+          }
+        ]
+      },
+      "after": {
+        "template": "t2w-vehicle",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      }
+    },
+    {
+      "label": "Select Saab 9-3 Sport 9440",
+      "expect": {
+        "template": "t2w-vehicle",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      },
+      "action": {
+        "sequence": [
+          {
+            "key": "DOWN"
+          },
+          {
+            "key": "ENTER"
+          }
+        ]
+      },
+      "after": {
+        "template": "t2w-diagnostics",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      }
+    },
+    {
+      "label": "Open All",
+      "expect": {
+        "template": "t2w-diagnostics",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      },
+      "action": {
+        "sequence": [
+          {
+            "key": "DOWN",
+            "count": 4
+          },
+          {
+            "key": "ENTER"
+          }
+        ]
+      },
+      "after": {
+        "template": "t2w-all",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      }
+    },
+    {
+      "label": "Open ECU Information",
+      "expect": {
+        "template": "t2w-all",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      },
+      "action": {
+        "sequence": [
+          {
+            "key": "DOWN"
+          },
+          {
+            "key": "ENTER"
+          }
+        ]
+      },
+      "after": {
+        "template": "t2w-modules",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      }
+    },
+    {
+      "label": "Highlight ECM; stop before querying it",
+      "expect": {
+        "template": "t2w-modules",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      },
+      "action": {
+        "sequence": [
+          {
+            "key": "DOWN",
+            "count": 14
+          }
+        ]
+      },
+      "after": {
+        "template": "t2w-ecm-selected",
+        "client": true,
+        "crop": [
+          0,
+          0,
+          480,
+          360
+        ],
+        "tolerance": 0.004,
+        "timeout": 25
+      }
+    }
+  ]
+}

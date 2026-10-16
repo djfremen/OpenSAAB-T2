@@ -1,0 +1,15 @@
+[package]
+name = "opensaab-vlinker-workflow"
+version = "0.1.3"
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.93"
+
+[dependencies]
+opensaab-adapter-translation = { version = "=0.1.0", path = "../adapter-translation" }
+serde_json = "1.0"
+time = { version = "0.3", features = ["formatting", "parsing"] }
+sha2 = "0.10"
+
+[build-dependencies]
+sha2 = "0.10"

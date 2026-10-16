@@ -1,0 +1,1 @@
+{"description":"Wait for a deliberately nonexistent title; cancel while waiting. Must send no input.","steps":[{"label":"Wait for cancellation","expect":{"title":"OpenSAAB impossible test title","timeout":30},"action":{"text":"THIS MUST NEVER BE TYPED"},"after":{"control_contains":"THIS MUST NEVER BE TYPED","timeout":1}}]}

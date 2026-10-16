@@ -1,0 +1,11 @@
+*.msi
+*.wixpdb
+Payload.wxs
+payload-manifest.json
+payload/
+output/
+tools/
+
+# SDK and portable test output
+**/obj/
+**/bin/
