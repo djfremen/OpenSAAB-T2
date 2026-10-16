@@ -12,7 +12,7 @@ static class ShellTests
     }
     public static void Run()
     {
-        Require(ProductIdentity.Version == "0.2.18-preview.1" && ProductIdentity.Architecture == "x86_64" && ProductIdentity.ProgramName.Contains(ProductIdentity.Version), "packaged version and architecture");
+        Require(ProductIdentity.Version == "0.2.18-preview.2" && ProductIdentity.Architecture == "x86_64" && ProductIdentity.ProgramName.Contains(ProductIdentity.Version), "packaged version and architecture");
         TransportTests.Run();
         SupportTests.Run();
         SecurityWorkflowTests.Run();

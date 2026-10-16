@@ -123,7 +123,7 @@ def main():
     (stage/'payload-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
     (stage/'SHA256SUMS.txt').write_text(''.join(sha(f)+'  '+str(f.relative_to(stage))+'\n' for f in sorted(stage.rglob('*')) if f.is_file() and f.name != 'SHA256SUMS.txt'))
     package = output/(name+'.zip')
-    with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+    with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED, compresslevel=9, strict_timestamps=False) as z:
         for f in sorted(stage.rglob('*')):
             if f.is_file(): z.write(f, name+'/'+str(f.relative_to(stage)))
     (build/'build-result.json').write_text(json.dumps({'metadata':metadata, 'baseline_sha256':sha(args.baseline),
