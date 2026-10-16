@@ -53,6 +53,23 @@ class Reports(unittest.TestCase):
         report['device_resources']['vin']='not-allowed'
         self.assertEqual(400,self.send(report).status_code)
 
+    def test_panic_location_only_where_never_message(self):
+        where={'file':'emulator/src/chipsoft.rs','line':412,'column':17,'thread':'main'}
+        def with_panic(location):
+            return dict(self.report,app='com.opensaab.tech2',recent_sessions=[{'adapter':'chipsoft','logs':[
+                {'source':'rust.log','file_bytes':120,'tail_only':False,'event_counts':{'PANIC':1},'panic_location':location}]}])
+        self.assertEqual(201,self.send(with_panic(where)).status_code)
+        self.assertEqual(201,self.send(with_panic(dict(where,thread='<unnamed>',file='m68k-0.12.1/src/cpu.rs'))).status_code)
+        self.setUp()  # Fresh rate-limit window: these cases test validation, not limits.
+        for bad in (dict(where,message='called unwrap on VIN YS3F...'), dict(where,file='/Users/dev/x/y/z.rs'),
+                    dict(where,file='a/b/c/d.rs'), dict(where,line='412'), dict(where,line=True), dict(where,line=-1),
+                    {k:v for k,v in where.items() if k!='thread'}, dict(where,thread='x'*65), 'src/a.rs:1:1'):
+            self.assertEqual(400,self.send(with_panic(bad)).status_code,bad)
+        self.setUp()
+        # The inner keys are not valid anywhere else in a report.
+        self.assertEqual(400,self.send(dict(self.report,device_resources={'file':'x'})).status_code)
+        self.assertEqual(400,self.send(dict(self.report,recent_sessions=[{'adapter':'offline','line':3}])).status_code)
+
     def test_desktop_reports(self):
         desktop={'format':1,'app':'com.opensaab.desktop','platform':'macos','arch':'arm64','version':'0.2.18',
                  'build':'abc1234','os_version':'Version 15.1','description':'Mac QC',

@@ -17,9 +17,18 @@ public final class SupportReports {
         long start=Math.max(0,file.length()-262144);out.put("tail_only",start>0);
         try(RandomAccessFile in=new RandomAccessFile(file,"r")){
             in.seek(start);byte[] b=new byte[(int)Math.min(262144,in.length()-start)];in.readFully(b);String text=new String(b,StandardCharsets.UTF_8);if(start>0){int nl=text.indexOf('\n');text=nl<0?"":text.substring(nl+1);}
-            int lineIndex=0;for(String line:text.split("\\n")){lineIndex++;String category=DiagnosticFailure.classify(line);if(!category.equals("unclassified")&&failures.length()<16)failures.put(new JSONObject().put("category",category).put("tail_line",lineIndex));String upper=line.toUpperCase(Locale.ROOT);for(String event:EVENTS)if(upper.contains(event))counts.put(event,counts.getOrDefault(event,0)+1);}
+            JSONObject panic=null;int lineIndex=0;for(String line:text.split("\\n")){lineIndex++;JSONObject where=panicLocation(line);if(where!=null)panic=where;String category=DiagnosticFailure.classify(line);if(!category.equals("unclassified")&&failures.length()<16)failures.put(new JSONObject().put("category",category).put("tail_line",lineIndex));String upper=line.toUpperCase(Locale.ROOT);for(String event:EVENTS)if(upper.contains(event))counts.put(event,counts.getOrDefault(event,0)+1);}
+            if(panic!=null)out.put("panic_location",panic);
         }
         out.put("event_counts",new JSONObject(counts)).put("failure_categories",failures);return out;
+    }
+    /** Rust's default panic hook writes "thread 'x' panicked at src/f.rs:L:C:" to rust.log. Keep only where, never the message. */
+    private static final java.util.regex.Pattern RUST_PANIC=java.util.regex.Pattern.compile("thread '([A-Za-z0-9_.:<> -]{0,64})' panicked at ((?:[A-Za-z]:)?[A-Za-z0-9_.+/\\\\-]{1,240}):(\\d{1,6}):(\\d{1,6})");
+    static JSONObject panicLocation(String line)throws JSONException{
+        java.util.regex.Matcher m=RUST_PANIC.matcher(line);if(!m.find())return null;
+        String[] parts=m.group(2).replace('\\','/').split("/");StringBuilder file=new StringBuilder();
+        for(int i=Math.max(0,parts.length-3);i<parts.length;i++){if(parts[i].isEmpty())continue;if(file.length()>0)file.append('/');file.append(parts[i]);} // Drop build-machine path prefixes.
+        return new JSONObject().put("file",file.toString()).put("line",Integer.parseInt(m.group(3))).put("column",Integer.parseInt(m.group(4))).put("thread",m.group(1));
     }
     public static void recordError(Context context,Throwable error,boolean crash){recordError(context,error,crash,null);}
     public static void recordError(Context context,Throwable error,boolean crash,File session){

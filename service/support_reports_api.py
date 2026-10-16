@@ -37,6 +37,17 @@ ANDROID_APPS = ('com.opensaab.tech2', 'com.opensaab.tech2.headunit32')
 DESKTOP_APP = 'com.opensaab.desktop'
 IOS_APP = 'com.opensaab.t2.ios.preview'
 FIELDS.update('model failure_stage'.split())
+# Where a native Rust panic happened. Its inner keys are checked here, not added to FIELDS,
+# so "file"/"line" stay invalid everywhere else. The panic message is never accepted.
+FIELDS.add('panic_location')
+PANIC_FILE = re.compile(r'[A-Za-z0-9_.+-]{1,80}(?:/[A-Za-z0-9_.+-]{1,80}){0,2}')
+
+def validate_panic_location(v):
+    if (not isinstance(v, dict) or set(v) != {'file', 'line', 'column', 'thread'}
+            or not isinstance(v['file'], str) or not PANIC_FILE.fullmatch(v['file'])
+            or any(type(v[k]) is not int or not 0 <= v[k] <= 999999 for k in ('line', 'column'))
+            or not isinstance(v['thread'], str) or not re.fullmatch(r'[A-Za-z0-9_.:<> -]{0,64}', v['thread'])):
+        raise ValueError('Invalid panic location')
 IOS_FAILURE_STAGES = {'unexpected_emulator_exit','emulator_heartbeat_missing','input_without_display_response','ui_unresponsive','session_interrupted'}
 
 # Reviewed Android diagnostic candidate: fixed labels and bounded lifecycle evidence.
@@ -182,8 +193,11 @@ def validate(value, depth=0):
         for key, limit in (('diagnostic_events', 32), ('failure_categories', 16)):
             if key in value and (not isinstance(value[key], list) or len(value[key]) > limit):
                 raise ValueError('Too many diagnostic entries')
-        for child in value.values():
-            validate(child, depth + 1)
+        if 'panic_location' in value:
+            validate_panic_location(value['panic_location'])
+        for key, child in value.items():
+            if key != 'panic_location':  # Already checked in full above.
+                validate(child, depth + 1)
     elif isinstance(value, list):
         if len(value) > 40:
             raise ValueError('Too many report entries')
