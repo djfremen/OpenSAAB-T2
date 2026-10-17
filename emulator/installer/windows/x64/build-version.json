@@ -1,6 +1,6 @@
 {
   "product": "OpenSAAB",
-  "version": "0.2.18-preview.4",
+  "version": "0.2.18-preview.5",
   "architecture": "x86_64",
   "release_channel": "developer_preview",
   "security_access_mode": "preview_no_prompt"

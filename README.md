@@ -1,4 +1,4 @@
-# OpenSAAB Windows 0.2.18-preview.4 matching source
+# OpenSAAB Windows 0.2.18-preview.5 matching source
 
 Scoped Windows x86_64 preview: recognize the active Saab 148.000 welcome before
 deferred CANdi startup, report the installed shell version/revision, and use

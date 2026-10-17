@@ -1,7 +1,7 @@
-# OpenSAAB 0.2.18-preview.4 x86_64
+# OpenSAAB 0.2.18-preview.5 x86_64
 
 Extract this portable preview into a new folder and launch
-`OpenSAAB-0.2.18-preview.4-windows-x86_64.exe`. Its window and program name read
+`OpenSAAB-0.2.18-preview.5-windows-x86_64.exe`. Its window and program name read
 their full version, architecture and source revision from packaged metadata.
 Keep historical packages; stop an existing session before launching this one.
 The normal WindowsData folder, firmware, settings and retained reports are reused.

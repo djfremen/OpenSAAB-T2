@@ -9,8 +9,8 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.2.18.4")]
-[assembly: System.Reflection.AssemblyFileVersion("0.2.18.4")]
+[assembly: System.Reflection.AssemblyVersion("0.2.18.5")]
+[assembly: System.Reflection.AssemblyFileVersion("0.2.18.5")]
 
 static class Launcher
 {
