@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "0.2.27-preview.1",
+  "version": "0.2.27-preview.2",
   "predecessor_revision": "a0363f131d33f42c898ba2f817c430c213eddf27",
   "scope": "Focused all-channel open-access and manual-session candidate for Intel and Apple silicon; exact source and retained build inputs, without private history, captures or diagnostic-card binaries.",
   "reviewed_changes": [

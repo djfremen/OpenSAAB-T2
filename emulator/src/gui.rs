@@ -303,7 +303,7 @@ impl GuiRunner {
                     self.controls.focus_lost();
                 }
                 if let Some(auto) = &mut driver {
-                    match auto.observe(&bus.screen_text(), insns) {
+                    match auto.observe_verified(&bus.screen_text(), insns, bus.guest_splash_reached()) {
                         Ok(Some(event)) => {
                             if let Some(key) = event.key {
                                 bus.press_key(key);
