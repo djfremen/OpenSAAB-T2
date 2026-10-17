@@ -4,7 +4,8 @@ import android.app.*;import android.content.*;import android.net.*;import androi
 import java.io.*;import java.nio.charset.StandardCharsets;import java.nio.file.Files;import org.json.*;
 /** Actual endpoint authentication, revocation and stale-input tests; synthetic owner, no firmware or radio. */
 public final class AndroidMcpInstrumentedTest extends Instrumentation {
-    public void onCreate(Bundle args){super.onCreate(args);start();}
+    private Bundle arguments;
+    public void onCreate(Bundle args){arguments=args;super.onCreate(args);start();}
     private static void check(boolean condition,String message){if(!condition)throw new AssertionError(message);}
     private static final class Owner implements AndroidMcp.Owner {
         String session="fixture-session";long sequence=0;boolean idle=true;int keys;
@@ -22,11 +23,12 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
     public void onStart(){Bundle result=new Bundle();int code=-1;Activity activity=null;
         try{
             DisposableEmulator.require(getTargetContext());
+            String expectedVersion=DisposableEmulator.requireInstalledVersion(getTargetContext(),arguments);
             Intent intent=new Intent(Intent.ACTION_MAIN).setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("mcp_test",true);activity=startActivitySync(intent);waitForIdleSync();Owner owner=new Owner();final Activity a=activity;
             runOnMainSync(()->{android.view.View notice=a.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
             runOnMainSync(()->{AndroidMcp.bind(a,owner);try{AndroidMcp.enable(a);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();
             String token=new String(Files.readAllBytes(new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").toPath()),StandardCharsets.US_ASCII);
-            JSONObject state=call(token,"state",new JSONObject());long manual=state.getLong("manual_generation");check(state.getString("app_version").equals("0.1.0-preview.90"),"Installed version unavailable");
+            JSONObject state=call(token,"state",new JSONObject());long manual=state.getLong("manual_generation");check(state.getString("app_version").equals(expectedVersion),"Installed version unavailable");
             boolean denied=false;try{call("0".repeat(64),"state",new JSONObject());}catch(EOFException expected){denied=true;}check(denied,"Bad token was accepted");
             check(call(token,"key",key("wrong","fixture-menu",manual)).has("error")&&owner.keys==0,"Stale session admitted");
             check(call(token,"key",key(owner.session,"wrong",manual)).has("error")&&owner.keys==0,"Stale revision admitted");
