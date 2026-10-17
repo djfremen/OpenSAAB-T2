@@ -293,7 +293,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
             try(OutputStream out=http.getOutputStream()){out.write(payload);}
             int status=http.getResponseCode();
-            if(!fallback&&status==401){SecurityAuthorization.forget(activity);throw new IOException("Incorrect security access password. Tap Retry processing to enter it again; case matters.");}
+            if(!fallback&&status==401){SecurityAuthorization.forget(activity);throw new IOException(SecurityAuthorization.previewNoPrompt(activity)?"The security service rejected this developer preview. Update or report the problem.":"Incorrect security access password. Tap Retry processing to enter it again; case matters.");}
             if(status!=200)return new SecurityApiClient.Response(status,new byte[0]);
             try(InputStream in=http.getInputStream()){return new SecurityApiClient.Response(status,bounded(in,1024*1024));}
         }finally{http.disconnect();connection=null;}

@@ -36,3 +36,11 @@ before switching to Chipsoft, MDI and Nano tests with the Android implementation
 and new MCP controls. Prepare the next distinct preview, then install/verify its
 exact identity and bytes before those tests; do not replace the current debug
 installation or begin physical adapter testing during the active debug phase.
+
+## Developer-preview security policy
+
+Owner clarification October 16, 2026: developer previews have no operator
+security-password prompt and no mandatory security-validation file. Select this
+behavior from packaged preview metadata. Qualified releases retain the password
+and exact-package evidence requirement. Preserve consent, internal service
+authentication, cancellation, SSA validation/import checks and historical builds.

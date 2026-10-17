@@ -18,6 +18,14 @@ import javax.crypto.spec.GCMParameterSpec;
 
 /** Operator-entered service password, encrypted locally and checked by the server. */
 public final class SecurityAuthorization {
+    public static boolean previewNoPrompt(Context c){
+        try(InputStream in=c.getAssets().open("build.json")){
+            ByteArrayOutputStream buffer=new ByteArrayOutputStream();byte[] bytes=new byte[1024];int n;
+            while((n=in.read(bytes))!=-1){if(buffer.size()+n>4096)return false;buffer.write(bytes,0,n);}
+            org.json.JSONObject meta=new org.json.JSONObject(new String(buffer.toByteArray(),StandardCharsets.UTF_8));
+            return SecurityPreviewPolicy.noPrompt(AppBuildProfile.installedVersion(c),meta.optString("version_name"),meta.optString("release_channel"),meta.optString("security_access_mode"));
+        }catch(Exception unavailable){return false;}
+    }
     private static final String ALIAS="opensaab-owner-security-v1";
     private static File file(Context c){return new File(c.getNoBackupFilesDir(),"security-authorization.enc");}
     private static javax.crypto.SecretKey key()throws Exception{
@@ -46,12 +54,15 @@ public final class SecurityAuthorization {
         return text;
     }
     public static String bearer(Context c)throws IOException{
+        // Service authentication remains internal; preview users enter no password.
+        if(previewNoPrompt(c))return "OpenSAAB";
         try{return load(c);}catch(Exception e){throw new IOException("Enter the case-sensitive security access password OpenSAAB before processing.");}
     }
     public static void forget(Context c){file(c).delete();}
-    public static boolean available(Context c){try{load(c);return true;}catch(Exception e){return false;}}
+    public static boolean available(Context c){if(previewNoPrompt(c))return true;try{load(c);return true;}catch(Exception e){return false;}}
     public static void show(Activity a){show(a,()->{});}
     public static void show(Activity a,Runnable saved){
+        if(previewNoPrompt(a)){saved.run();return;}
         LinearLayout layout=new LinearLayout(a);layout.setOrientation(LinearLayout.VERTICAL);int pad=(int)(20*a.getResources().getDisplayMetrics().density);layout.setPadding(pad,pad,pad,pad);
         TextView info=new TextView(a);
         String status=available(a)?"A password is saved on this device.":"Enter the OpenSAAB service password.";

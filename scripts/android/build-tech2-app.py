@@ -17,12 +17,13 @@ from release_metadata import preview_metadata
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
 parser.add_argument('--release-date', help='Actual publication date; required for published builds (YYYY-MM-DD)')
+parser.add_argument('--release-channel', choices=('developer_preview','qualified'), default='developer_preview')
 parser.add_argument('--private-release-signing', action='store_true', help='Sign a private debuggable build with the existing app certificate')
 parser.add_argument('--version-name', default='0.1-dev')
 parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
-release_identity = preview_metadata(not args.release, args.release_date)
+release_identity = preview_metadata(not args.release, args.release_date, args.version_name, args.release_channel)
 profile = PROFILES[args.profile]
 experimental = profile.abi == 'armeabi-v7a'
 demand_test = args.profile == 'headunit-arm32-test'
@@ -173,4 +174,3 @@ else:
 run(bt / 'apksigner', 'verify', apk)
 run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
 print(apk)
-
