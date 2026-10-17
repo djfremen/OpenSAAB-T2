@@ -40,36 +40,13 @@ public final class StartupFlowInstrumentedTest extends Instrumentation {
                 check(activity.vinSummary.getText().toString().contains("diagnostics can continue"),"Pending lookup blocks diagnostics");
             });
             credential=new File(a.getNoBackupFilesDir(),"security-authorization.enc");if(credential.exists())backup=Files.readAllBytes(credential.toPath());
-            SecurityAuthorization.save(a,"OpenSAAB");
-            check(SecurityAuthorization.bearer(a).equals("OpenSAAB"),"Saved password changed case");
-            check(!new String(Files.readAllBytes(credential.toPath()),"UTF-8").contains("OpenSAAB"),"Password stored unencrypted");
-            for(String wrong:new String[]{"","opensaab","OPENSAAB","SamplePassword","OpenSAAB ",null}){
-                boolean rejected=false;try{SecurityAuthorization.save(a,wrong);}catch(IllegalArgumentException expected){rejected=true;}check(rejected,"Non-matching password accepted: "+wrong);
-            }
-            SecurityAuthorization.forget(a);check(!SecurityAuthorization.available(a),"Rejected password cannot be cleared");
-            main(()->SecurityAuthorization.show(activity));waitForIdleSync();
-            sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);waitForIdleSync();
-            check(!SecurityAuthorization.available(a),"Cancelled password prompt authorized processing");
-            // Retained credentials from an older/invalid installation must be
-            // decrypted and revalidated, even with a valid AndroidKeyStore key.
-            java.lang.reflect.Method key=SecurityAuthorization.class.getDeclaredMethod("key");key.setAccessible(true);
-            javax.crypto.Cipher cipher=javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE,(javax.crypto.SecretKey)key.invoke(null));
-            byte[] encrypted=cipher.doFinal("opensaab".getBytes("US-ASCII"));
-            byte[] remembered=new byte[12+encrypted.length];System.arraycopy(cipher.getIV(),0,remembered,0,12);System.arraycopy(encrypted,0,remembered,12,encrypted.length);
-            Files.write(credential.toPath(),remembered);
-            check(!SecurityAuthorization.available(a)&&!credential.exists(),"Invalid remembered password bypassed validation");
-            java.lang.reflect.Method post=SecurityAccessView.class.getDeclaredMethod("postSecurityData",String.class,byte[].class);post.setAccessible(true);
-            for(String endpoint:new String[]{"http://127.0.0.1:1/primary",SecurityApiClient.FALLBACK}){
-                boolean blocked=false;try{post.invoke(a.securityAccess,endpoint,new byte[0]);}
-                catch(java.lang.reflect.InvocationTargetException failure){blocked=failure.getCause() instanceof IOException&&failure.getCause().getMessage().contains("password OpenSAAB");}
-                check(blocked,"Unauthenticated primary/fallback processing was not blocked before HTTP");
-            }
-            java.lang.reflect.Method process=SecurityAccessView.class.getDeclaredMethod("processAttempt",File.class,boolean.class,VehicleIdentity.class,SecurityAccessStatus.class,byte[].class);process.setAccessible(true);
-            boolean importBlocked=false;try{process.invoke(a.securityAccess,null,true,null,null,new byte[0]);}
-            catch(java.lang.reflect.InvocationTargetException failure){importBlocked=failure.getCause() instanceof IOException&&failure.getCause().getMessage().contains("password OpenSAAB");}
-            check(importBlocked,"Unauthenticated process/import route was not blocked before file access");
-            out.putString("stream","PASS: ignition and lookup startup contract; exact OpenSAAB accepted/encrypted; blank, wrong, case-changed, cancelled and invalid remembered credentials rejected; unauthenticated primary, fallback and process/import entry blocked before HTTP/file access; no USB/API operations\n");
+            byte[] legacy=new byte[]{1,2,3,4};Files.write(credential.toPath(),legacy);
+            check(SecurityAuthorization.available(a),"Feature access depends on a remembered credential");
+            check(!SecurityAuthorization.bearer(a).isEmpty(),"Internal primary-service authentication missing");
+            check(java.util.Arrays.equals(Files.readAllBytes(credential.toPath()),legacy),"Historical credential file changed");
+            final boolean[] continued={false};main(()->SecurityAuthorization.show(activity,()->continued[0]=true));waitForIdleSync();
+            check(continued[0],"Feature access still asks for an operator password");
+            out.putString("stream","PASS: ignition and opt-in lookup startup contract; feature access continues without operator password or remembered credential; internal service authentication retained and legacy credential file unchanged; no USB/API operations\n");
         }catch(Throwable e){code=0;out.putString("stream","FAIL: "+e+"\n");}
         finally{
             if(a!=null){final Activity f=a;main(f::finish);}

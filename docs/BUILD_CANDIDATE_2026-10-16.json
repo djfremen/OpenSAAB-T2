@@ -1,0 +1,23 @@
+{
+  "version": "0.1.0-preview.95",
+  "architecture": "arm64-v8a",
+  "status": "source_prepared_not_published",
+  "base": "f48529964cb89651a6e392cacfadc976144574c4",
+  "changes": [
+    "Translated/verified welcome manual-session timeout candidate",
+    "No operator password or feature-access gate in any release channel",
+    "Existing preview.92 panic reporting retained"
+  ],
+  "preserved": [
+    "Internal primary-service authentication",
+    "Data-sharing consent",
+    "Cancellation",
+    "Reply validation and SSA import integrity",
+    "Historical signed packages and user data"
+  ],
+  "limits": [
+    "Exact new packaged tests pending",
+    "Lenovo field confirmation and physical adapter/vehicle testing pending",
+    "No uniform qualification claimed"
+  ]
+}

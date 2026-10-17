@@ -137,6 +137,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
     for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
+    z.write(source / 'interface-contract.json', 'assets/interface-contract.json', compress_type=zipfile.ZIP_DEFLATED)
     z.write(support_manifest, 'assets/system/manifest.json', compress_type=zipfile.ZIP_DEFLATED)
     for name, spec in (support.items() if bundle_support else []):
         z.write(support_root / spec['source'], 'assets/system/' + name, compress_type=zipfile.ZIP_DEFLATED)

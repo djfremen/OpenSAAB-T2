@@ -17,6 +17,5 @@ def preview_metadata(private_preview, release_date=None, version_name=None, rele
         raise ValueError('Unknown release channel')
     metadata = {'release_date': value, 'release_channel': release_channel}
     if version_name is not None:
-        preview = release_channel == 'developer_preview' and bool(re.fullmatch(r'\d+\.\d+\.\d+-[A-Za-z0-9.-]+\.[1-9][0-9]*', version_name))
-        metadata['security_access_mode'] = 'preview_no_prompt' if preview else 'password_protected'
+        metadata['security_access_mode'] = 'no_operator_password'
     return metadata

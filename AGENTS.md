@@ -37,10 +37,18 @@ and new MCP controls. Prepare the next distinct preview, then install/verify its
 exact identity and bytes before those tests; do not replace the current debug
 installation or begin physical adapter testing during the active debug phase.
 
-## Developer-preview security policy
+## Security workflow access
 
-Owner clarification October 16, 2026: developer previews have no operator
-security-password prompt and no mandatory security-validation file. Select this
-behavior from packaged preview metadata. Qualified releases retain the password
-and exact-package evidence requirement. Preserve consent, internal service
-authentication, cancellation, SSA validation/import checks and historical builds.
+Owner clarification October 16, 2026: OpenSAAB features must not require an
+operator password or feature-access credential on any platform or release
+channel, including qualified releases. This supersedes the October 14 password
+requirement and the earlier preview-only exemption. A fixed credential included
+in distributed open source is not a product access-control boundary.
+
+Preserve internal service authentication, explicit consent, cancellation,
+response validation and SSA import integrity checks. Unavailable features remain
+unavailable. New bindings must use the common no-operator-password policy rather
+than restoring a password dialog for qualified or unknown channel metadata.
+Record each target's source adoption and exact installed verification separately;
+policy adoption alone does not qualify an executable or a vehicle workflow.
+Historical packages, manifests and evidence remain immutable.

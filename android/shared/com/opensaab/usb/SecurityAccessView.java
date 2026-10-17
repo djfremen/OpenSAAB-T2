@@ -185,7 +185,6 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         if(!collection||!transferSeen){
             confirmCollection();
         }else{
-            if(!SecurityAuthorization.available(activity)){SecurityAuthorization.show(activity,this::activate);return;}
             new AlertDialog.Builder(activity).setTitle("Share VIN and process security data")
                 .setMessage("Your VIN will be shared with OpenSAAB along with the collected 714-byte security file. It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Only authorized OpenSAAB operators can access it. Contact OpenSAAB for deletion. Request outcome/timing records are kept for seven days. No processed response is archived by this service. If OpenSAAB is unavailable, Allow fallback also permits sending the same data to Bojer at sas.mysaab.info, a separate service.\n\n")
                 .setNegativeButton("Cancel",null)
@@ -293,7 +292,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
             http.setRequestMethod("POST");http.setRequestProperty("Content-Type","application/json");http.setDoOutput(true);http.setFixedLengthStreamingMode(payload.length);
             try(OutputStream out=http.getOutputStream()){out.write(payload);}
             int status=http.getResponseCode();
-            if(!fallback&&status==401){SecurityAuthorization.forget(activity);throw new IOException(SecurityAuthorization.previewNoPrompt(activity)?"The security service rejected this developer preview. Update or report the problem.":"Incorrect security access password. Tap Retry processing to enter it again; case matters.");}
+            if(!fallback&&status==401){SecurityAuthorization.forget(activity);throw new IOException("The security service rejected this request. Update OpenSAAB or report the problem.");}
             if(status!=200)return new SecurityApiClient.Response(status,new byte[0]);
             try(InputStream in=http.getInputStream()){return new SecurityApiClient.Response(status,bounded(in,1024*1024));}
         }finally{http.disconnect();connection=null;}
