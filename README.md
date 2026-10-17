@@ -4,40 +4,32 @@
 
 Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
 
-**Public Android beta: v0.1.0-preview.92 (`OpenSAAB_64_16OCT26_v0.1.0-preview.92.apk`, versionCode `100092`).**
+**Public Android beta: v0.1.0-preview.98 (`OpenSAAB_64_16OCT26_v0.1.0-preview.98.apk`, versionCode `100098`).**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.98) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
-## October 15 release scope and progress
+## Corrected Android and Mac developer previews — October 16
 
-Android **0.1.0-preview.92 ARM64** is published with its signed APK, exact matching source, manifest and checksums. [Release notes and known gaps](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [All platform channels](https://www.opensaab.com/static/t2/download.html#current-channels) · [Brief 48-hour update](https://www.opensaab.com/static/t2/news.html#update-2026-10-16).
+We caught an error while checking the previews and corrected it. Sorry for the confusion.
 
-The exact signed APK passed Pixel 7 upgrade, original offline firmware navigation and clean Stop. Installed emulator reporting, a real Rust panic after 2 MiB, startup/password, security handoff and connection checks passed. Reviewed support reports add bounded Rust panic source locations, excluding panic messages, raw traffic, VINs and security material. Review, consent and explicit Send remain required. Native executables retain preview.90 bytes. **No physical adapter or vehicle tests were run on preview.92; those checks are deferred.** Earlier Nano development results and preview.87 Chipsoft/MDI receipts remain separately scoped; saved DTC exports can be partial.
+**Android 0.1.0-preview.98 ARM64** is available with exact matching source, separately pinned later test source, manifests and checksums. It removes the operator password step and fixes the native/manual false splash deadline after a verified translated welcome. Exact signed-package emulator firmware/Stop, recovered-core identity, MCP, reporting and real Rust-panic checks passed. The .97-to-.98 upgrade preserved existing data. Physical Lenovo/Chipsoft/MDI/Nano/vehicle and live security-service checks remain pending. [Release and test limits](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.98).
 
-The latest public Intel **0.2.26-intel-preview.7** adds Nano HS-CAN filtering, bounded key-status reads and a docked keypad, with a scoped live Nano DTC/key-status session and clean Stop. Apple silicon **0.2.23-ui-parity.3**, ARM32 **0.1.0-headunit.17** and personal Mongoose **0.1.1-preview.3** retain separate release/test scope. Windows **0.2.18-preview.5** is a new [separate experiment](https://github.com/djfremen/OpenSAAB-T2/releases/tag/windows-v0.2.18-preview.5); **0.2.17 preview.1** retains its earlier recommendation. Newer private M4/MCP/recovered-core work remains separate. Full parity and wider hardware reliability remain unfinished.
+**Mac 0.2.27-preview.3 for Apple silicon and Intel** removes the operator password step, retires the menu contract entry and clarifies consent wording. Apple silicon passed 289 installed assertions, security-worker checks and original Swedish 148 offline navigation/clean Stop. Both installed packages passed payload/hash/architecture/signature checks. Intel runtime remains pending; older Intel preview.7 live results do not qualify these new packages. Physical vehicle/adapter and live service/SSA qualification remain pending. macOS 12+, ad-hoc signed, no hardened runtime, not notarized. [Both Mac downloads and exact matching source](https://github.com/djfremen/OpenSAAB-T2/releases/tag/macos-v0.2.27-preview.3). Updates remain manual from the [download page](https://www.opensaab.com/static/t2/download.html#desktop).
 
-**Before installing:** Android 8.0+ and **64-bit ARM Android (`arm64-v8a`)** are required. A 64-bit CPU alone is not sufficient. [Check your device / full requirements](docs/SYSTEM_REQUIREMENTS.md).
+Windows [0.2.18-preview.5](https://github.com/djfremen/OpenSAAB-T2/releases/tag/windows-v0.2.18-preview.5) remains a separate portable experiment; 0.2.17 preview.1 is its earlier recommendation. ARM32 0.1.0-headunit.17 and personal Mongoose 0.1.1-preview.3 retain separate scope. MCP/recovered-engine and other desktop experiments are separate. Full parity remains unfinished.
 
-## Intel macOS developer preview
-
-[OpenSAAB 0.2.26-intel-preview.7 for Intel Mac](https://github.com/djfremen/OpenSAAB-T2/releases/tag/macos-v0.2.26-intel-preview.7) is the latest experimental macOS 12+ Intel download, with matching source, manifest and checksums. It adds VCX Nano HS-CAN filtering, bounded Read-only diagnostics key-status requests, response-pending VIN handling and a docked keypad beside the display. All 133 installed files matched and 299 app assertions passed. One exact-build Nano 1.9.4.2 vehicle session completed original multi-module DTC/key-status reads and clean shutdown over 665 seconds. Wider vehicles/adapters, sustained use and Ventura/OCLP remain pending. The package retains its original security password prompt; the next build removes that extra step. Download Mac updates manually from the [download page](https://www.opensaab.com/static/t2/download.html#desktop).
-
-This Intel experiment remains a separate channel on the updated website; it does not change the Android ARM64 package or qualify older Mac downloads. Read the release limits before testing.
-
-[Windows 0.2.18-preview.5](https://github.com/djfremen/OpenSAAB-T2/releases/tag/windows-v0.2.18-preview.5) is a separate unsigned portable preview: translated Saab 148 welcome recognition, reopening fully cleared offline data, packaged report identity and no operator password prompt. Exact-package offline checks passed in Windows 11 ARM / Fusion under x64 emulation; physical adapters/vehicles, native Windows x64 and MSI lifecycle remain pending. Consent, internal service authentication, cancellation and import validation remain.
-
-The Lenovo/Nano timeout candidate and Android/Mac password-prompt removal are prepared in source for future builds. Android remains on the published preview.92 package; a new product APK and Lenovo confirmation are pending. Existing Android preview.92 and Intel preview.7 downloads retain their original prompts.
+**Before installing:** Android 8.0+ with a 64-bit ARM Android system is required. Install over the same-key app to preserve data, and retain backups. Mac: stop diagnostics, then copy the fully versioned app alongside historical builds. [All channels and exact hashes](https://www.opensaab.com/static/t2/download.html#current-channels).
 
 ## What you can test
 
 - Original Tech2 firmware menus with touch gestures, a collapsible keypad and console.
 - Direct Chipsoft Pro USB connection, VIN/session identification, ECU information and DTC reading.
 - Saved DTC reports grouped by module, user-reviewed sharing, and an optional donation link.
-- Guided security-data collection and processing through the OpenSAAB API (case-sensitive password `OpenSAAB` required before processing or importing).
+- Guided security-data collection and processing with explicit consent and no operator password; response validation and SSA-only import checks remain.
 - Experimental Classic MDI USB transport in the main app, without a running Windows relay or standalone helper. Automatic classic-MDI initialization retrieves the adapter identity; no user connection-profile import is required for the tested route.
 - First-run software download, extraction, verification and local storage; English Saab NAO is the default.
 
-**Security access requires internet access to the OpenSAAB security-access API and the case-sensitive password `OpenSAAB`. It cannot be processed offline.** Installed firmware, local USB diagnostics and saved reports work without internet. Online VIN enrichment, downloads and sending email also need connectivity.
+**Security processing requires internet access and explicit data-sharing consent; no operator password is required.** The existing public fixed primary-service header is a compatibility value, not caller authentication or endpoint abuse protection. Optional Bojer fallback requires permission and never receives that header. Processing cannot run offline. Installed firmware, local USB diagnostics and saved reports work without internet. Online VIN enrichment, downloads and sending email also need connectivity.
 
 ## Compatibility and limits
 
