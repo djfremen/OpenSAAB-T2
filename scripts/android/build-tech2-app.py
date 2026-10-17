@@ -24,6 +24,11 @@ parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
 release_identity = preview_metadata(not args.release, args.release_date, args.version_name, args.release_channel)
+if args.profile == 'arm64':
+    identity = json.loads((Path(__file__).resolve().parents[2] / 'core-recovered/emulator/ui/recovered-core-identity.json').read_text())
+    if identity['version'] != args.version_name:
+        parser.error('Recovered-core packaged version must match the Android application version; rebuild it from the matching source.')
+
 profile = PROFILES[args.profile]
 experimental = profile.abi == 'armeabi-v7a'
 demand_test = args.profile == 'headunit-arm32-test'
