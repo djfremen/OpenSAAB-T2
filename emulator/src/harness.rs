@@ -70,7 +70,36 @@ impl Harness {
         format!("{:?}", self.stage)
     }
 
+    /// Original firmware owns navigation as soon as the manual operator acts.
+    /// Do not keep bootstrap automation/deadlines after an ENTER that bypasses
+    /// the welcome before the harness's settling interval has elapsed.
+    pub fn operator_input(&mut self, insns: u64, verified_welcome_seen: bool) {
+        if self.target == HarnessTarget::NativeManual
+            && verified_welcome_seen
+            && matches!(self.stage, Stage::Splash | Stage::Main)
+        {
+            self.stage = Stage::AwaitDtc;
+            self.entered = insns;
+            self.stable_since = None;
+        }
+    }
+
+    #[cfg(test)]
     pub fn observe(&mut self, text: &str, insns: u64) -> Result<Option<Event>, String> {
+        let nao = (text.contains("Press [ENTER]") || text.contains("Press ENTER"))
+            && text.contains("Software Version")
+            && text.contains("North American Operations");
+        self.observe_verified(text, insns, nao)
+    }
+
+    /// `verified_welcome` comes from Tech2Bus's active-LCD/card verifier. Reuse
+    /// that decision instead of independently recognizing only the NAO card.
+    pub fn observe_verified(
+        &mut self,
+        text: &str,
+        insns: u64,
+        verified_welcome: bool,
+    ) -> Result<Option<Event>, String> {
         if self.stage == Stage::Complete {
             return Ok(None);
         }
@@ -86,9 +115,9 @@ impl Harness {
             Stage::BackToPlatform => 2_000_000,
             _ => 10_000_000,
         };
-        // After reaching Main Menu, NativeManual hands navigation to the
-        // operator. Equipment questions can wait indefinitely for an answer;
-        // this capture-only stage must not terminate a module-add session.
+        // After a verified welcome or explicit operator input, NativeManual
+        // only captures screens. Translated menus and equipment questions can
+        // wait indefinitely without inheriting a scripted bootstrap deadline.
         // Bootstrap and scripted targets keep their existing deadlines. The
         // host's explicit run budget and operator stop remain independent.
         let manual_capture =
@@ -218,11 +247,7 @@ impl Harness {
             }
         }
         let matches = match self.stage {
-            Stage::Splash => {
-                (text.contains("Press [ENTER]") || text.contains("Press ENTER"))
-                    && text.contains("Software Version")
-                    && text.contains("North American Operations")
-            }
+            Stage::Splash => verified_welcome,
             Stage::Main => text.contains("Main Menu") && text.contains("F0:"),
             Stage::Year => text.contains("Model Year") && text.contains("1 / 15"),
             Stage::YearScroll => {
@@ -272,6 +297,12 @@ impl Harness {
             return Ok(None);
         }
         let (capture, key, exit, next) = match self.stage {
+            Stage::Splash if self.target == HarnessTarget::NativeManual => (
+                "stage1_splash",
+                Some(crate::bus::KEY_ENTER_DEFAULT),
+                false,
+                Stage::AwaitDtc,
+            ),
             Stage::Splash => (
                 "stage1_splash",
                 Some(crate::bus::KEY_ENTER_DEFAULT),
@@ -642,6 +673,75 @@ mod tests {
         let event = h.observe(next, at * 2 + 200_001).unwrap().unwrap();
         assert!(event.key.is_none() && !event.complete && !event.exit);
     }
+    #[test]
+    fn verified_european_welcome_hands_manual_navigation_to_operator() {
+        for welcome in [
+            "Press <ENTER> to continue\nSoftware Version: 148.000\nIgnition Cycles:",
+            "Tryck <ENTER> f r att g Vidare\nMjukvaruversion: 148.000\nSAAB Automobile AB",
+        ] {
+            let mut manual = Harness::new(HarnessTarget::NativeManual, 0);
+            assert!(manual.observe_verified(welcome, 1, true).unwrap().is_none());
+            let event = manual
+                .observe_verified(welcome, 200_001, true)
+                .unwrap()
+                .unwrap();
+            assert_eq!(event.capture, "stage1_splash");
+            assert_eq!(event.key, Some(crate::bus::KEY_ENTER_DEFAULT));
+            assert!(!event.complete && !event.exit);
+            assert_eq!(manual.last_verified, "stage1_splash");
+            assert_eq!(manual.waiting_for(), "AwaitDtc");
+            let checking = "Checking Key Position Working";
+            assert!(manual
+                .observe_verified(checking, 80_000_000, false)
+                .unwrap()
+                .is_none());
+            let capture = manual
+                .observe_verified(checking, 80_200_000, false)
+                .unwrap()
+                .unwrap();
+            assert_eq!(capture.capture, "native_dtc_screen");
+            assert!(capture.key.is_none() && !capture.complete && !capture.exit);
+            assert!(manual
+                .observe_verified(checking, 900_000_000, false)
+                .unwrap()
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn manual_operator_input_prevents_bootstrap_automation_and_timeout() {
+        for stage in [Stage::Splash, Stage::Main] {
+            let mut manual = Harness::new(HarnessTarget::NativeManual, 0);
+            manual.stage = stage;
+            manual.operator_input(50_000, true);
+            assert_eq!(manual.last_verified, "none");
+            let text = "Checking Key Position Working";
+            assert!(manual
+                .observe_verified(text, 80_000_000, false)
+                .unwrap()
+                .is_none());
+            let capture = manual
+                .observe_verified(text, 80_200_000, false)
+                .unwrap()
+                .unwrap();
+            assert!(capture.key.is_none() && !capture.exit && !capture.complete);
+        }
+        let mut scripted = Harness::new(HarnessTarget::DtcLink1367, 0);
+        scripted.operator_input(50_000, true);
+        assert!(scripted.observe_verified("", 80_000_000, false).is_err());
+        let mut booting = Harness::new(HarnessTarget::NativeManual, 0);
+        booting.operator_input(50_000, false);
+        assert!(booting.observe_verified("", 80_000_000, false).is_err());
+    }
+
+    #[test]
+    fn unverified_translated_screen_does_not_bypass_bootstrap_deadline() {
+        let mut manual = Harness::new(HarnessTarget::NativeManual, 0);
+        let text = "Press <ENTER> to continue\nSoftware Version: 148.000";
+        assert!(manual.observe_verified(text, 1, false).unwrap().is_none());
+        assert!(manual.observe_verified(text, 80_000_000, false).is_err());
+    }
+
     #[test]
     fn manual_bootstrap_and_scripted_dtc_still_have_deadlines() {
         let mut manual = Harness::new(HarnessTarget::NativeManual, 0);

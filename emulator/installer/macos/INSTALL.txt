@@ -1,37 +1,28 @@
-OpenSAAB for macOS @VERSION@ — @ARCH@ preview
+OpenSAAB @VERSION@ — @ARCH@ developer preview
 
-1. Drag OpenSAAB.app to Applications (or to ~/Applications).
-2. Open OpenSAAB. The standard package prepares eprom.bin, opsys.dwn and
-   candi.bin automatically using the same verified support profile as Android.
-   Valid existing components are preserved.
-3. On first launch, select Diagnostic language and Software version, then
-   Download and continue. The original Saab diagnostic image is downloaded
-   separately and verified before selection. Setup returns to the ready screen.
-4. Run without an adapter starts the original firmware menus. Enter selects,
-   arrows move, Escape goes back. Keypad exposes the remaining Tech 2 keys.
-   Use the top-left menu to stop, change language, or open session logs.
+Copy @APP_NAME@ into Applications or ~/Applications alongside earlier versions.
+Open that exact app. Its program and main window identify @PROGRAM_NAME@.
+Stop and close an active diagnostic session before switching versions.
 
-The application controls remain English. Diagnostic menus use the selected
-firmware language. Existing firmware and logs are preserved on app upgrades.
-An explicitly built import-only package still requires your runtime folder;
-it is not the standard setup profile. Third-party firmware retains its owners'
-terms; the OpenSAAB source license does not license that firmware.
+The approved eprom.bin, opsys.dwn and candi.bin support components are bundled;
+the original diagnostic card is selected/downloaded separately in setup.
+Existing firmware, settings and reports retain their normal support location:
+~/Library/Application Support/OpenSAAB/. Do not remove that directory to upgrade.
 
-Connect and start identifies a Chipsoft Pro adapter and then reads the VIN
-from the engine ECU over HS-CAN (one read-only request). This Mac preview then starts the original menus using the native Chipsoft bridge.
-Original-menu ECU/DTC results still need vehicle testing; direct startup DTC
-reading is not integrated on macOS.
-A detected serial port is not proof of an identified Chipsoft adapter.
+Run without an adapter explores original firmware menus offline. The docked
+keypad stays beside the display. USB Chipsoft Pro, VCX Nano and experimental
+Classic MDI have separate physical test scope. Bluetooth support and selected
+diagnostic-card languages retain their existing preview limits.
 
-Firmware and logs are stored in ~/Library/Application Support/OpenSAAB/.
-Replacing or deleting the application leaves those files intact.
+Security processing/import asks for data-sharing consent and never asks the
+operator for a feature password. Primary-service authentication remains internal;
+fallback never receives that credential. Cancellation, reply validation and
+SSA-only import integrity checks remain. An imported result is not ECU approval.
 
-Requires @ARCH@ and macOS 12 or newer. The preview is ad-hoc signed,
-not Developer ID signed or notarized. Do not disable Gatekeeper. Public
-notarized distribution and full hardware qualification remain pending.
+This new package does not inherit an earlier build's vehicle qualification.
+Exact installation/software checks are retained separately for each architecture;
+new physical adapter/vehicle tests and complete common conformance remain pending.
 
-Source and build instructions:
-  The matching source archive and checksums accompany the beta download.
-  Source directory: emulator/installer/macos/
-
-Connected preview: Connect and start identifies Chipsoft, reads a fresh HS-CAN VIN, then launches the selected original software with the shared CANdi bridge over native CDC. CANdi/vehicle channels remain deferred until the guest needs them. This preview permits the existing read-diagnostics command profile; security, clearing and programming are not enabled. An ECM-only bench can reject the original single-wire wake at diagnostic pin 1. That is reported as an incomplete operation, not successful ECU information or DTC retrieval.
+macOS 12 or later. Ad-hoc signed; not notarized. Matching source, package manifest
+and SHA-256 accompany this candidate. To roll back, close it and reopen a retained
+versioned app. Historical bundles and user data are preserved.

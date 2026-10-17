@@ -2,20 +2,20 @@ use super::*;
 use std::path::PathBuf;
 
 #[test]
-fn password_gate_covers_processing_fallback_import_and_automation_before_io() {
+fn open_access_keeps_cancellation_and_validation_on_every_processing_route() {
     for operation in ["authorize", "prepare", "prepare_existing", "http_result", "import"] {
-        for password in [json!(null), json!(""), json!("wrong"), json!("opensaab"), json!("OpenSaab"), json!("OpenSAAB "), json!(false), json!(["OpenSAAB"])] {
-            let request=json!({"schema":1,"op":operation,"password":password});
-            assert_eq!(dispatch(&request).unwrap_err(), "Security access requires the case-sensitive OpenSAAB password.");
+        let baseline = dispatch(&json!({"schema":1,"op":operation}));
+        for legacy in [json!(null),json!(""),json!("wrong"),json!(false),json!(["OpenSAAB"])] {
+            assert_eq!(dispatch(&json!({"schema":1,"op":operation,"password":legacy})),baseline);
         }
-        assert!(dispatch(&json!({"schema":1,"op":operation})).unwrap_err().contains("password"));
-        assert!(dispatch(&json!({"schema":1,"op":operation,"password":"OpenSAAB","cancelled":true})).unwrap_err().contains("cancelled"));
-        assert!(dispatch(&json!({"schema":1,"op":operation,"password":"OpenSAAB","cancelled":"false"})).unwrap_err().contains("cancellation state"));
+        assert!(dispatch(&json!({"schema":1,"op":operation,"cancelled":true})).unwrap_err().contains("cancelled"));
+        assert!(dispatch(&json!({"schema":1,"op":operation,"cancelled":"false"})).unwrap_err().contains("cancellation state"));
     }
-    assert_eq!(dispatch(&json!({"schema":1,"op":"authorize","password":"OpenSAAB"})).unwrap()["authorized"],true);
-    assert_eq!(dispatch(&json!({"schema":1,"op":"http_result","password":"OpenSAAB","status":503,"primary":true,"allow_fallback":true})).unwrap()["action"],"fallback");
-    // Passive observation is independent of the processing credential.
-    assert!(dispatch(&json!({"schema":1,"op":"observe","screen":"Main Menu"})).is_ok());
+    let access = dispatch(&json!({"schema":1,"op":"authorize"})).unwrap();
+    assert_eq!(access["authorized"],true);
+    assert_eq!(access["mode"],"no_operator_password");
+    assert_eq!(dispatch(&json!({"schema":1,"op":"http_result","status":503,"primary":true,"allow_fallback":true})).unwrap()["action"],"fallback");
+    assert_eq!(dispatch(&json!({"schema":1,"op":"http_result","status":401,"primary":true,"allow_fallback":true})).unwrap()["action"],"unauthorized");
 }
 fn fixture() -> Vec<u8> {
     let mut b = vec![255; SIZE];

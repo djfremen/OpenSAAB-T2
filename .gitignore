@@ -2,3 +2,8 @@
 emulator/dist/
 .DS_Store
 __pycache__/
+
+/emulator/live.ppm
+/emulator/welcome.ppm
+/emulator/startup.json
+/emulator/screen.txt

@@ -283,11 +283,42 @@
     "password_policy": {
       "id": "security-access-password-1",
       "owner_recorded_date": "2026-10-14",
-      "password": "OpenSAAB",
-      "case_sensitive": true,
-      "scope": "Every version and platform must require the accepted password before security-access processing or processed-response import. All UI, automation and fallback entry points obey the same gate; a remembered invalid password cannot bypass it. An unavailable feature stays unavailable.",
-      "verification": "Each exact installed package must accept OpenSAAB and block blank, wrong, case-changed, cancelled and invalid remembered credentials, unauthenticated fallback and import. Missing or pending evidence blocks publication, including previews. Correct password acceptance does not establish ECU authorization.",
-      "adoption": "Standing requirement and release evidence gate adopted; exact installed-artifact verification remains pending for every target. Historical packages are preserved."
+      "scope": "All future OpenSAAB releases and platforms provide implemented security processing/import without an operator password or feature entitlement. Applies to UI, automation and fallback. Unavailable features stay unavailable.",
+      "verification": "No separate operator-password acceptance/rejection proof is required in any channel. Retain ordinary exact-artifact consent, cancellation, response validation and SSA import checks; a local successful import does not establish ECU authorization.",
+      "adoption": "Owner policy and release tooling updated for every target. Windows 0.2.18-preview.5 already passed exact installed no-dialog checks under its historical preview_no_prompt metadata. Other bindings and future qualified artifacts require separately recorded adoption and installed observations; no runtime pass inferred.",
+      "owner_clarified_date": "2026-10-16",
+      "developer_preview": {
+        "mode": "preview_no_prompt",
+        "operator_password_prompt": false,
+        "validation_file_required": false,
+        "selection": "Historical preview_no_prompt metadata remains supported for retained preview packages; new bindings use the common no_operator_password mode in all channels.",
+        "preserved": [
+          "internal primary-service authentication",
+          "explicit disclosure consent",
+          "cancellation",
+          "response validation",
+          "SSA import integrity checks"
+        ]
+      },
+      "operator_password_required": false,
+      "mode": "no_operator_password",
+      "legacy_credential": {
+        "password": "OpenSAAB",
+        "case_sensitive": true,
+        "scope": "Historical fixed worker/service credential only; not an operator feature-access requirement."
+      },
+      "all_channels": {
+        "mode": "no_operator_password",
+        "operator_password_prompt": false,
+        "validation_file_required": false,
+        "preserved": [
+          "internal primary-service authentication",
+          "explicit disclosure consent",
+          "cancellation",
+          "response validation",
+          "SSA import integrity checks"
+        ]
+      }
     },
     "worker": "opensaab-security schema 1 JSON on stdin/stdout",
     "reference_revision": "6fe2c78",
@@ -364,6 +395,18 @@
     ],
     "follow_up_contact": "Optional email or forum handle, excluded unless explicit unchecked-by-default consent is selected; included in privately reviewed description only.",
     "diagnostics": "Bounded fixed failure categories, session association, lifecycle and security-handoff events; no raw traffic or security payloads.",
+    "native_panic_location": {
+      "fields": [
+        "file",
+        "line",
+        "column",
+        "thread"
+      ],
+      "source": "Last recognized Rust panic header in the bounded log tail; accept older headers and current numeric-thread-ID headers. Export at most three relative source-path components, integer source position and bounded thread name. Exclude panic message, raw output, build prefix and numeric thread ID.",
+      "retention": "Offline and Nano process readers retain panic headers after the 2 MiB routine-output cap; routine output remains capped and the report tail remains bounded.",
+      "submission": "Existing frozen review, consent and explicit send; deploy additive strict server validation before distributing a collector that emits the field.",
+      "adoption": "Android ARM64 preview.92 installed emulator and real synthetic Rust panic passed. ARM32, desktop and iOS collection adoption and exact-artifact qualification remain pending; server intake remains cross-platform compatible."
+    },
     "publication": "Public analysis must exclude contacts, receipt IDs, raw descriptions, VINs and security data.",
     "security_snapshot": {
       "source": "Saved working card plus matching vehicle and processing receipt; same semantics as vehicle history, not a live ECU probe",
@@ -878,7 +921,13 @@
       "Seed collection and DTC-clear profiles do not inherit this permission. Other DeviceControl, security seeds/keys, code clearing and programming remain outside the normal read profile.",
       "A rejected read request is a local policy failure; never imply ECU denial or require collecting fresh security data. Offer the connection report and distinguish explicitly selected security operations."
     ],
-    "qualification": "Private Android ARM64 candidate; corrected physical Huawei operation pending. No inherited platform pass."
+    "qualification": "Private Android ARM64 candidate; corrected physical Huawei operation pending. No inherited platform pass.",
+    "normal_read_key_query_android_adoption_2026_10_14": {
+      "version": "0.1.0-preview.88",
+      "scope": "Adopts the existing normal-read exact CIM key-reader allowance in Android Rust frontend+worker and Java per-session gates; three attempts, captured payload/route only; seed/clear/programming remain excluded.",
+      "receipt": "releases/consistent-baseline/PIXEL7_NANO_READ_KEY_STATUS_FIX_2026-10-14.json",
+      "qualification": "Pixel7 Android ARM64 exact installed preview88 APK, password policy and live normal-read MCP key-status pass: Working(Added),4keys,433MHz; acknowledged protocol/USB cleanup. Earlier preview87 DTC success and local key-status block retained. Huawei/other platforms/source reconciliation remain separate and pending."
+    }
   },
   "experimental_adapter_tests": {
     "mongoose": {

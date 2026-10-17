@@ -15,8 +15,6 @@ PRIMARY = "https://relevant-diann-djfremen2-c013cdc3.koyeb.app/api/process"
 PROTECTED = {'authorize', 'prepare', 'prepare_existing', 'http_result', 'import'}
 
 def call(op, **fields):
-    if op in PROTECTED:
-        fields.setdefault('password', 'OpenSAAB')
     result = subprocess.run([str(binary)], input=json.dumps(dict(schema=1, op=op, **fields)),
                             text=True, capture_output=True, timeout=30, check=True)
     envelope = json.loads(result.stdout)
@@ -28,16 +26,16 @@ def blocked(op, **fields):
                             text=True, capture_output=True, timeout=30)
     envelope = json.loads(result.stdout)
     assert result.returncode != 0 and envelope['ok'] is False
-    assert 'password' in envelope['error'] or 'cancelled' in envelope['error']
+    assert 'cancelled' in envelope['error'] or 'cancellation state' in envelope['error'] or 'API changed' in envelope['error'] or 'Invalid' in envelope['error']
     assert 'result' not in envelope
 
-assert call('authorize')['authorized'] is True
+assert call('authorize')['mode'] == 'no_operator_password'
 for op in PROTECTED:
-    blocked(op)
-    for value in ['', 'wrong', 'opensaab', 'OpenSaab', 'OpenSAAB ', None, False, ['OpenSAAB']]:
-        blocked(op, password=value)
-    blocked(op, password='OpenSAAB', cancelled=True)
-print('PASS packaged password gate: exact acceptance; missing/blank/wrong/case/malformed/cancel rejected on every protected operation')
+    blocked(op, cancelled=True)
+    blocked(op, cancelled='false')
+for value in ['', 'wrong', 'opensaab', None, False]:
+    assert call('authorize', password=value)['authorized'] is True
+print('PASS packaged open access: no operator credential; cancellation and malformed cancellation rejected on every processing route')
 
 def write(path, value):
     path.write_text(json.dumps(value))
@@ -76,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-security-worker-test-') as fol
     run = reopened
     selected = call('inspect_existing', state=str(state), run=str(run), firmware='synthetic')
     blocked('prepare_existing', state=str(state), run=str(run), firmware='synthetic',
-            input_hash=selected['input_hash'], password='wrong')
+            input_hash=selected['input_hash'], cancelled=True)
     prepared = call('prepare_existing', state=str(state), run=str(run), firmware='synthetic',
                     allow_fallback=False, input_hash=selected['input_hash'])
     assert base64.b64decode(prepared['payload']['SSA_DATA']) == collected
@@ -84,10 +82,11 @@ with tempfile.TemporaryDirectory(prefix='opensaab-security-worker-test-') as fol
     after[1] = 0
     after[0x26:0x2e] = b'AAAAAAAA'
     after[0x138:0x13a] = b'\x56\x78'
+    blocked('import', attempt=prepared['attempt'], provider=PRIMARY, cancelled=True,
+            response=dict(SSA_DATA=base64.b64encode(after).decode()))
+    corrupt = after.copy(); corrupt[20] = ord('A')
     blocked('import', attempt=prepared['attempt'], provider=PRIMARY,
-            response=dict(SSA_DATA=base64.b64encode(after).decode()))
-    blocked('import', attempt=prepared['attempt'], provider=PRIMARY, password='opensaab',
-            response=dict(SSA_DATA=base64.b64encode(after).decode()))
+            response=dict(SSA_DATA=base64.b64encode(corrupt).decode()))
     assert (run / 'card.bin').read_bytes() == card
     assert not (Path(prepared['attempt']) / 'result.json').exists()
     result = call('import', attempt=prepared['attempt'], provider=PRIMARY,

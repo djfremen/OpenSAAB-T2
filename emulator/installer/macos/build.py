@@ -15,7 +15,7 @@ HERE = Path(__file__).resolve().parent
 SOURCES = HERE / "shared"
 EMULATOR = HERE.parents[1]
 ROOT = EMULATOR.parent
-VERSION = "0.2.26-intel-preview.7"
+VERSION = "0.2.27-preview.1"
 TARGETS = {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}
 
 def run(*args, **kwargs):
@@ -37,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     global VERSION
     parser.add_argument("--version", default=VERSION)
+    parser.add_argument("--release-channel", choices=("developer_preview","qualified"), default="developer_preview")
     parser.add_argument("--arch", choices=TARGETS, default="arm64")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--support-root", type=Path, default=Path(os.environ.get("OPENSAAB_SUPPORT_ROOT", str(EMULATOR))),
@@ -113,6 +114,7 @@ def main():
             CFBundlePackageType="APPL", CFBundleShortVersionString=VERSION,
             CFBundleVersion=VERSION, CFBundleIconFile="OpenSAAB.icns",
             LSMinimumSystemVersion="12.0", NSHighResolutionCapable=True, OpenSAABBuild=build_id(options.source_commit),
+            OpenSAABReleaseChannel=options.release_channel, OpenSAABSecurityAccessMode="no_operator_password",
             NSBluetoothAlwaysUsageDescription="Read VIN and engine information using an explicitly selected, compatible Bluetooth adapter.")
         (contents / "Info.plist").write_bytes(plistlib.dumps(info))
         for file in ("LICENSE", "LICENSING.md", "THIRD_PARTY_NOTICES.md"):
@@ -167,7 +169,7 @@ def main():
             if not options.source_commit or len(options.source_commit) != 40 or any(c not in "0123456789abcdef" for c in options.source_commit):
                 raise SystemExit("Private snapshot packaging requires --source-commit with the pinned predecessor SHA")
             commit, dirty, source_shape = options.source_commit, True, "private_modified_frozen_snapshot"
-        provenance = dict(installed_program_name=artifact_name+".app", program_display_name=display_name, version=VERSION, platform="macos", architecture=architecture, source_commit=commit,
+        provenance = dict(release_channel=options.release_channel, security_access_mode="no_operator_password", security_access={"policy":"security-access-password-1","mode":"no_operator_password"}, installed_program_name=artifact_name+".app", program_display_name=display_name, version=VERSION, platform="macos", architecture=architecture, source_commit=commit,
             source_dirty=dirty, firmware_included=bool(support_inputs), diagnostic_card_included=False,
             support_profile="android-approved" if support_inputs else "import-only",
             support_files=support if support_inputs else {}, signing="ad-hoc; not notarized",
@@ -189,7 +191,7 @@ def main():
         shutil.copytree(app, app_destination, symlinks=True)
         os.symlink("/Applications", disk / "Applications")
         label = "Apple silicon (ARM64)" if architecture == "arm64" else "Intel (x86_64)"
-        install = (HERE / "INSTALL.txt").read_text().replace("@VERSION@", VERSION).replace("@ARCH@", label)
+        install = (HERE / "INSTALL.txt").read_text().replace("@VERSION@", VERSION).replace("@ARCH@", label).replace("@APP_NAME@", artifact_name+".app").replace("@PROGRAM_NAME@", display_name)
         (disk / "INSTALL.txt").write_text(install)
         run("hdiutil", "create", "-volname", artifact_name, "-srcfolder", disk,
             "-format", "UDZO", "-ov", destination)

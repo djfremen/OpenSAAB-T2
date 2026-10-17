@@ -131,7 +131,7 @@ fn http_decision(
         return json!({"action":"validate"});
     }
     if primary && status == 401 {
-        return json!({"action":"unauthorized","message":"Incorrect security access password. Enter it again; case matters."});
+        return json!({"action":"unauthorized","message":"The security service rejected this request. Update OpenSAAB or report the problem."});
     }
     let outage = if network.is_empty() {
         matches!(status, 500 | 502 | 503 | 504)
@@ -629,30 +629,25 @@ pub fn restore(state: &Path, firmware: &str, destination: &Path) -> Result<Value
     private_write(&parent.join("working-ssa.bin"),&input)?;
     Ok(json!({"restored":true}))
 }
-// One public processing/import boundary for UI, automation and provider fallback.
-// Credentials arrive only in the bounded stdin request and are never persisted
-// in prepared transactions, receipts, error messages or provider payloads.
-fn require_password(v: &Value) -> Result<()> {
+// Cancellation remains a common boundary for UI, automation and provider fallback.
+// No operator password or feature entitlement is required in any release channel.
+fn require_active_request(v: &Value) -> Result<()> {
     let cancelled = match v.get("cancelled") {
         None | Some(Value::Null) => false,
         Some(Value::Bool(value)) => *value,
         _ => return Err("Invalid security cancellation state".into()),
     };
-    need(!cancelled, "Security processing cancelled; no data imported.")?;
-    need(
-        v["password"].as_str() == Some("OpenSAAB"),
-        "Security access requires the case-sensitive OpenSAAB password.",
-    )
+    need(!cancelled, "Security processing cancelled; no data imported.")
 }
 
 pub fn dispatch(v: &Value) -> Result<Value> {
     need(v["schema"] == 1, "Unsupported security worker schema")?;
     let operation = text(v, "op")?;
     if matches!(operation, "authorize" | "prepare" | "prepare_existing" | "http_result" | "import") {
-        require_password(v)?;
+        require_active_request(v)?;
     }
     match operation {
-        "authorize" => Ok(json!({"authorized":true,"policy":"security-access-password-1"})),
+        "authorize" => Ok(json!({"authorized":true,"policy":"security-access-password-1","mode":"no_operator_password"})),
         "status" => status::dispatch(v),
         "restore" => restore(Path::new(text(v,"state")?),text(v,"firmware")?,Path::new(text(v,"card")?)),
         "endpoints" => Ok(json!({"primary":PRIMARY,"fallback":FALLBACK})),

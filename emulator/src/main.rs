@@ -375,6 +375,9 @@ pub fn run_headless(
                             outcome = Outcome::OutputFailure;
                             break;
                         }
+                        if let Some(harness) = &mut harness {
+                            harness.operator_input(insns, splash_ready || bus.guest_splash_reached());
+                        }
                         bus.trace_event("native_operator_key", &format!("encoder={code:#04x}"));
                         if code == bus::KEY_EXIT {
                             bus.exit_key();
@@ -461,7 +464,7 @@ pub fn run_headless(
                 }
             }
             if let Some(harness) = &mut harness {
-                match harness.observe(&bus.screen_text(), insns) {
+                match harness.observe_verified(&bus.screen_text(), insns, bus.guest_splash_reached()) {
                     Err(reason) => {
                         stop = reason;
                         break;

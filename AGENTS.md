@@ -41,21 +41,21 @@ explicit. Website deployment must use its gated deployment entry point. These
 requirements govern already-authorized publication; they do not authorize a new
 release, public disclosure, credential change or announcement by themselves.
 
-## Security access password
+## Security workflow access
 
-Owner requirement recorded October 14, 2026: security access must be password
-protected with the case-sensitive password `OpenSAAB` on every version and
-platform. Require it before security-access processing or processed-response
-import, including automation and fallback routes. Blank, incorrect, cancelled
-or invalid remembered credentials must fail closed. A target without the feature
-must keep it unavailable.
+Owner clarification October 16, 2026: OpenSAAB features must not require an
+operator password or feature-access credential on any platform or release
+channel, including qualified releases. This supersedes the October 14 password
+requirement and the earlier preview-only exemption. A fixed credential included
+in distributed open source is not a product access-control boundary.
 
-Follow `security_workflow.password_policy` in the shared interface contract.
-Every application release target, including a preview, needs exact installed
-package evidence for this policy through `tools/release/deployment.py` and
-`tools/release/publish.py`. Pending password checks cannot be waived as a preview
-limitation. Preserve historical packages; do not claim they were retroactively
-changed or verified.
+Preserve internal service authentication, explicit consent, cancellation,
+response validation and SSA import integrity checks. Unavailable features remain
+unavailable. New bindings must use the common no-operator-password policy rather
+than restoring a password dialog for qualified or unknown channel metadata.
+Record each target's source adoption and exact installed verification separately;
+policy adoption alone does not qualify an executable or a vehicle workflow.
+Historical packages, manifests and evidence remain immutable.
 
 ## Development preview names
 

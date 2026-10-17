@@ -60,8 +60,7 @@ For applications, add a target for every package:
   "capabilities": ["Explicitly described package capability"],
   "security_access": {
     "policy": "security-access-password-1",
-    "mode": "password_protected",
-    "evidence": {"path": "private/security-password.json", "sha256": "EVIDENCE_SHA256"}
+    "mode": "no_operator_password"
   },
   "identity": {
     "artifact_sha256": "PACKAGE_SHA256",
@@ -91,21 +90,31 @@ Each of the five `surfaces` entries names `readme`, `homepage`, `downloads`, `up
 
 The local identity ledger defaults to `~/.local/share/opensaab/deployment-ledger.json`. It reserves a product/version/platform/architecture against package bytes and capabilities. A machine-readable fingerprint in the remote draft's notes binds the prepared public assets and identities across CI runs, including interrupted uploads. Preserve both records. Administrators who delete or rewrite records can bypass process controls; these records are not a substitute for repository access restrictions.
 
-## Mandatory security access password verification
+## Security workflow access
 
-The owner requires the case-sensitive password `OpenSAAB` for security access on
-every version and platform. This is a mandatory application release condition,
-including previews. The gate cannot waive missing or pending password evidence
-under the general allowance for pending physical checks.
+Owner clarification October 16, 2026: implemented OpenSAAB features must not
+require an operator password or feature entitlement on any platform or release
+channel, including qualified releases. New packages declare
+`mode: no_operator_password`; absent features declare `unavailable`.
+No separate password-validation file is required for open access in either
+channel. Consent, internal service authentication, cancellation, response
+validation and SSA import integrity remain. The regular artifact-test and full
+qualification requirements still govern their actual behavior.
 
-For each installed candidate, record password acceptance before security-access
-processing or processed-response import and rejection of blank, wrong,
-case-changed, cancelled and invalid remembered credentials. Exercise automation
-entry points, direct import and fallback as applicable: none may bypass the
-password gate. Keep disclosure consent and the existing primary-service
-authentication rules. A successful password check does not establish ECU access.
+The historical `preview_no_prompt` mode remains accepted for existing preview
+records, including Windows 0.2.18-preview.5. Preserve published packages and
+receipts. A fixed credential distributed in open source is not an operator
+access-control boundary or a secret. Internal service credentials remain out of
+fallback requests; this change does not alter backend authentication or consent.
 
-Each target's hashed private `security_access.evidence` file is JSON with these
+## Historical password evidence
+
+The following schema and cases describe retained `password_protected` records.
+They are not a requirement to add a password to new packages. Compatibility
+validation still checks the truth of a legacy protected record when supplied.
+New open-access records take the common path above without this file.
+
+A legacy target's hashed private `security_access.evidence` file is JSON with these
 fields:
 
 ```json
@@ -190,6 +199,6 @@ On October 14, 2026, GitHub's API rejected rulesets for the private OpenSAAB rep
 python3 -m unittest discover -s tools/release -p 'test_deployment.py' -v
 ```
 
-The tests use synthetic packages and mocked GitHub calls. They cover missing commandments, identity and manifest disagreement, changed evidence, path escapes, version reuse, dirty source, pending preview scope, completion separation, unsafe website archives, published-release protection and interrupted uploads. Security regressions also reject missing, incomplete, wrong-password, wrong-package and pending evidence before any GitHub call. They do not create a release or claim installed-app or hardware qualification.
+The tests use synthetic packages and mocked GitHub calls. They cover missing commandments, identity and manifest disagreement, changed evidence, path escapes, version reuse, dirty source, pending preview scope, completion separation, unsafe website archives, published-release protection and interrupted uploads. Security regressions retain legacy proof checks and verify that open feature access needs no password-validation file in either preview or qualified channels. They do not create a release or claim installed-app or hardware qualification.
 
 The separate baseline suite continues to govern complete cross-platform qualification. The current local inventory/contract mismatch remains visible there; do not weaken its target set or checks to make an unrelated preview pass.

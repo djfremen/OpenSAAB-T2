@@ -7,7 +7,7 @@ import Security
 enum SecurityWorker {
   static func authorize(_ binary:URL,_ password:String, cancelled:Bool=false)throws {
     let result=try call(binary,["op":"authorize","password":password,"cancelled":cancelled])
-    guard result["authorized"] as? Bool == true else {throw ShellError.message("Security access password was not accepted.")}
+    guard result["authorized"] as? Bool == true else {throw ShellError.message("Security processing is unavailable or cancelled.")}
   }
   static func call(_ binary: URL, _ fields: [String:Any]) throws -> [String:Any] {
     var request=fields; request["schema"]=1
@@ -33,16 +33,10 @@ enum SecurityWorker {
     return result
   }
 }
-enum SecurityPassword {
-  static func query(_ service:String)->[String:Any] {[kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:service,kSecAttrAccount as String:"owner-service"]}
-  static func read(service:String="com.opensaab.security")->String? {var q=query(service);q[kSecReturnData as String]=true;q[kSecMatchLimit as String]=kSecMatchLimitOne;var r:CFTypeRef?;guard SecItemCopyMatching(q as CFDictionary,&r)==errSecSuccess,let data=r as? Data else{return nil};return String(data:data,encoding:.utf8)}
-  static func remove(service:String="com.opensaab.security"){SecItemDelete(query(service) as CFDictionary)}
-  static func save(_ value:String,service:String="com.opensaab.security")throws {remove(service:service);var q=query(service);q[kSecValueData as String]=Data(value.utf8);q[kSecAttrAccessible as String]=kSecAttrAccessibleWhenUnlockedThisDeviceOnly;guard SecItemAdd(q as CFDictionary,nil)==errSecSuccess else{throw ShellError.message("Could not save the service password in Keychain.")}}
-  static func readValidated(_ worker:URL,service:String="com.opensaab.security")->String? {
-    guard let value=read(service:service) else{return nil}
-    do {try SecurityWorker.authorize(worker,value);return value}
-    catch {remove(service:service);return nil}
-  }
+enum SecurityService {
+  // Primary-service authentication is internal and is never forwarded to fallback.
+  static let credential = "OpenSAAB"
+  static let operatorPasswordRequired = false
 }
 final class SecurityJob {
   private let lock=NSLock();private var stopped=false,committing=false
@@ -182,23 +176,10 @@ extension Shell {
   }
   func securityConsent(run:URL,firmware:String,adapter:USBAdapterEndpoint?,existingHash:String) {
     let a=NSAlert();a.messageText="Process security access"
-    a.informativeText="Send the collected VIN and 714-byte security data to OpenSAAB? The service retains security-request data for up to 24 hours and operational metrics for up to 7 days. Your service password authenticates OpenSAAB only.\n\nOptionally allow one fallback to Bojer (sas.mysaab.info) if OpenSAAB is unreachable or returns 500/502/503/504. Bojer receives the same vehicle data, never your password. No fallback for authentication, TLS or invalid responses.\n\nThe emulator will stop and release USB before processing. A verified reply updates only the security region of a new working card."
+    a.informativeText="Send the collected VIN and 714-byte security data to OpenSAAB? The service retains security-request data for up to 24 hours and operational metrics for up to 7 days. OpenSAAB authenticates the primary service internally.\n\nOptionally allow one fallback to Bojer (sas.mysaab.info) if OpenSAAB is unreachable or returns 500/502/503/504. Bojer receives the same vehicle data, never OpenSAAB service credentials. No fallback for authentication, TLS or invalid responses.\n\nThe emulator will stop and release USB before processing. A verified reply updates only the security region of a new working card."
     a.addButton(withTitle:"OpenSAAB only");a.addButton(withTitle:"Allow fallback");a.addButton(withTitle:"Cancel")
     let consent=a.runModal();guard consent == .alertFirstButtonReturn || consent == .alertSecondButtonReturn else{return}
-    var password=SecurityPassword.readValidated(securityWorker)
-    if password == nil || password!.isEmpty {
-      let p=NSAlert();p.messageText="OpenSAAB security service password";p.informativeText="Enter the case-sensitive security access password OpenSAAB. This is separate from your Mac login."
-      let field=NSSecureTextField(frame:NSRect(x:0,y:34,width:330,height:26)),remember=NSButton(checkboxWithTitle:"Remember in this Mac’s Keychain",target:nil,action:nil)
-      remember.frame=NSRect(x:0,y:0,width:330,height:24)
-      let view=NSView(frame:NSRect(x:0,y:0,width:330,height:64));view.addSubview(field);view.addSubview(remember);p.accessoryView=view
-      p.addButton(withTitle:"Process");p.addButton(withTitle:"Cancel");p.window.initialFirstResponder=field
-      guard p.runModal() == .alertFirstButtonReturn,!field.stringValue.isEmpty else{return}
-      password=field.stringValue;field.stringValue=""
-      do {try SecurityWorker.authorize(securityWorker,password!)}
-      catch {showError(error.localizedDescription);return}
-      if remember.state == .on {do{try SecurityPassword.save(password!)}catch{showError(error.localizedDescription);return}}
-    }
-    let secret=password!,fallback=consent == .alertSecondButtonReturn
+    let secret=SecurityService.credential,fallback=consent == .alertSecondButtonReturn
     securityNavigating=false;securityNavigationGeneration+=1;securityResumeAdapter=adapter
     stop {self.processSecurity(run:run,firmware:firmware,adapter:adapter,password:secret,fallback:fallback,existingHash:existingHash)}
   }
@@ -223,7 +204,7 @@ extension Shell {
           let decision=try SecurityWorker.call(worker,["op":"http_result","status":reply.status,"network":reply.network,"primary":index==0,"allow_fallback":fallback,"cancelled":job.cancelled,"password":password])
           switch decision["action"] as? String {
           case "fallback":guard let next=decision["endpoint"] as? String else{throw ShellError.message("Missing fallback endpoint.")};endpoint=next
-          case "unauthorized":SecurityPassword.remove();throw ShellError.message(decision["message"] as? String ?? "Service password rejected.")
+          case "unauthorized":throw ShellError.message("The security service rejected this request. Update OpenSAAB or report the problem.")
           case "validate":
             guard let response=try JSONSerialization.jsonObject(with:reply.body) as? [String:Any] else{throw ShellError.message("Security service returned invalid JSON. No data imported.")}
             try job.beginCommit()
@@ -295,26 +276,17 @@ private final class SecurityFixtureProtocol: URLProtocol {
 enum SecurityWorkflowChecks {
   static func run() throws {
     let worker=Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("opensaab-security")
-    let service="com.opensaab.security.selftest."+UUID().uuidString
-    defer{SecurityPassword.remove(service:service)}
-    for value in ["", "wrong", "opensaab", "OpenSaab"] {
-      try SecurityPassword.save(value,service:service)
-      try ShellChecks.need(SecurityPassword.readValidated(worker,service:service)==nil && SecurityPassword.read(service:service)==nil,"invalid remembered Keychain password is rejected and removed in isolated test service")
-    }
-    try SecurityPassword.save("OpenSAAB",service:service)
-    try ShellChecks.need(SecurityPassword.readValidated(worker,service:service)=="OpenSAAB","accepted remembered Keychain password passes shared gate")
+    let access=try SecurityWorker.call(worker,["op":"authorize"])
+    try ShellChecks.need(access["authorized"] as? Bool == true && access["mode"] as? String == "no_operator_password","packaged worker permits processing without operator credentials")
+    try ShellChecks.need(!SecurityService.operatorPasswordRequired,"operator password is absent in every channel")
+    try ShellChecks.need(Bundle.main.object(forInfoDictionaryKey:"OpenSAABSecurityAccessMode") as? String == "no_operator_password","packaged application declares common open-access policy")
     func request(_ path:String,_ password:String?=nil,_ accessPassword:String="OpenSAAB")throws->SecurityHTTPResult {
       let config=URLSessionConfiguration.ephemeral;config.protocolClasses=[SecurityFixtureProtocol.self]
       return try SecurityHTTP.request(endpoint:"https://security-fixture.invalid/"+path,payload:["REQUEST_VERSION":1,"SSA_DATA":"synthetic"],password:password,accessPassword:accessPassword,worker:worker,job:SecurityJob(),configuration:config)
     }
-    for value in ["", "wrong", "opensaab", "OpenSaab", "OpenSAAB "] {
-      var rejected=false
-      do {_ = try request("primary",value,value)}catch{rejected=true}
-      try ShellChecks.need(rejected,"invalid security access password blocked before primary HTTP")
-      rejected=false
-      do {_ = try request("fallback",nil,value)}catch{rejected=true}
-      try ShellChecks.need(rejected,"invalid security access password blocked before fallback HTTP")
-    }
+    let stopped=SecurityJob();_ = stopped.cancel();var stoppedRejected=false
+    do {_ = try SecurityHTTP.request(endpoint:"https://security-fixture.invalid/primary",payload:[:],password:SecurityService.credential,accessPassword:"",worker:worker,job:stopped,configuration:URLSessionConfiguration.ephemeral)} catch {stoppedRejected=true}
+    try ShellChecks.need(stoppedRejected,"cancelled processing stops before primary service disclosure")
     let primary=try request("primary","synthetic-not-a-secret")
     let rawHeaders=try JSONSerialization.jsonObject(with:primary.body) as! [String:String]
     let headers=Dictionary(uniqueKeysWithValues:rawHeaders.map{($0.key.lowercased(),$0.value)})
