@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0-preview.95",
+  "version": "0.1.0-preview.96",
   "architecture": "arm64-v8a",
   "status": "source_prepared_not_published",
   "base": "f48529964cb89651a6e392cacfadc976144574c4",
@@ -19,5 +19,6 @@
     "Exact new packaged tests pending",
     "Lenovo field confirmation and physical adapter/vehicle testing pending",
     "No uniform qualification claimed"
-  ]
+  ],
+  "retained_prior_attempt": "preview.95 signed APK retained after packaging verifier rejected additive policy metadata; not installed or published"
 }

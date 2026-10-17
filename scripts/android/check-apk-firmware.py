@@ -76,13 +76,20 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if info.file_size > 4096:
                     raise ValueError('Oversized build metadata')
                 receipt = json.loads(apk.read(name))
-                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview','release_date','release_channel'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
+                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview','release_date','release_channel','security_access_mode'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
                     raise ValueError('Unexpected source metadata')
                 if any(key in receipt and type(receipt[key]) is not bool for key in ('source_dirty','private_preview')) or (receipt.get('source_dirty') is True and receipt.get('private_preview') is not True):
                     raise ValueError('Invalid preview source metadata')
                 if 'release_date' in receipt:
-                    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',receipt['release_date']) or receipt.get('release_channel')!='developer_preview':raise ValueError('Invalid release identity')
+                    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',receipt['release_date']) or receipt.get('release_channel') not in ('developer_preview','qualified'):raise ValueError('Invalid release identity')
                     date.fromisoformat(receipt['release_date'])
+                if receipt.get('security_access_mode') != 'no_operator_password':
+                    raise ValueError('New builds must declare the common no-operator-password policy')
+                continue
+            if name == 'assets/interface-contract.json':
+                expected = Path(__file__).resolve().parents[2] / 'android/tech2-app/interface-contract.json'
+                if info.file_size > 128*1024 or apk.read(name) != expected.read_bytes():
+                    raise ValueError('Packaged interface contract differs from matching source')
                 continue
             if name in mdi_pins:
                 data=apk.read(name);validate_elf(data[:20],profile)
