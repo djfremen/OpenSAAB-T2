@@ -7,6 +7,10 @@ enum UIParityChecks {
     // Synthetic display fixtures only: no original firmware, transport, HTTP,
     // credentials, installed Intel app or actual security-access evidence.
     let profiles = try USBAdapterDiscovery.profiles(contract)
+    let specification = try JSONSerialization.jsonObject(with:Data(contentsOf:contract)) as! [String:Any]
+    let menus = specification["menus"] as! [String:Any]
+    let advanced = menus["advanced"] as! [[String:Any]]
+    try ShellChecks.need(!advanced.contains(where:{$0["id"] as? String == "password"}),"contract retires operator-password menu rather than treating its absence as a parity gap")
     func candidate(_ vendor:Int?,_ product:Int?) -> USBAdapterCandidate {
       USBAdapterDiscovery.candidate(port:"/dev/cu.usbmodemSynthetic",vendor:vendor,product:product,profiles:profiles)!
     }

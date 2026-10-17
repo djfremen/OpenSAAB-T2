@@ -34,7 +34,7 @@ enum SecurityWorker {
   }
 }
 enum SecurityService {
-  // Primary-service authentication is internal and is never forwarded to fallback.
+  // Public compatibility header for the primary service. It does not authenticate callers or prevent endpoint abuse; never forward it to fallback.
   static let credential = "OpenSAAB"
   static let operatorPasswordRequired = false
 }
@@ -176,7 +176,7 @@ extension Shell {
   }
   func securityConsent(run:URL,firmware:String,adapter:USBAdapterEndpoint?,existingHash:String) {
     let a=NSAlert();a.messageText="Process security access"
-    a.informativeText="Send the collected VIN and 714-byte security data to OpenSAAB? The service retains security-request data for up to 24 hours and operational metrics for up to 7 days. OpenSAAB authenticates the primary service internally.\n\nOptionally allow one fallback to Bojer (sas.mysaab.info) if OpenSAAB is unreachable or returns 500/502/503/504. Bojer receives the same vehicle data, never OpenSAAB service credentials. No fallback for authentication, TLS or invalid responses.\n\nThe emulator will stop and release USB before processing. A verified reply updates only the security region of a new working card."
+    a.informativeText="Send the collected VIN and 714-byte security data to OpenSAAB? The service retains security-request data for up to 24 hours and operational metrics for up to 7 days.\n\nOptionally allow one fallback to Bojer (sas.mysaab.info) if OpenSAAB is unreachable or returns 500/502/503/504. Bojer receives the same vehicle data, never the OpenSAAB primary-service header. No fallback for authentication, TLS or invalid responses.\n\nThe emulator will stop and release USB before processing. A verified reply updates only the security region of a new working card."
     a.addButton(withTitle:"OpenSAAB only");a.addButton(withTitle:"Allow fallback");a.addButton(withTitle:"Cancel")
     let consent=a.runModal();guard consent == .alertFirstButtonReturn || consent == .alertSecondButtonReturn else{return}
     let secret=SecurityService.credential,fallback=consent == .alertSecondButtonReturn
@@ -290,9 +290,9 @@ enum SecurityWorkflowChecks {
     let primary=try request("primary","synthetic-not-a-secret")
     let rawHeaders=try JSONSerialization.jsonObject(with:primary.body) as! [String:String]
     let headers=Dictionary(uniqueKeysWithValues:rawHeaders.map{($0.key.lowercased(),$0.value)})
-    try ShellChecks.need(primary.status==200 && headers["authorization"]=="Bearer synthetic-not-a-secret" && headers["x-opensaab-consent"]=="security-storage-24h-v1","native primary sends service authentication and explicit retention consent")
+    try ShellChecks.need(primary.status==200 && headers["authorization"]=="Bearer synthetic-not-a-secret" && headers["x-opensaab-consent"]=="security-storage-24h-v1","native primary sends the compatibility header and explicit retention consent")
     let fallback=try request("fallback"),f=try JSONSerialization.jsonObject(with:fallback.body) as! [String:String]
-    try ShellChecks.need(!f.keys.contains(where:{$0.lowercased()=="authorization" || $0.lowercased()=="x-opensaab-consent"}),"native fallback never receives service credentials")
+    try ShellChecks.need(!f.keys.contains(where:{$0.lowercased()=="authorization" || $0.lowercased()=="x-opensaab-consent"}),"native fallback never receives the primary compatibility header")
     try ShellChecks.need(try request("denied").status==401 && request("outage").status==503,"native HTTP status preserved for shared provider decision")
     try ShellChecks.need(try request("oversize").network=="oversize","native response body limited to one MiB")
     try ShellChecks.need(try request("tls").network=="tls_or_invalid","native TLS failure cannot become outage fallback")

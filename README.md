@@ -1,6 +1,6 @@
-# OpenSAAB 0.2.27-preview.2 — macOS Intel and Apple silicon
+# OpenSAAB 0.2.27-preview.3 — macOS Intel and Apple silicon
 
-Scoped native macOS development build based on published Intel preview.7, retaining its Nano HS-CAN filter, bounded key-status reads and docked keypad. Both architectures remove the operator password prompt and worker feature-access gate, preserve internal primary-service authentication and consent, and adopt the verified-welcome/manual-session correction.
+Scoped native macOS development build based on published Intel preview.7, retaining its Nano HS-CAN filter, bounded key-status reads and docked keypad. Both architectures remove the operator password prompt and worker feature-access gate, preserve the primary protocol header and consent, and adopt the verified-welcome/manual-session correction.
 
 This is a new build candidate, not a new physical qualification. Intel and Apple-silicon checks are recorded separately. Wider adapters/vehicles, sustained use and complete conformance remain pending. The historical [Intel scope](emulator/docs/INTEL_PREVIEW_2026-10-14.md) keeps its original version and evidence.
 This clean source excludes private Git history, vehicle runs, credentials and

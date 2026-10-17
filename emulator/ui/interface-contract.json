@@ -305,7 +305,7 @@
       "legacy_credential": {
         "password": "OpenSAAB",
         "case_sensitive": true,
-        "scope": "Historical fixed worker/service credential only; not an operator feature-access requirement."
+        "scope": "Public fixed primary-service compatibility value only. It does not authenticate or authorize callers and provides no endpoint abuse protection; server-side controls are separate."
       },
       "all_channels": {
         "mode": "no_operator_password",
@@ -347,6 +347,11 @@
       "receipt": "releases/consistent-baseline/SECURITY_COLLECTION_PATHS_2026-10-13.json",
       "guided_scope": "Recognized English menus; operator confirms Saab 9-3 Sport (9440), MY2003\u20132012. Fresh VIN supplies the year without an external lookup. Unknown model/year/language falls back to manual.",
       "context_arrival_rule": "A new session directory can precede fresh verified VIN metadata. Wait without constructing a cancelled navigator, then start assistance when matching same-run context arrives. Never substitute previous identity or override an operator manual takeover."
+    },
+    "operator_password_menu_retired": {
+      "id": "password",
+      "retired_date": "2026-10-16",
+      "reason": "No operator password or feature credential on any channel. Do not restore a password menu as a parity gap."
     }
   },
   "dtc_reports": {
@@ -561,10 +566,6 @@
       {
         "id": "system",
         "label": "System Check"
-      },
-      {
-        "id": "password",
-        "label": "Security Access Password"
       },
       {
         "id": "reset",

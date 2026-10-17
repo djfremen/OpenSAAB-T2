@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "version": "0.2.27-preview.2",
+  "version": "0.2.27-preview.3",
   "predecessor_revision": "a0363f131d33f42c898ba2f817c430c213eddf27",
   "scope": "Focused all-channel open-access and manual-session candidate for Intel and Apple silicon; exact source and retained build inputs, without private history, captures or diagnostic-card binaries.",
   "reviewed_changes": [
     "Retain published Intel preview.7 Nano filter/key-status/docked-keypad behavior",
     "No operator feature password on UI, automation, primary/fallback or import routes",
-    "Preserve cancellation, internal service authentication, consent and SSA-only import validation",
+    "Preserve cancellation, the public primary-service compatibility header, consent and SSA-only import validation",
     "Use verified original welcome and hand manual navigation to the operator without the erroneous Splash deadline",
     "Full version and architecture on installed identity, program, window, installer and manifest"
   ]

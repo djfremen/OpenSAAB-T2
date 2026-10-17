@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 SOURCES = HERE / "shared"
 EMULATOR = HERE.parents[1]
 ROOT = EMULATOR.parent
-VERSION = "0.2.27-preview.2"
+VERSION = "0.2.27-preview.3"
 TARGETS = {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}
 
 def run(*args, **kwargs):
@@ -33,10 +34,18 @@ def build_id(source_commit=None):
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
+def numeric_bundle_version(version):
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z0-9.-]+\.([1-9]\d*))?", version)
+    if not match:
+        raise ValueError("Specify --bundle-version for a nonstandard full preview version")
+    major, minor, patch = map(int, match.groups()[:3])
+    return f"{major * 10000 + minor * 100 + patch}.{match[4] or 0}"
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     global VERSION
     parser.add_argument("--version", default=VERSION)
+    parser.add_argument("--bundle-version", help="Numeric CFBundleVersion; full preview identity remains in packaged metadata")
     parser.add_argument("--release-channel", choices=("developer_preview","qualified"), default="developer_preview")
     parser.add_argument("--arch", choices=TARGETS, default="arm64")
     parser.add_argument("--output", type=Path)
@@ -46,6 +55,9 @@ def main():
     parser.add_argument("--source-commit", help="Pinned predecessor revision for the private non-Git source snapshot")
     options = parser.parse_args()
     VERSION = options.version
+    bundle_version = options.bundle_version or numeric_bundle_version(VERSION)
+    if not re.fullmatch(r"[0-9]{1,4}(?:\.[0-9]{1,2}){0,2}", bundle_version):
+        parser.error("--bundle-version must contain one to three numeric components")
     support = json.loads((EMULATOR / "ui/support-files.json").read_text())
     support_inputs = {}
     if not options.without_support:
@@ -112,7 +124,7 @@ def main():
         info = dict(CFBundleName=display_name, CFBundleDisplayName=display_name,
             CFBundleIdentifier="com.opensaab.desktop", CFBundleExecutable="OpenSAAB",
             CFBundlePackageType="APPL", CFBundleShortVersionString=VERSION,
-            CFBundleVersion=VERSION, CFBundleIconFile="OpenSAAB.icns",
+            CFBundleVersion=bundle_version, OpenSAABFullVersion=VERSION, CFBundleIconFile="OpenSAAB.icns",
             LSMinimumSystemVersion="12.0", NSHighResolutionCapable=True, OpenSAABBuild=build_id(options.source_commit),
             OpenSAABReleaseChannel=options.release_channel, OpenSAABSecurityAccessMode="no_operator_password",
             NSBluetoothAlwaysUsageDescription="Read VIN and engine information using an explicitly selected, compatible Bluetooth adapter.")
@@ -169,7 +181,7 @@ def main():
             if not options.source_commit or len(options.source_commit) != 40 or any(c not in "0123456789abcdef" for c in options.source_commit):
                 raise SystemExit("Private snapshot packaging requires --source-commit with the pinned predecessor SHA")
             commit, dirty, source_shape = options.source_commit, True, "private_modified_frozen_snapshot"
-        provenance = dict(release_channel=options.release_channel, security_access_mode="no_operator_password", security_access={"policy":"security-access-password-1","mode":"no_operator_password"}, installed_program_name=artifact_name+".app", program_display_name=display_name, version=VERSION, platform="macos", architecture=architecture, source_commit=commit,
+        provenance = dict(bundle_version=bundle_version, release_channel=options.release_channel, security_access_mode="no_operator_password", security_access={"policy":"security-access-password-1","mode":"no_operator_password"}, installed_program_name=artifact_name+".app", program_display_name=display_name, version=VERSION, platform="macos", architecture=architecture, source_commit=commit,
             source_dirty=dirty, firmware_included=bool(support_inputs), diagnostic_card_included=False,
             support_profile="android-approved" if support_inputs else "import-only",
             support_files=support if support_inputs else {}, signing="ad-hoc; not notarized",

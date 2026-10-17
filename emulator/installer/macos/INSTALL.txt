@@ -15,7 +15,7 @@ Classic MDI have separate physical test scope. Bluetooth support and selected
 diagnostic-card languages retain their existing preview limits.
 
 Security processing/import asks for data-sharing consent and never asks the
-operator for a feature password. Primary-service authentication remains internal;
+operator for a feature password. The public primary-service compatibility header is retained; it does not authenticate callers;
 fallback never receives that credential. Cancellation, reply validation and
 SSA-only import integrity checks remain. An imported result is not ECU approval.
 
