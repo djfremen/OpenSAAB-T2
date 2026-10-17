@@ -109,6 +109,7 @@ static class SecurityHTTP
 }
 sealed partial class SessionWindow
 {
+    bool PreviewSecurityNoPrompt {get{return ProductIdentity.PreviewSecurityNoPrompt;}}
     string SecurityWorker {get{return Path.Combine(root,"opensaab-security.exe");}}
     SecurityJob securityJob;bool securityWorkflowChecking;DateTime securityWorkflowPoll=DateTime.MinValue;string transferRun; bool securityNavigating; long securityNavigationGeneration; Dictionary<string,object> securityNavigation=new Dictionary<string,object>();
     Dictionary<string,object> SecurityCall(string op,params object[] pairs)
@@ -142,6 +143,7 @@ sealed partial class SessionWindow
     }
     string AskSecurityPassword()
     {
+        if(PreviewSecurityNoPrompt)return "OpenSAAB";
         using(var f=Dialog("Security Access Password",540,260)){
             var field=new TextBox{UseSystemPasswordChar=true,Dock=DockStyle.Top,MaxLength=512};
             var remember=new CheckBox{Text="Remember for this Windows user (encrypted)",Dock=DockStyle.Top,Height=36};
@@ -152,11 +154,11 @@ sealed partial class SessionWindow
             f.Controls.Add(remember);f.Controls.Add(field);f.Controls.Add(help);f.Controls.Add(buttons);f.Shown+=delegate{field.Focus();};f.ShowDialog(this);return password;
         }
     }
-    void PasswordSettings(){if(busy)return;Popup(new[]{"Enter security service password","Forget saved password"},new Action[]{()=>{AskSecurityPassword();},()=>{SecurityPassword.Forget(state);status.Text="Saved service password removed";}});}
+    void PasswordSettings(){if(busy||PreviewSecurityNoPrompt)return;Popup(new[]{"Enter security service password","Forget saved password"},new Action[]{()=>{AskSecurityPassword();},()=>{SecurityPassword.Forget(state);status.Text="Saved service password removed";}});}
     bool? SecurityConsent()
     {
         using(var f=Dialog("Share VIN and process security data",730,400)){
-            var text=new Label{Dock=DockStyle.Fill,Padding=new Padding(15),Text="Send the collected VIN and 714-byte security file to OpenSAAB? It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Request outcome/timing records are kept for seven days. No processed response is archived by the service.\r\n\r\nOpenSAAB is contacted first. Allow fallback also permits sending the same data to Bojer (sas.mysaab.info), a separate service, if OpenSAAB is unreachable or returns an outage. Bojer never receives your password.\r\n\r\nThe firmware stops and releases USB before processing. A validated response updates only the security region in a new working card, then firmware restarts automatically when the same adapter is available. Keep the same vehicle and adapter connected."};
+            var text=new Label{Dock=DockStyle.Fill,Padding=new Padding(15),Text="Send the collected VIN and 714-byte security file to OpenSAAB? It is stored privately for processing and troubleshooting, with deletion scheduled after one day. Request outcome/timing records are kept for seven days. No processed response is archived by the service.\r\n\r\nOpenSAAB is contacted first. Allow fallback also permits sending the same data to Bojer (sas.mysaab.info), a separate service, if OpenSAAB is unreachable or returns an outage. Bojer never receives OpenSAAB authentication credentials.\r\n\r\nThe firmware stops and releases USB before processing. A validated response updates only the security region in a new working card, then firmware restarts automatically when the same adapter is available. Keep the same vehicle and adapter connected."};
             bool? choice=null;var buttons=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=60};
             buttons.Controls.Add(Button("OpenSAAB only",()=>{choice=false;f.Close();},true));buttons.Controls.Add(Button("Allow fallback",()=>{choice=true;f.Close();}));buttons.Controls.Add(Button("Cancel",()=>f.Close()));foreach(Control b in buttons.Controls){b.Dock=DockStyle.None;b.Size=new Size(210,48);}
             f.Controls.Add(text);f.Controls.Add(buttons);f.ShowDialog(this);return choice;
@@ -206,7 +208,7 @@ sealed partial class SessionWindow
         try{available=await Task.Run(()=>SecurityCall("inspect_existing","state",state,"run",run,"firmware",selected));}
         catch(Exception e){SetBusy(false);if(MessageBox.Show(this,e.Message+"\n\nStart a fresh collection through the original firmware? Existing sessions are preserved.","Security collection",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes)BeginFreshSecurity();return;}
         SetBusy(false);if(session!=current||firmware.Selected.id!=selected)return;
-        string password=SecurityPassword.ReadValidated(state)??AskSecurityPassword();if(String.IsNullOrEmpty(password))return;
+        string password=PreviewSecurityNoPrompt?"OpenSAAB":SecurityPassword.ReadValidated(state)??AskSecurityPassword();if(String.IsNullOrEmpty(password))return;
         bool? consent=SecurityConsent();if(!consent.HasValue)return;
         var job=new SecurityJob();securityJob=job;SetBusy(true);string inputHash=(string)available["input_hash"];
         try{
@@ -225,7 +227,10 @@ sealed partial class SessionWindow
                     var decision=SecurityCall("http_result","status",reply.Status,"network",reply.Network,"primary",i==0,"allow_fallback",consent.Value,"cancelled",job.Cancelled,"password",password);
                     string action=(string)decision["action"];
                     if(action=="fallback"){endpoint=(string)decision["endpoint"];continue;}
-                    if(action=="unauthorized")SecurityPassword.Forget(state);
+                    if(action=="unauthorized"){
+                        if(PreviewSecurityNoPrompt)throw new IOException("The security service rejected this developer preview. Update or report the problem.");
+                        SecurityPassword.Forget(state);
+                    }
                     if(action!="validate")throw new IOException((string)decision["message"]);
                     var response=new JavaScriptSerializer{MaxJsonLength=1024*1024}.Deserialize<Dictionary<string,object>>(reply.Body);
                     job.BeginCommit();return SecurityCall("import","attempt",attempt,"provider",endpoint,"response",response,"password",password,"cancelled",job.Cancelled);

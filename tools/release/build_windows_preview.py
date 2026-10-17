@@ -98,6 +98,7 @@ def main():
     (stage/'licenses/rebuilt-cargo-dependencies.json').write_text(json.dumps(notices, indent=2)+'\n')
     (stage/'interface-provenance.json').write_text(json.dumps({'source_revision':revision,
         'interface_contract_sha256':sha(root/'emulator/ui/interface-contract.json'),
+        'release_channel':version['release_channel'], 'security_access_mode':version['security_access_mode'],
         'scope':'Scoped Windows preview; complete common-interface qualification pending.'}, indent=2)+'\n')
     (stage/'windows-dependencies.json').write_text(json.dumps({'version':version['version'],
         'source_revision':revision, 'target':'x86_64-pc-windows-gnu',

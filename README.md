@@ -1,8 +1,9 @@
-# OpenSAAB Windows 0.2.18-preview.3 matching source
+# OpenSAAB Windows 0.2.18-preview.4 matching source
 
 Scoped Windows x86_64 preview: recognize the active Saab 148.000 welcome before
-deferred CANdi startup, report the installed shell version/revision, and enforce
-the shared security-access password before processing, fallback and import.
+deferred CANdi startup, report the installed shell version/revision, and use
+the developer-preview security workflow without an operator password prompt.
+Internal service authentication, consent, cancellation and import validation remain.
 
 This is an incomplete development preview. Physical adapter, vehicle/security,
 native x64, MSI and full interface-conformance checks remain pending. No claim

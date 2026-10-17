@@ -91,14 +91,22 @@ Each of the five `surfaces` entries names `readme`, `homepage`, `downloads`, `up
 
 The local identity ledger defaults to `~/.local/share/opensaab/deployment-ledger.json`. It reserves a product/version/platform/architecture against package bytes and capabilities. A machine-readable fingerprint in the remote draft's notes binds the prepared public assets and identities across CI runs, including interrupted uploads. Preserve both records. Administrators who delete or rewrite records can bypass process controls; these records are not a substitute for repository access restrictions.
 
-## Mandatory security access password verification
+## Qualified-release security access password verification
 
-The owner requires the case-sensitive password `OpenSAAB` for security access on
-every version and platform. This is a mandatory application release condition,
-including previews. The gate cannot waive missing or pending password evidence
-under the general allowance for pending physical checks.
+Owner clarification October 16, 2026: developer previews do not ask the operator
+for a security password and do not require a separate `security_access.evidence`
+file. Declare `mode: preview_no_prompt` for an implemented preview workflow, or
+`unavailable` where the feature is absent. The preview gate checks the declared
+policy/mode and matching manifest, but does not require or interpret the optional
+security-validation file. No verification pass is inferred from this exemption.
 
-For each installed candidate, record password acceptance before security-access
+Qualified releases retain the case-sensitive `OpenSAAB` password and mandatory
+exact installed-package evidence below. The `preview_no_prompt` mode is rejected
+for qualified releases. Internal primary-service authentication remains in the
+native bindings; the password is never forwarded to the fallback. Keep existing
+consent, cancellation, reply validation and SSA import checks in all channels.
+
+For each qualified installed candidate, record password acceptance before security-access
 processing or processed-response import and rejection of blank, wrong,
 case-changed, cancelled and invalid remembered credentials. Exercise automation
 entry points, direct import and fallback as applicable: none may bypass the
@@ -190,6 +198,6 @@ On October 14, 2026, GitHub's API rejected rulesets for the private OpenSAAB rep
 python3 -m unittest discover -s tools/release -p 'test_deployment.py' -v
 ```
 
-The tests use synthetic packages and mocked GitHub calls. They cover missing commandments, identity and manifest disagreement, changed evidence, path escapes, version reuse, dirty source, pending preview scope, completion separation, unsafe website archives, published-release protection and interrupted uploads. Security regressions also reject missing, incomplete, wrong-password, wrong-package and pending evidence before any GitHub call. They do not create a release or claim installed-app or hardware qualification.
+The tests use synthetic packages and mocked GitHub calls. They cover missing commandments, identity and manifest disagreement, changed evidence, path escapes, version reuse, dirty source, pending preview scope, completion separation, unsafe website archives, published-release protection and interrupted uploads. Security regressions retain qualified-release proof checks and verify that preview publication needs no security-validation file. They do not create a release or claim installed-app or hardware qualification.
 
 The separate baseline suite continues to govern complete cross-platform qualification. The current local inventory/contract mismatch remains visible there; do not weaken its target set or checks to make an unrelated preview pass.

@@ -14,6 +14,15 @@ static class ProductIdentity
     public static string Revision { get { return (string)metadata["source_revision"]; } }
     public static string Architecture { get { return (string)metadata["architecture"]; } }
     public static string ProgramName { get { return "OpenSAAB " + Version + " " + Architecture; } }
+    public static bool PreviewSecurityNoPrompt { get { return SelectPreviewNoPrompt(metadata); } }
+    internal static bool SelectPreviewNoPrompt(Dictionary<string, object> value)
+    {
+        object channel, mode;
+        return value != null && value.TryGetValue("release_channel", out channel)
+            && Object.Equals(channel, "developer_preview")
+            && value.TryGetValue("security_access_mode", out mode)
+            && Object.Equals(mode, "preview_no_prompt");
+    }
     static Dictionary<string, object> Load()
     {
         using (var stream = typeof(ProductIdentity).Assembly.GetManifestResourceStream("opensaab-build.json"))

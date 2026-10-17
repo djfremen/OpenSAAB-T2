@@ -35,6 +35,16 @@ static class SecurityWorkflowTests
             probe.StartInfo=new System.Diagnostics.ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"chipsoft-probe.exe"),"--help"){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true};probe.Start();string help=probe.StandardOutput.ReadToEnd();Need(probe.WaitForExit(5000)&&probe.ExitCode==0&&help.Contains("Windows CDC GET_INFO only"),"packaged Windows identification entry point");
         }
         PasswordCases();
+        Need(ProductIdentity.PreviewSecurityNoPrompt,"explicit embedded preview policy");
+        Need(!ProductIdentity.SelectPreviewNoPrompt(null),"missing policy retains password behavior");
+        Need(!ProductIdentity.SelectPreviewNoPrompt(new Dictionary<string,object>{{"release_channel","qualified"},{"security_access_mode","preview_no_prompt"}}),"qualified metadata retains password behavior");
+        Need(!ProductIdentity.SelectPreviewNoPrompt(new Dictionary<string,object>{{"release_channel","developer_preview"}}),"incomplete preview metadata retains password behavior");
+        // Invoke the actual installed prompt entry point without a constructed form.
+        // A dialog path cannot succeed here; explicit preview metadata returns internally.
+        var window=(SessionWindow)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(SessionWindow));
+        var ask=typeof(SessionWindow).GetMethod("AskSecurityPassword",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
+        Need(Object.Equals(ask.Invoke(window,null),"OpenSAAB"),"preview entry point returns internal credential without operator dialog");
+        File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"preview-security-selftest.json"),new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new {version=ProductIdentity.Version,source_revision=ProductIdentity.Revision,mode="preview_no_prompt",prompt_entry_point="returned_without_dialog",unknown_metadata="password_behavior",qualified_metadata="password_behavior"}));
         string worker=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"opensaab-security.exe");
         var endpoints=DesktopWorker.Call(worker,new Dictionary<string,object>{{"op","endpoints"}});
         string primary=(string)endpoints["primary"],fallback=(string)endpoints["fallback"];

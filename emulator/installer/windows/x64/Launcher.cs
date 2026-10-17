@@ -9,8 +9,8 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyVersion("0.2.18.3")]
-[assembly: System.Reflection.AssemblyFileVersion("0.2.18.3")]
+[assembly: System.Reflection.AssemblyVersion("0.2.18.4")]
+[assembly: System.Reflection.AssemblyFileVersion("0.2.18.4")]
 
 static class Launcher
 {
@@ -607,10 +607,12 @@ sealed partial class SessionWindow : Form
     }
     void AdapterTools()
     {
-        Popup(new[] { "Transport: " + TransportPlan.Label(transport), "Use OpenSAAB direct USB/CDC (default)", "Use " + TransportPlan.OemComparisonLabel + " (vendor J2534)", "Session mode: " + SessionMode.Label(transport == WindowsTransport.VendorJ2534 ? ChipsoftSessionMode.ReadOnly : mode), "Security Access Password", "Collect fresh security data", "About transport comparison" }, new Action[] {
+        var labels=new System.Collections.Generic.List<string>(new[] { "Transport: " + TransportPlan.Label(transport), "Use OpenSAAB direct USB/CDC (default)", "Use " + TransportPlan.OemComparisonLabel + " (vendor J2534)", "Session mode: " + SessionMode.Label(transport == WindowsTransport.VendorJ2534 ? ChipsoftSessionMode.ReadOnly : mode), "Security Access Password", "Collect fresh security data", "About transport comparison" }); var actions=new System.Collections.Generic.List<Action>(new Action[] {
             () => { }, () => SelectTransport(WindowsTransport.ChipsoftDirect), () => SelectTransport(WindowsTransport.VendorJ2534), SelectSessionMode, PasswordSettings, BeginFreshSecurity,
             () => TextDialog("Transport comparison", "OpenSAAB direct USB/CDC is the default and the supported route. " + TransportPlan.OemComparisonLabel + " is for internal A/B testing against the vendor stack only; it is not a supported adapter path.\r\n\r\nThe x64 app starts an x86 helper for the manufacturer's 32-bit J2534 DLL. Direct USB/CDC uses OpenSAAB's shared Chipsoft backend and is Chipsoft-only.\r\n\r\nEach session stays on its selected path; missing drivers do not cause fallback. Stop emulation before changing transport. The direct route offers Full native control, Read-only diagnostics and Collect security seeds. The OEM comparison stays read-only. A local gate rejection is not an ECU rejection. Direct security collection, API processing, response import and firmware resume use the shared security workflow.\r\n\r\nConnect reads the VIN, then starts firmware without an automatic DTC probe. Each run saves transport.json with the selected route, firmware and executable hashes. The standalone DTC shortcut requires the OEM path.")
         });
+        if(PreviewSecurityNoPrompt){labels.RemoveAt(4);actions.RemoveAt(4);}
+        Popup(labels.ToArray(),actions.ToArray());
     }
     void SelectTransport(WindowsTransport choice)
     {

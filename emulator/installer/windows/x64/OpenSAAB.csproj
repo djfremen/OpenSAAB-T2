@@ -3,7 +3,7 @@
     <TargetFramework>net48</TargetFramework>
     <OutputType>WinExe</OutputType>
     <PlatformTarget>x64</PlatformTarget>
-    <AssemblyName>OpenSAAB-0.2.18-preview.3-windows-x86_64</AssemblyName>
+    <AssemblyName>OpenSAAB-0.2.18-preview.4-windows-x86_64</AssemblyName>
     <StartupObject>Launcher</StartupObject>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <LangVersion>5</LangVersion>

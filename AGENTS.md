@@ -43,19 +43,17 @@ release, public disclosure, credential change or announcement by themselves.
 
 ## Security access password
 
-Owner requirement recorded October 14, 2026: security access must be password
-protected with the case-sensitive password `OpenSAAB` on every version and
-platform. Require it before security-access processing or processed-response
-import, including automation and fallback routes. Blank, incorrect, cancelled
-or invalid remembered credentials must fail closed. A target without the feature
-must keep it unavailable.
+Owner clarification October 16, 2026 supersedes the preview portion of the
+October 14 requirement: developer previews have no operator security-password
+prompt and require no separate security-validation evidence file for publication.
+Keep service authentication internal and preserve consent, cancellation, response
+validation, SSA import checks and features that are unavailable.
 
-Follow `security_workflow.password_policy` in the shared interface contract.
-Every application release target, including a preview, needs exact installed
-package evidence for this policy through `tools/release/deployment.py` and
-`tools/release/publish.py`. Pending password checks cannot be waived as a preview
-limitation. Preserve historical packages; do not claim they were retroactively
-changed or verified.
+Qualified releases still require the case-sensitive password `OpenSAAB` before
+security-access processing or processed-response import, including automation
+and fallback routes. Follow `security_workflow.password_policy` in the shared
+interface contract. Exact installed-package password evidence remains mandatory
+for qualified releases. Preserve historical packages and their evidence.
 
 ## Development preview names
 

@@ -285,9 +285,23 @@
       "owner_recorded_date": "2026-10-14",
       "password": "OpenSAAB",
       "case_sensitive": true,
-      "scope": "Every version and platform must require the accepted password before security-access processing or processed-response import. All UI, automation and fallback entry points obey the same gate; a remembered invalid password cannot bypass it. An unavailable feature stays unavailable.",
-      "verification": "Each exact installed package must accept OpenSAAB and block blank, wrong, case-changed, cancelled and invalid remembered credentials, unauthenticated fallback and import. Missing or pending evidence blocks publication, including previews. Correct password acceptance does not establish ECU authorization.",
-      "adoption": "Standing requirement and release evidence gate adopted; exact installed-artifact verification remains pending for every target. Historical packages are preserved."
+      "scope": "Qualified releases require the accepted password before security-access processing or processed-response import, including UI, automation and fallback. Developer previews have no operator password prompt. Unavailable features stay unavailable.",
+      "verification": "Exact installed-package password acceptance/rejection evidence is mandatory for qualified releases. Developer previews require no separate security-validation file and receive no inferred pass. Correct password acceptance does not establish ECU authorization.",
+      "adoption": "October 16 owner preview exemption adopted in policy, gate and Android/macOS/Windows source; exact new installed packages remain to be verified. Historical signed packages and evidence are preserved.",
+      "owner_clarified_date": "2026-10-16",
+      "developer_preview": {
+        "mode": "preview_no_prompt",
+        "operator_password_prompt": false,
+        "validation_file_required": false,
+        "selection": "Explicit packaged developer-preview metadata; unknown or qualified metadata retains password behavior.",
+        "preserved": [
+          "internal primary-service authentication",
+          "explicit disclosure consent",
+          "cancellation",
+          "response validation",
+          "SSA import integrity checks"
+        ]
+      }
     },
     "worker": "opensaab-security schema 1 JSON on stdin/stdout",
     "reference_revision": "6fe2c78",
@@ -365,7 +379,12 @@
     "follow_up_contact": "Optional email or forum handle, excluded unless explicit unchecked-by-default consent is selected; included in privately reviewed description only.",
     "diagnostics": "Bounded fixed failure categories, session association, lifecycle and security-handoff events; no raw traffic or security payloads.",
     "native_panic_location": {
-      "fields": ["file", "line", "column", "thread"],
+      "fields": [
+        "file",
+        "line",
+        "column",
+        "thread"
+      ],
       "source": "Last recognized Rust panic header in the bounded log tail; accept older headers and current numeric-thread-ID headers. Export at most three relative source-path components, integer source position and bounded thread name. Exclude panic message, raw output, build prefix and numeric thread ID.",
       "retention": "Offline and Nano process readers retain panic headers after the 2 MiB routine-output cap; routine output remains capped and the report tail remains bounded.",
       "submission": "Existing frozen review, consent and explicit send; deploy additive strict server validation before distributing a collector that emits the field.",

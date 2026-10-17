@@ -1,7 +1,7 @@
-# OpenSAAB 0.2.18-preview.3 x86_64
+# OpenSAAB 0.2.18-preview.4 x86_64
 
 Extract this portable preview into a new folder and launch
-`OpenSAAB-0.2.18-preview.3-windows-x86_64.exe`. Its window and program name read
+`OpenSAAB-0.2.18-preview.4-windows-x86_64.exe`. Its window and program name read
 their full version, architecture and source revision from packaged metadata.
 Keep historical packages; stop an existing session before launching this one.
 The normal WindowsData folder, firmware, settings and retained reports are reused.
@@ -12,10 +12,10 @@ hard-coded Windows report version and records the launching app identity in
 each new session's local transport evidence. A newly prepared report can still
 include older retained sessions; its top-level version identifies the preparer.
 
-Security processing, fallback and processed-response import require the
-case-sensitive `OpenSAAB` password through the shared worker boundary. Stored
-credentials are validated before use. A password or POST-AUTH label does not
-establish that a vehicle module accepted security access.
+This developer preview has no operator security-password prompt. Service
+authentication stays internal. Consent, cancellation, response validation and
+security-data import checks remain active. A POST-AUTH label does not establish
+that a vehicle module accepted security access.
 
 The original direct Chipsoft route and explicit OEM comparison route are
 preserved. No SPS, used-CIM/key prerequisite, receive-FIFO or cold adapter-startup

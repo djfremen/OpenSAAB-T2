@@ -2,7 +2,7 @@
 
 ## The ten commandments
 
-Adopted October 14, 2026 · Revision 2. Inspired by the [ArtCraft workflow review](ARTCRAFT_WORKFLOW_REVIEW_2026-10-14.md), adapted to OpenSAAB's original-firmware workflows, independent platform channels and exact-artifact evidence. These are OpenSAAB's rules, not a reproduction of ArtCraft's private standards.
+Adopted October 14, 2026 · Revision 3 (preview security simplification, October 16). Inspired by the [ArtCraft workflow review](ARTCRAFT_WORKFLOW_REVIEW_2026-10-14.md), adapted to OpenSAAB's original-firmware workflows, independent platform channels and exact-artifact evidence. These are OpenSAAB's rules, not a reproduction of ArtCraft's private standards.
 
 Apply these commandments to application releases, installers, update catalogs, repository documentation and website deployments. The existing [product standard](../AGENTS.md), [interface contract](../emulator/ui/interface-contract.json) and [qualification procedure](../releases/consistent-baseline/README.md) supply the detailed requirements. The [delivery playbook](OPENSAAB_DELIVERY_PLAYBOOK.md) describes the proposed implementation. Record checks manually where automation is not yet implemented; this document does not establish that a pipeline already enforces them.
 
@@ -36,12 +36,13 @@ Exercise the actual installed candidate on the environment for which a claim is 
 
 **Evidence:** exact package hash, OS/architecture, adapter model/firmware, scenario, result and retained receipt. A pass from another binary, adapter or architecture cannot qualify this one. Pending work stays visible in preview notes; uniform-release claims require the common qualification gate.
 
-**Mandatory security-access check:** every version and platform requires the
-case-sensitive password `OpenSAAB` before security-access processing or
-processed-response import. Verify acceptance and rejection paths on the exact
-installed package, including automation, remembered credentials and fallback.
-A target with no implementation must prove access remains unavailable. Missing
-or pending password evidence blocks publication even for a scoped preview.
+**Security-access policy:** qualified releases require the case-sensitive
+password `OpenSAAB` before processing/import and exact installed-package
+acceptance/rejection evidence. Owner clarification October 16: developer previews
+have no operator password prompt and no mandatory security-validation evidence
+file. Keep internal service authentication, consent, cancellation and SSA
+validation/import checks. Pending preview validation must not be presented as
+verified security or vehicle qualification.
 
 ### VI. Thou shalt preserve the user's work
 
@@ -91,7 +92,7 @@ Previous verified deployment or recommendation:
 [ ] III  Full packaged and installed identity verified where applicable.
 [ ] IV   Build/process pins, hashes and signing status retained.
 [ ] V    Exact-candidate checks and pending physical scope recorded; OpenSAAB
-         security-access password gate (or unavailable feature) verified.
+         security policy declared; qualified releases include installed password proof.
 [ ] VI   Applicable installation, upgrade, data and session checks completed.
 [ ] VII  Instructions, gaps, release notes and support links updated.
 [ ] VIII README, website, downloads and updater agree for the selected channel.
