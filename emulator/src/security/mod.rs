@@ -605,6 +605,14 @@ pub fn restore(state: &Path, firmware: &str, destination: &Path) -> Result<Value
     let source = Path::new(text(&latest,"run")?);
     context(state, source, firmware)?;
     let input = working_input(source)?;
+    // A completed offline run can contain only the original, cleared SSA and
+    // no vehicle observation. It has no security data to restore. Collected,
+    // imported, malformed or missing security evidence keeps the normal checks.
+    if latest["mode"] == "offline" && input.len() == SIZE
+        && input.iter().all(|byte| *byte == 255)
+    {
+        return Ok(json!({"restored":false}));
+    }
     let observation = read_json(&state.join("vehicle-status.json"))?;
     if vin(&input).ok() != observation["vin"].as_str() || vin(&input).is_err() { return Ok(json!({"restored":false})); }
     if validate_input(&input).is_err() && !(input.len()==SIZE && input[0]==0xb1 && input[1]==0 && input[0x26..0x2e].iter().all(|b| (32..=126).contains(b)) && records(&input).is_ok()) { return Ok(json!({"restored":false})); }

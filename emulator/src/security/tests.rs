@@ -452,6 +452,40 @@ fn restored_collection_preserves_lineage_and_rejects_another_vehicle() {
     assert_eq!(restore(p,"test",&other.join("card.bin")).unwrap()["restored"],false);
 }
 #[test]
+fn cleared_offline_relaunch_needs_no_vehicle_observation() {
+    for origin in ["card", "working", "snapshot"] {
+        let w=workspace();let p=&w.0;let source=p.join("runs/collected");
+        fs::remove_file(p.join("vehicle-status.json")).unwrap();
+        match origin {
+            "card" => { fs::remove_file(source.join("native-security-snapshot.json")).unwrap();fs::remove_file(source.join("ssa-card-after.bin")).unwrap(); },
+            "working" => fs::write(source.join("working-ssa.bin"),vec![255;SIZE]).unwrap(),
+            "snapshot" => fs::write(source.join("ssa-card-after.bin"),vec![255;SIZE]).unwrap(),
+            _ => unreachable!(),
+        }
+        fs::write(p.join("latest-session.json"), serde_json::to_vec(&json!({"run":source,"firmware":"test","mode":"offline"})).unwrap()).unwrap();
+        let next=p.join("runs/offline-relaunch");fs::create_dir(&next).unwrap();
+        fs::copy(source.join("card.bin"),next.join("card.bin")).unwrap();
+        let before=read(&next.join("card.bin"),CARD_SIZE).unwrap();
+        let pointer=read(&p.join("latest-session.json"),8192).unwrap();
+        assert_eq!(restore(p,"test",&next.join("card.bin")).unwrap()["restored"],false,"{origin}");
+        assert_eq!(read(&next.join("card.bin"),CARD_SIZE).unwrap(),before);
+        assert_eq!(read(&source.join("card.bin"),CARD_SIZE).unwrap(),before);
+        assert_eq!(read(&p.join("latest-session.json"),8192).unwrap(),pointer);
+        assert!(!next.join("working-ssa.bin").exists());
+    }
+}
+#[test]
+fn collected_security_without_vehicle_observation_still_fails_closed() {
+    let w=workspace();let p=&w.0;let source=p.join("runs/collected");
+    fs::remove_file(p.join("vehicle-status.json")).unwrap();
+    let next=p.join("runs/missing-observation");fs::create_dir(&next).unwrap();
+    fs::copy(source.join("card.bin"),next.join("card.bin")).unwrap();
+    let before=read(&next.join("card.bin"),CARD_SIZE).unwrap();
+    assert!(restore(p,"test",&next.join("card.bin")).is_err());
+    assert_eq!(read(&next.join("card.bin"),CARD_SIZE).unwrap(),before);
+    assert!(!next.join("working-ssa.bin").exists());
+}
+#[test]
 #[cfg(windows)]
 fn windows_import_lock_and_process_liveness() {
     assert!(platform::require_stopped(std::process::id()).is_err());

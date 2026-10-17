@@ -1,4 +1,4 @@
-# OpenSAAB Windows 0.2.18-preview.2 matching source
+# OpenSAAB Windows 0.2.18-preview.3 matching source
 
 Scoped Windows x86_64 preview: recognize the active Saab 148.000 welcome before
 deferred CANdi startup, report the installed shell version/revision, and enforce
@@ -23,3 +23,5 @@ approved support images and notices; no diagnostic card is bundled. Historical
 bridge source is retained under baseline-source. Old MSI build.ps1 instructions
 are historical and do not produce this portable preview. Read the deployment
 rules before any application publication.
+
+Offline relaunch now skips security restoration only when the selected prior offline session has a fully cleared SSA. Existing collected/imported data keeps its normal validation.

@@ -1,7 +1,7 @@
-# OpenSAAB 0.2.18-preview.2 x86_64
+# OpenSAAB 0.2.18-preview.3 x86_64
 
 Extract this portable preview into a new folder and launch
-`OpenSAAB-0.2.18-preview.2-windows-x86_64.exe`. Its window and program name read
+`OpenSAAB-0.2.18-preview.3-windows-x86_64.exe`. Its window and program name read
 their full version, architecture and source revision from packaged metadata.
 Keep historical packages; stop an existing session before launching this one.
 The normal WindowsData folder, firmware, settings and retained reports are reused.
@@ -28,3 +28,5 @@ Review Report issue JSON before sending. Preserve failed-run files privately
 when full diagnostic context is needed; public reports exclude raw traffic,
 security data and VINs. Matching source, manifest, hashes and scoped test results
 are provided with the release.
+
+An offline session with fully cleared security data can be reopened before a vehicle has been identified. Collected or imported security data retains its normal validation.

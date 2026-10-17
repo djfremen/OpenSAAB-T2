@@ -79,6 +79,13 @@ static class RuntimeChecks
                 }
                 Need(await session.Stop(), language + " graceful stop");
             }
+            // Same card twice must also work before any vehicle has been seen.
+            using (var repeated = new EmulatorSession())
+            {
+                repeated.Start(root, state, firmware, null);
+                await WaitFor(() => {try{return SessionSnapshot.Text(Path.Combine(repeated.RunDirectory,"startup.json")).Contains("\"verified_welcome\":true");}catch(IOException){return false;}}, language + " repeated offline welcome without vehicle identity");
+                Need(await repeated.Stop(), language + " repeated offline graceful stop");
+            }
             Need(FirmwareStore.Hash(firmware.CardPath(card)) == card.imageSha, language + " original card unchanged");
         }
         var before = firmware.Selected.id;
