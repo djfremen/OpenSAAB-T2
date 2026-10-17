@@ -21,7 +21,7 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
     private JSONObject key(String session,String revision,long manual)throws Exception{return new JSONObject().put("session",session).put("revision",revision).put("manual_generation",manual).put("encoder",24);}
     public void onStart(){Bundle result=new Bundle();int code=-1;Activity activity=null;
         try{
-            check(SimulatorVehicleConnection.available(getTargetContext()),"Disposable debug emulator required");
+            DisposableEmulator.require(getTargetContext());
             Intent intent=new Intent(Intent.ACTION_MAIN).setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("mcp_test",true);activity=startActivitySync(intent);waitForIdleSync();Owner owner=new Owner();final Activity a=activity;
             runOnMainSync(()->{android.view.View notice=a.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
             runOnMainSync(()->{AndroidMcp.bind(a,owner);try{AndroidMcp.enable(a);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();

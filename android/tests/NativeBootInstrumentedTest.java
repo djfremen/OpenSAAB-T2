@@ -14,7 +14,8 @@ import org.json.*;
 /** Exact installed Android offline boot/navigation; external real firmware, no adapter. */
 public final class NativeBootInstrumentedTest extends Instrumentation {
     private final JSONArray stages=new JSONArray();
-    public void onCreate(Bundle args){super.onCreate(args);start();}
+    private Bundle arguments;
+    public void onCreate(Bundle args){arguments=args;super.onCreate(args);start();}
     private void check(boolean value,String why){if(!value)throw new AssertionError(why);}
     private JSONObject call(String token,String op,JSONObject args)throws Exception {
         try(LocalSocket socket=new LocalSocket()){
@@ -47,9 +48,9 @@ public final class NativeBootInstrumentedTest extends Instrumentation {
     }
     public void onStart(){Bundle result=new Bundle();Activity activity=null;String token="";int code=0;
         try{
-            Context context=getTargetContext();check(SimulatorVehicleConnection.available(context),"Disposable Android emulator required");
+            Context context=getTargetContext();DisposableEmulator.require(context);
             String version=context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;
-            check(version.equals("0.1.0-preview.90"),"Wrong installed attempt: "+version);
+            check(version.equals(DisposableEmulator.requireInstalledVersion(context,arguments)),"Wrong installed attempt: "+version);
             String label=context.getApplicationInfo().loadLabel(context.getPackageManager()).toString();
             check(label.contains(version)&&label.contains("ARM64"),"Packaged app identity missing version/architecture");
             FirmwareStore store=new FirmwareStore(context.getFilesDir());check(store.missing().isEmpty(),"Real firmware required");

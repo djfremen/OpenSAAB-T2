@@ -23,6 +23,7 @@ public final class ConnectionReportInstrumentedTest extends Instrumentation {
         Context c=getTargetContext();Bundle result=new Bundle();int code=-1;Activity activity=null;
         File root=new File(c.getFilesDir(),"connection-attempts"),backup=new File(c.getFilesDir(),"connection-attempts-test-backup");
         try{
+            DisposableEmulator.require(c);
             check(!backup.exists(),"Previous test backup needs recovery");ConnectionAttempt.collect(c);
             if(root.exists())Files.move(root.toPath(),backup.toPath());
             ConnectionAttempt denied=new ConnectionAttempt(c,ConnectionAttempt.Adapter.CHIPSOFT);

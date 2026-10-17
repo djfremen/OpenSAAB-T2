@@ -3,7 +3,7 @@ package com.opensaab.usb;
 import android.app.Activity;
 import android.content.Context;
 
-/** Internal primary-service authentication. Feature access never asks the operator for a password. */
+/** Public primary-service compatibility header; not caller authentication. Feature access never asks the operator for a password. */
 public final class SecurityAuthorization {
     public static String bearer(Context context){return "OpenSAAB";}
     public static boolean available(Context context){return true;}

@@ -13,19 +13,21 @@ import org.json.JSONObject;
 
 /** Installed launch gate, report navigation, rotation and repeat launch; no upload. */
 public final class PreviewWelcomeInstrumentedTest extends Instrumentation {
-    public void onCreate(Bundle args){super.onCreate(args);start();}
+    private Bundle arguments;
+    public void onCreate(Bundle args){arguments=args;super.onCreate(args);start();}
     private void check(boolean value,String message){if(!value)throw new AssertionError(message);}
     private View tag(Activity a,String value){return a.findViewById(android.R.id.content).findViewWithTag(value);}
     private String text(Activity a,String value){View v=tag(a,value);check(v instanceof TextView,"Missing "+value);return ((TextView)v).getText().toString();}
     private Intent launch(){return new Intent(Intent.ACTION_MAIN).setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addCategory(Intent.CATEGORY_LAUNCHER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);}
     public void onStart(){Bundle result=new Bundle();Activity activity=null;int code=0;
         try{
-            check(SimulatorVehicleConnection.available(getTargetContext()),"Disposable emulator required");
+            DisposableEmulator.require(getTargetContext());
+            final String version=DisposableEmulator.requireInstalledVersion(getTargetContext(),arguments);
             activity=startActivitySync(launch());waitForIdleSync();final Activity first=activity;
             runOnMainSync(()->{
                 check(tag(first,"developer-preview-welcome")!=null&&tag(first,"session-workspace")==null,"App workspace preceded welcome");
                 check(text(first,"preview-title").equals("Developer Preview"),"Preview label absent");
-                check(text(first,"preview-version").contains("0.1.0-preview.90")&&text(first,"preview-version").contains("ARM64"),"Installed identity absent");
+                check(text(first,"preview-version").contains(version)&&text(first,"preview-version").contains("ARM64"),"Installed identity absent");
                 check(text(first,"preview-release-date").contains("2026")&&text(first,"preview-release-date").startsWith("Version date: ")&&!text(first,"preview-release-date").toLowerCase(java.util.Locale.ROOT).contains("private"),"Packaged version date absent or confusing private label present");
                 check(text(first,"preview-message").contains("Report issue")&&text(first,"preview-review-note").contains("review"),"Development/report invitation absent");
                 check(!FirmwareGate.sessionActive(),"Welcome started diagnostics");

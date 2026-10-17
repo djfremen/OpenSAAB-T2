@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0-preview.97",
+  "version": "0.1.0-preview.98",
   "architecture": "arm64-v8a",
   "status": "source_prepared_not_published",
   "base": "f48529964cb89651a6e392cacfadc976144574c4",
@@ -25,5 +25,12 @@
   "retained_attempts": [
     "preview.95 packaging-checker metadata rejection; no installation",
     "preview.96 signed/installed upgrade, no-password and security checks passed; original offline core still reported predecessor .90 version"
-  ]
+  ],
+  "review_followup": {
+    "main_merged": "347ecd8bcbb243c256da112527e1b57900e5c86b",
+    "contract": "Retire password menu in all four Android source copies; packaged contract matches canonical no-operator policy.",
+    "tests": "Committed DisposableEmulator separates test-only release-APK AVD guard from production debug transport; expected_version is explicit. No source text rewrite is used.",
+    "protocol_header": "Public fixed compatibility value; not caller authentication or endpoint abuse protection.",
+    "MDI_dependency": "Native module resolves vendored core-mdi/OpenMDI matching source instead of sibling checkout."
+  }
 }
