@@ -112,7 +112,7 @@ public final class MainActivity extends Activity {
         status.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int a,int c,int f){}public void onTextChanged(CharSequence t,int a,int b,int c){updateWorkspace();}public void afterTextChanged(android.text.Editable e){}});
         lcd=new LcdView();console=label("Console: waiting for firmware",11);console.setTypeface(Typeface.MONOSPACE);
         consoleScroll=new ScrollView(this);consoleScroll.addView(console);
-        controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10)enqueue("enter");else key(code);});
+        controls=new com.opensaab.usb.Tech2Controls(this,lcd,consoleScroll,code->{if(code==0x10&&mxDevice==null)enqueue("enter");else key(code);});
         controls.setActions(this::showActions);
         health=new com.opensaab.usb.EmulatorHealthMonitor(this,()->stopSession("Preparing report"));
         lcdPump=new com.opensaab.usb.NativeLcdPump(frame->{if(frame!=null){if(!running||stopping.get())return;health.frame();offlineEvidence.frame();controls.showFirstUseGuide();}lcd.frame=frame;lcd.invalidate();});

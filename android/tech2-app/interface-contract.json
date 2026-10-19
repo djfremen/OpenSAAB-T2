@@ -1281,5 +1281,11 @@
       "linux-x86_64": "No adoption or qualification from Android",
       "ios-arm64": "No implementation; Android validation first"
     }
+  },
+  "android_mxplus_primary_route_preview17": {
+    "version": "0.1.1-preview.17",
+    "predecessor": "Preview.16 normal handoff reached firmware, but touch Enter wrote offline-only enter and native parser exited4. Preview.16 remains retained with failed startup evidence.",
+    "workflow": "Same selected verified MX+ primary-route handoff with foreground, once-only and cleanup guards. Touch Enter uses native encoder0x10; offline logical Enter unchanged.",
+    "qualification": "Exact physical touch Enter and main connection route pending; no new USB, packet policy, maintenance or iOS adoption."
   }
 }
