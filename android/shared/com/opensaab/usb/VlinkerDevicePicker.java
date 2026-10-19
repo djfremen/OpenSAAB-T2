@@ -32,7 +32,7 @@ public final class VlinkerDevicePicker {
     public void show(){
         LinearLayout content=new LinearLayout(activity);content.setOrientation(LinearLayout.VERTICAL);
         status=new TextView(activity);status.setTextSize(14);status.setTextColor(0xffedf4fa);content.addView(status);
-        TextView help=new TextView(activity);help.setText("Pair Carista EVO, vLinker MC+ or OBDLink MX+ in Bluetooth settings, then select it here. Close other diagnostic apps first. OpenSAAB checks the model and firmware after connecting.");help.setTextColor(0xffedf4fa);content.addView(help);
+        TextView help=new TextView(activity);help.setText("Detected names are adapter candidates. OpenSAAB checks the model and firmware after connecting. Available diagnostics depend on the adapter. Pair in Bluetooth settings, then select it here. Close other diagnostic apps first.");help.setTextColor(0xffedf4fa);content.addView(help);
         picker=new Spinner(activity);picker.setTag("vlinker-device-list");content.addView(picker);
         button(content,"Refresh paired adapters",()->{if(!connectPermission())requestPermission(false);else refresh();});
         scan=button(content,"Find nearby adapters",this::findNearby);
@@ -69,8 +69,8 @@ public final class VlinkerDevicePicker {
                 for(BluetoothDevice d:bt.getBondedDevices())if(androidName(d.getName()))found.put(d.getAddress(),d);
                 for(BluetoothDevice d:found.values())if(androidName(d.getName()))devices.add(d);
                 devices.sort(Comparator.comparing(BluetoothDevice::getAddress));
-                for(BluetoothDevice d:devices)labels.add(d.getName()+" · "+d.getAddress()+(d.getBondState()==BluetoothDevice.BOND_BONDED?" · paired":" · nearby"));
-                if(!scanning)status.setText(devices.isEmpty()?"No supported Bluetooth adapter found. Pair it or use Find nearby adapters.":"Select your adapter. Connecting starts only after Use selected adapter.");
+                for(BluetoothDevice d:devices)labels.add(d.getName()+" · candidate · "+d.getAddress()+(d.getBondState()==BluetoothDevice.BOND_BONDED?" · paired":" · nearby"));
+                if(!scanning)status.setText(devices.isEmpty()?"No Bluetooth adapter candidates found. Pair an adapter or use Find nearby adapters.":"Select a candidate. Connecting starts only after Use selected adapter.");
             }
         }catch(SecurityException denied){status.setText("Nearby devices permission is unavailable. Refresh after granting it.");devices.clear();labels.clear();}
         if(labels.isEmpty())labels.add("No Bluetooth adapter selected");
@@ -93,7 +93,7 @@ public final class VlinkerDevicePicker {
             if(Build.VERSION.SDK_INT>=33)activity.registerReceiver(receiver,filter,Context.RECEIVER_EXPORTED);else activity.registerReceiver(receiver,filter);registered=true;
             bt.cancelDiscovery();scanning=true;
             if(!bt.startDiscovery()){finishScan("Bluetooth search could not start. Check permission and Bluetooth settings.");return;}
-            status.setText("Searching for Carista EVO, vLinker MC+ and OBDLink MX+…");scan.setEnabled(false);ui.postDelayed(deadline,15000);
+            status.setText("Searching for Bluetooth adapter candidates…");scan.setEnabled(false);ui.postDelayed(deadline,15000);
         }catch(SecurityException denied){finishScan("Bluetooth permission was revoked. Allow it and search again.");}
         catch(Exception error){finishScan("Bluetooth search unavailable. Check permissions and settings.");}
     }

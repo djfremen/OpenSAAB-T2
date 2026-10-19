@@ -8,6 +8,8 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 [Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
+Private Android ARM64 **0.1.1-preview.7** changes MCP to start automatically in the foreground, retains local bridge pairing across restarts, and uses a generic Bluetooth chooser with detected candidates. Explicit Disable persists. [Behavior and validation scope](docs/ANDROID_MCP_DEFAULT_2026-10-19.md). This work is unpublished; it does not qualify a new adapter or replace the public download.
+
 ## October 15 release scope and progress
 
 Android **0.1.0-preview.92 ARM64** is published with its signed APK, exact matching source, manifest and checksums. [Release notes and known gaps](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [All platform channels](https://www.opensaab.com/static/t2/download.html#current-channels) · [Brief 48-hour update](https://www.opensaab.com/static/t2/news.html#update-2026-10-16).

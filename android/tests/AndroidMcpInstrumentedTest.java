@@ -57,8 +57,15 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
             String installedVersion=DisposableEmulator.requireInstalledVersion(getTargetContext(),arguments);cacheTests();
             Intent intent=new Intent(Intent.ACTION_MAIN).setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("mcp_test",true);activity=startActivitySync(intent);waitForIdleSync();Owner owner=new Owner();final Activity a=activity;
             runOnMainSync(()->{android.view.View notice=a.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
-            runOnMainSync(()->{AndroidMcp.bind(a,owner);try{AndroidMcp.enable(a);}catch(Exception e){throw new RuntimeException(e);}});waitForIdleSync();
+            runOnMainSync(()->{AndroidMcp.disable();getTargetContext().getSharedPreferences("mcp_control",0).edit().clear().commit();AndroidMcp.bind(a,owner);});waitForIdleSync();
+            check(AndroidMcp.enabled(),"Foreground MCP was not enabled by default");
             String token=new String(Files.readAllBytes(new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").toPath()),StandardCharsets.US_ASCII);
+            check((android.system.Os.stat(new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").getAbsolutePath()).st_mode&077)==0,"Pairing credential is not private");
+            runOnMainSync(()->AndroidMcp.unbind(a));
+            boolean suspended=false;try{call(token,"state",new JSONObject());}catch(IOException expected){suspended=true;}check(suspended,"Background endpoint stayed accessible");
+            runOnMainSync(()->AndroidMcp.bind(a,owner));
+            check(AndroidMcp.enabled(),"Foreground MCP did not resume automatically");
+            check(token.equals(new String(Files.readAllBytes(new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").toPath()),StandardCharsets.US_ASCII)),"Background/foreground rotated a paired bridge credential");
             JSONObject state=call(token,"state",new JSONObject());long manual=state.getLong("manual_generation");check(state.getString("app_version").equals(installedVersion),"Installed version unavailable");check(state.getJSONArray("mcp_features").toString().contains("wait_state_v1"),"Transition capability absent");
             boolean denied=false;try{call("0".repeat(64),"state",new JSONObject());}catch(EOFException expected){denied=true;}check(denied,"Bad token was accepted");
             check(call(token,"key",key("wrong","fixture-menu",manual)).has("error")&&owner.keys==0,"Stale session admitted");
@@ -89,7 +96,11 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
             freshAdmission(a,token);
             runOnMainSync(AndroidMcp::disable);check(!new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").exists(),"Pairing token survived revocation");
             denied=false;try{call(token,"state",new JSONObject());}catch(IOException expected){denied=true;}check(denied,"Disabled endpoint accepted request");
-            result.putString("stream","PASS: installed Android MCP endpoint: authentication, exact metadata, stale session/menu, consumed sequence, duplicate admission, manual takeover, busy input, bounded transition waits, concurrent health/Stop during waits, atomic menu-cache invalidation, fresh command reads, current health/history separation, revocation and private token deletion; synthetic owner, no firmware/vehicle commands\n");
+            runOnMainSync(()->{AndroidMcp.unbind(a);AndroidMcp.bind(a,owner);});check(!AndroidMcp.enabled(),"Explicit Disable was lost on foreground rebind");
+            runOnMainSync(()->{try{AndroidMcp.enable(a);}catch(IOException e){throw new RuntimeException(e);}});
+            String rotated=new String(Files.readAllBytes(new File(getTargetContext().getNoBackupFilesDir(),"mcp-pairing-token").toPath()),StandardCharsets.US_ASCII);check(!token.equals(rotated),"Re-enable reused a revoked credential");
+            denied=false;try{call(token,"state",new JSONObject());}catch(IOException expected){denied=true;}check(denied,"Revoked credential was accepted after re-enable");call(rotated,"state",new JSONObject());
+            result.putString("stream","PASS: installed Android MCP endpoint: default enabled foreground, private retained pairing, background suspension/resume, persistent Disable, revoked-token rotation, authentication, exact metadata, stale session/menu, consumed sequence, duplicate admission, manual takeover, busy input, bounded transition waits, concurrent health/Stop during waits, atomic menu-cache invalidation, fresh command reads, current health/history separation and revocation; synthetic owner, no firmware/vehicle commands\n");
         }catch(Throwable e){code=0;result.putString("stream","FAIL: "+e+"\n");}finally{final Activity a=activity;runOnMainSync(()->{AndroidMcp.disable();if(a!=null){AndroidMcp.unbind(a);a.finish();}});}finish(code,result);
     }
 }

@@ -307,7 +307,7 @@ public final class MainActivity extends Activity {
         }
         boolean localMac=allowEmulation&&com.opensaab.usb.SimulatorVehicleConnection.available(this);
         boolean bluetooth=com.opensaab.usb.VlinkerVehicleConnection.available(this)&&(allowEmulation||mode.equals("dtc_read")||mode.equals("native_ecu_info"));
-        if(bluetooth){clearSimulatorIdentity();labels.add(0,"Carista EVO / vLinker MC+ / OBDLink MX+ · Bluetooth");}
+        if(bluetooth){clearSimulatorIdentity();labels.add(0,"Bluetooth adapters");}
         if(!bluetooth&&devices.size()==1&&com.opensaab.usb.AdapterCatalog.supported(com.opensaab.usb.AdapterCatalog.identify(devices.get(0).getVendorId(),devices.get(0).getProductId()))){
             connectAdapter(devices.get(0),mode,!allowEmulation);return;
         }

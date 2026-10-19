@@ -745,7 +745,7 @@
       "predecessor_label_fields_retained": "Existing adapter_startup select_adapter/vlinker_label and platform selection strings describe retained historical qualified implementations. This deliberate new section defines future label adoption; no prior artifact is requalified.",
       "per_platform_capabilities": {
         "android-arm64": {
-          "label_adoption": "planned",
+          "label_adoption": "Implemented generic Bluetooth adapters entry and candidate wording in preview.7 source; exact installed UI checks pending.",
           "usb": "Existing Chipsoft Pro, GM VCX Nano and Classic MDI paths retain their separately scoped receipts; no new adapter qualification from this label change.",
           "bluetooth": "Legacy model-specific VIN/Trionic8 engine profiles; OBDLink MX+ and original-firmware native I-bus Bluetooth not implemented by this checkpoint."
         },
@@ -779,6 +779,15 @@
           "usb": "Explicit development USB adapter bridge has separate scope; no direct iPhone USB adapter support claimed.",
           "bluetooth": "Legacy foreground BLE model profiles retained; no MX+ discovery/identity/command implementation or native I-bus support added."
         }
+      },
+      "android_candidate_wording_2026_10_19": {
+        "owner_requirement_recorded": "2026-10-19",
+        "candidate": "0.1.1-preview.7 Android ARM64; unpublished",
+        "entry_label": "Bluetooth adapters",
+        "discovery": "List known-name matches as candidates. Names, pairing and discovery do not establish product identity or workflow compatibility. Validate model and firmware after explicit selection.",
+        "retained_models": "Retain existing Carista EVO and vLinker model paths with their limited legacy scope; no capability removed by wording changes.",
+        "owner_test_scope": "Only OBDLink MX+ will be tested for Bluetooth in the current Fire campaign. Owner reports other Android confirmations; those do not qualify the current Fire/APK or every workflow.",
+        "qualification": "Source adoption, installed UI and exact-adapter/vehicle evidence remain separate."
       }
     },
     "macos_usb": {
@@ -1140,6 +1149,24 @@
       },
       "native_payload_baseline": "Preview.6 retains the exact six legacy/adapter/connection payload hashes from tested preview.1; only the recovered runtime may change for its new identity. Command-line packaging, Gradle staging and final APK checks verify full declared coverage and the source-pinned baseline. Preview.5 MDI inputs are superseded.",
       "deadline_scope": "Nano Read currently has a 300-second budget; MDI raw sessions have 900 seconds. The bridge waits at most five seconds for a transition, without key replay; reinspection may be needed while the ECU continues. Deadline misclassification remains a separate open issue."
+    },
+    "default_enablement_2026_10_19": {
+      "owner_requirement_recorded": "2026-10-19",
+      "candidate": "0.1.1-preview.7 Android ARM64; unpublished",
+      "default": "Start local MCP automatically when the foreground app binds its owner; do not start an adapter or diagnostic session.",
+      "authentication": "Retain the private no-backup pairing credential across foreground changes and process restarts. Paired ADB and the credential remain required.",
+      "disable": "Explicit Disable persists across foreground changes and process restarts, closes the endpoint and deletes the credential. Re-enable creates a new credential; revoked credentials remain invalid.",
+      "background": "Revoke the endpoint, close sockets/waiters and observers while the owner is not foreground. Resume automatically when allowed; no background remote keys.",
+      "guards": "Preserve current-session, menu-revision, consumed-input and manual-takeover checks, physical actions, cancellation and security consent.",
+      "targets": {
+        "android-arm64": "Shared source implemented; exact artifact and installed lifecycle tests pending.",
+        "android-arm32": "Shared Java source; packaging/installed qualification pending.",
+        "macos-arm64": "Default-on policy adoption and installed qualification pending.",
+        "macos-x86_64": "Default-on policy adoption and installed qualification pending.",
+        "windows-x64": "Default-on policy adoption and installed qualification pending.",
+        "linux-x86_64": "Default-on policy adoption and installed qualification pending.",
+        "ios-arm64": "Default-on policy adoption and installed qualification pending."
+      }
     }
   },
   "developer_preview_welcome": {

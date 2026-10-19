@@ -29,7 +29,7 @@ public final class SimulatorVinAlignmentInstrumentedTest extends Instrumentation
     activity.adapterPicker.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
    });waitForIdleSync();check(attempts()==before,"Picker cancellation opened Bluetooth");screenshot("android-ready-aligned");
    if(live){
-    main(()->{activity.getWindow().getDecorView().findViewWithTag("connect-start").performClick();ListView list=activity.adapterPicker.getListView();check(list.getAdapter().getItem(0).toString().equals("Carista EVO / vLinker MC+ / OBDLink MX+ · Bluetooth"),"Wrong adapter selection");list.performItemClick(list.getChildAt(0),0,list.getAdapter().getItemId(0));});
+    main(()->{activity.getWindow().getDecorView().findViewWithTag("connect-start").performClick();ListView list=activity.adapterPicker.getListView();check(list.getAdapter().getItem(0).toString().equals("Bluetooth adapters"),"Wrong adapter selection");list.performItemClick(list.getChildAt(0),0,list.getAdapter().getItemId(0));});
     long deadline=SystemClock.elapsedRealtime()+45000;
     while(SystemClock.elapsedRealtime()<deadline){final boolean[] done={false};main(()->done[0]=summary(activity).contains("VIN: YS3")&&activity.getWindow().getDecorView().findViewWithTag("connect-start").isEnabled());if(done[0])break;SystemClock.sleep(100);}
     main(()->{

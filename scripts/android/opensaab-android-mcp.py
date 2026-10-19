@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """MCP stdio bridge to an explicitly enabled Android endpoint on one paired device."""
 import argparse,json,os,re,socket,subprocess,sys,time
-VERSION='0.1.1-preview.6'
+VERSION='0.1.1-preview.7'
 
 class Bridge:
     def __init__(self,serial,token_file,adb):

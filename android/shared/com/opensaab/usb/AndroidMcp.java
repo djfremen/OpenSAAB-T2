@@ -10,7 +10,7 @@ import java.security.*;
 import java.util.concurrent.*;
 import org.json.*;
 
-/** Explicit opt-in, token-authenticated app-owned IPC. ADB forwarding carries no authority itself. */
+/** Foreground, token-authenticated app-owned IPC. ADB forwarding carries no authority itself. */
 public final class AndroidMcp {
     public interface Owner {
         JSONObject state()throws Exception;
@@ -20,6 +20,7 @@ public final class AndroidMcp {
     }
     private static Owner owner;
     private static Activity activity;
+    private static android.content.Context application;
     private static volatile LocalServerSocket server;
     private static volatile String token="";
     private static ThreadPoolExecutor clients;
@@ -31,27 +32,50 @@ public final class AndroidMcp {
     private static String admittedSession="";private static long admittedSequence=-1;
     private static final Handler ui=new Handler(Looper.getMainLooper());
     private static final Runnable beat=new Runnable(){public void run(){uiHeartbeat=SystemClock.elapsedRealtime();if(server!=null)ui.postDelayed(this,1000);}};
-    public static synchronized void bind(Activity a,Owner o){if(owner!=null&&owner!=o)owner.close();activity=a;owner=o;changed();}
-    public static synchronized void unbind(Activity a){if(activity==a){disable();owner=null;activity=null;}}
+    public static synchronized void bind(Activity a,Owner o){
+        if(owner!=null&&owner!=o)owner.close();activity=a;owner=o;application=a.getApplicationContext();
+        if(application.getSharedPreferences("mcp_control",0).getBoolean("enabled",true))try{enable(a);}catch(IOException e){android.util.Log.w("OpenSaabMcp","Local MCP endpoint could not start",e);}
+        changed();
+    }
+    public static synchronized void unbind(Activity a){if(activity==a){closeEndpoint(false);owner=null;activity=null;}}
     public static void manual(){manualGeneration++;changed();}
     public static void changed(){synchronized(signal){changeSequence++;signal.notifyAll();}}
     public static synchronized boolean enabled(){return server!=null;}
     public static void show(Activity a){
-        if(enabled())new AlertDialog.Builder(a).setTitle("AI control (MCP)").setMessage("Enabled for this app session. Pairing code:\n"+token+"\n\nUse the local Android MCP bridge over this phone’s paired ADB connection. Manual keypad input cancels automatic navigation.")
+        if(enabled())new AlertDialog.Builder(a).setTitle("AI control (MCP)").setMessage("Enabled while OpenSAAB is in the foreground. Pairing code:\n"+token+"\n\nPair the local Android MCP bridge over this device’s paired ADB connection. The code is retained across app restarts. Manual keypad input cancels automatic navigation. Disable stays off until you enable it again.")
             .setPositiveButton("Done",null).setNegativeButton("Disable",(d,w)->disable()).show();
-        else new AlertDialog.Builder(a).setTitle("AI control (MCP)").setMessage("Enable local AI inspection and firmware keys for this foreground session. Requests require a pairing code, current session and menu revision. Physical ignition and security dialogs remain operator actions.")
+        else new AlertDialog.Builder(a).setTitle("AI control (MCP)").setMessage("Enable local AI inspection and firmware keys while OpenSAAB is in the foreground. Requests require a pairing code, current session and menu revision. Physical ignition and security dialogs remain operator actions.")
             .setPositiveButton("Enable",(d,w)->{try{enable(a);show(a);}catch(Exception e){android.widget.Toast.makeText(a,"MCP endpoint unavailable",android.widget.Toast.LENGTH_LONG).show();}}).setNegativeButton("Cancel",null).show();
     }
-    public static synchronized void enable(Activity a)throws Exception {
+    private static File tokenFile(){return new File(application.getNoBackupFilesDir(),"mcp-pairing-token");}
+    private static String pairingCode()throws IOException {
+        File file=tokenFile();
+        if(file.isFile())try(FileInputStream input=new FileInputStream(file)){
+            byte[] bytes=new byte[65];int length=0,n;
+            while(length<bytes.length&&(n=input.read(bytes,length,bytes.length-length))!=-1)length+=n;
+            String saved=new String(bytes,0,length,StandardCharsets.US_ASCII);
+            if(saved.matches("[0-9a-f]{64}"))return saved;
+        }
+        byte[] random=new byte[32];new SecureRandom().nextBytes(random);StringBuilder b=new StringBuilder();for(byte v:random)b.append(String.format(java.util.Locale.ROOT,"%02x",v&255));
+        File temp=new File(application.getNoBackupFilesDir(),"mcp-pairing-token.tmp");
+        try(FileOutputStream out=new FileOutputStream(temp)){
+            temp.setReadable(false,false);temp.setWritable(false,false);temp.setReadable(true,true);temp.setWritable(true,true);
+            out.write(b.toString().getBytes(StandardCharsets.US_ASCII));out.getFD().sync();
+        }
+        if(!temp.renameTo(file)){temp.delete();throw new IOException("Pairing credential could not be stored");}
+        return b.toString();
+    }
+    public static synchronized void enable(Activity a)throws IOException {
+        application=a.getApplicationContext();
+        if(!application.getSharedPreferences("mcp_control",0).getBoolean("enabled",true))application.getSharedPreferences("mcp_control",0).edit().putBoolean("enabled",true).commit();
         if(server!=null)return;
-        byte[] random=new byte[32];new SecureRandom().nextBytes(random);StringBuilder b=new StringBuilder();for(byte v:random)b.append(String.format(java.util.Locale.ROOT,"%02x",v&255));token=b.toString();
-        // Preview tooling may read this private file with run-as. Production pairing uses the displayed code.
-        File file=new File(a.getNoBackupFilesDir(),"mcp-pairing-token");try(FileOutputStream out=new FileOutputStream(file)){out.write(token.getBytes(StandardCharsets.US_ASCII));}file.setReadable(false,false);file.setWritable(false,false);file.setReadable(true,true);file.setWritable(true,true);
-        LocalServerSocket endpoint=new LocalServerSocket(a.getPackageName()+".mcp");server=endpoint;admittedSession="";admittedSequence=-1;ui.post(beat);
+        // A private, unbacked credential keeps an already paired local bridge usable after resume/restart.
+        String code=pairingCode();LocalServerSocket endpoint=new LocalServerSocket(a.getPackageName()+".mcp");token=code;server=endpoint;admittedSession="";admittedSequence=-1;ui.post(beat);
         ThreadPoolExecutor workers=new ThreadPoolExecutor(0,4,15,TimeUnit.SECONDS,new SynchronousQueue<>(),r->new Thread(r,"android-mcp-client"));clients=workers;
         new Thread(()->serve(endpoint,workers),"android-mcp-endpoint").start();changed();
     }
-    public static synchronized void disable(){LocalServerSocket s=server;server=null;token="";ui.removeCallbacks(beat);if(owner!=null)owner.close();changed();if(activity!=null)new File(activity.getNoBackupFilesDir(),"mcp-pairing-token").delete();if(s!=null)try{s.close();}catch(IOException ignored){}for(LocalSocket socket:sockets)try{socket.close();}catch(IOException ignored){}if(clients!=null){clients.shutdownNow();clients=null;}}
+    public static synchronized void disable(){if(application!=null)application.getSharedPreferences("mcp_control",0).edit().putBoolean("enabled",false).commit();closeEndpoint(true);}
+    private static void closeEndpoint(boolean revokePairing){LocalServerSocket s=server;server=null;token="";ui.removeCallbacks(beat);if(owner!=null)owner.close();changed();if(revokePairing&&application!=null)tokenFile().delete();if(s!=null)try{s.close();}catch(IOException ignored){}for(LocalSocket socket:sockets)try{socket.close();}catch(IOException ignored){}if(clients!=null){clients.shutdownNow();clients=null;}}
     private static byte[] read(InputStream source)throws IOException{InputStream in=new BufferedInputStream(source,4096);ByteArrayOutputStream b=new ByteArrayOutputStream();int n;while((n=in.read())!=-1&&n!=10){if(b.size()>=16384)throw new IOException("Request exceeds limit");b.write(n);}if(n<0)throw new EOFException();return b.toByteArray();}
     private static void serve(LocalServerSocket endpoint,ThreadPoolExecutor workers){
         while(server==endpoint){try{
