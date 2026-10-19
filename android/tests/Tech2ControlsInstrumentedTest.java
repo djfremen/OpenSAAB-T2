@@ -59,6 +59,35 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
         MotionEvent e=MotionEvent.obtain(t,t,action,x,y,0);
         v.dispatchTouchEvent(e);e.recycle();
     }
+    private void softKeyEdges(Activity activity) {
+        final Tech2Controls[] panel={null};final float[][] points={null};
+        checkedMain(()->{
+            panel[0]=new Tech2Controls(activity,new ImageView(activity),new ScrollView(activity),sent::add);
+            activity.setContentView(panel[0]);sent.clear();
+        });waitForIdleSync();
+        checkedMain(()->{
+            View root=panel[0],s4=root.findViewWithTag("tech2-key-8"),hint=root.findViewWithTag("tech2-navigation-hint");
+            check(!hint.isClickable()&&!hint.hasOnClickListeners(),"Instruction strip still opens help beside soft keys");
+            Rect key=new Rect(0,0,s4.getWidth(),s4.getHeight());panel[0].offsetDescendantRectToMyCoords(s4,key);
+            Rect strip=new Rect(0,0,hint.getWidth(),hint.getHeight());panel[0].offsetDescendantRectToMyCoords(hint,strip);
+            check(key.bottom<=strip.top,"Help strip overlaps S4");
+            points[0]=new float[]{key.exactCenterX(),key.exactCenterY(),key.bottom-1,strip.exactCenterY()};
+        });
+        // Dispatch real root coordinates and let Android deliver each click before checking it.
+        for(int i=1;i<=2;i++){
+            final int index=i;
+            checkedMain(()->{touch(panel[0],MotionEvent.ACTION_DOWN,points[0][0],points[0][index]);touch(panel[0],MotionEvent.ACTION_UP,points[0][0],points[0][index]);});
+            waitForIdleSync();
+            checkedMain(()->check(sent.size()==index&&sent.get(index-1)==8,"S4 centre/edge did not each send exactly one S4"));
+        }
+        checkedMain(()->{
+            touch(panel[0],MotionEvent.ACTION_DOWN,points[0][0],points[0][3]);touch(panel[0],MotionEvent.ACTION_UP,points[0][0],points[0][3]);
+        });waitForIdleSync();
+        checkedMain(()->{
+            check(sent.equals(Arrays.asList(8,8)),"Instruction strip sent a firmware key");
+            check(activity.hasWindowFocus(),"Soft-key boundary touch opened a modal window");
+        });
+    }
     private void gestures(Activity activity, boolean natural) {
         final FirmwareGestureView[] area={null};
         checkedMain(()->{
@@ -177,6 +206,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                 if(name.contains("Nano"))intent.putExtra("native_dtc",true);
                 activity=startActivitySync(intent);waitForIdleSync();
                 final Activity shown=activity;
+                checkedMain(()->{View notice=shown.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(notice!=null)notice.performClick();});waitForIdleSync();
                 checkedMain(()->{
                     View exit=shown.getWindow().getDecorView().findViewWithTag("tech2-key-1");Rect visible=new Rect();
                     check(exit!=null && exit.getGlobalVisibleRect(visible) && visible.height()==exit.getHeight(),"EXIT not fully visible in "+name);
@@ -200,7 +230,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                     if(shown instanceof NanoProbeActivity)check(!((NanoProbeActivity)shown).running.get(),"Unexpected Nano session");
                 });
                 if(name.endsWith("MainActivity")){
-                    firstUseGuide(activity);scrollingPreference(activity);
+                    softKeyEdges(activity);firstUseGuide(activity);scrollingPreference(activity);
                     for(boolean natural:new boolean[]{false,true}){
                         gestures(activity,natural);
                         checkedMain(()->{exercise(shown,360,440);exercise(shown,800,220);});
@@ -208,7 +238,7 @@ public final class Tech2ControlsInstrumentedTest extends Instrumentation {
                 }
                 checkedMain(shown::finish);activity=null;waitForIdleSync();
             }
-            result.putString("stream","PASS: saved default-off Natural scrolling, immediate adoption, recreation and toggles without firmware keys; both swipe modes and unchanged keypad/hold/tap behavior; first-frame guide, persistent dismissal, unchanged LCD size, guide touches send no firmware keys; 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; one-event limit; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
+            result.putString("stream","PASS: real root-dispatched S4 centre/lower-edge each emit encoder8 exactly once; adjacent instruction strip opens no modal and sends no key; saved default-off Natural scrolling, immediate adoption, recreation and toggles without firmware keys; both swipe modes and unchanged keypad/hold/tap behavior; first-frame guide, persistent dismissal, unchanged LCD size, guide touches send no firmware keys; 23 verified key callbacks; keypad/console overlays preserve display; 48dp targets; short/wide layouts; persistent EXIT; one-event limit; taps/horizontal/diagonal/multitouch/cancel/focus-loss/detach emit no stray keys; all three activity layouts; no USB sessions started\n");
         }catch(Throwable e){status=0;result.putString("stream","FAIL: "+e+"\n");}
         finally{
             android.content.SharedPreferences.Editor restore=preferences.edit();

@@ -67,8 +67,10 @@ public final class Tech2Controls extends LinearLayout {
         TextView navigation=new TextView(context);navigation.setTag("tech2-navigation-hint");
         navigation.setText("Swipe ↑ / ↓ · Hold for ENTER · EXIT goes back");
         navigation.setTextSize(12);navigation.setTextColor(0xffedf4fa);navigation.setGravity(android.view.Gravity.CENTER);
-        navigation.setPadding(0,dp(4),0,0);navigation.setOnClickListener(v->showHelp());
-        navigation.setContentDescription("Navigation instructions. Tap for all firmware controls.");
+        // Keep the narrow strip beside soft-key edges informational only.
+        // Help remains in App menu; a near-edge S-key tap must not open a modal.
+        navigation.setPadding(0,dp(4),0,0);
+        navigation.setContentDescription("Swipe up or down to move. Hold for ENTER. EXIT goes back.");
         addView(navigation,new LayoutParams(-1,-2));
         addView(body, new LayoutParams(-1, 0));
         LinearLayout footer = new LinearLayout(context);
