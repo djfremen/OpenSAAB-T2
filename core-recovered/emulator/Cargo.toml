@@ -1,6 +1,6 @@
 [package]
 name = "tech2-emu"
-version = "0.1.1-preview.14"
+version = "0.1.1-preview.15"
 edition = "2021"
 license = "MPL-2.0"
 rust-version = "1.93"
