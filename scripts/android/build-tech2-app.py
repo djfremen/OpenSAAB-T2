@@ -98,6 +98,7 @@ if mdi_module is not None:
     for binary in (mdi_module,mdi_bridge):validate_elf(binary.read_bytes()[:20],profile)
 connection_core = None
 recovered_core = None
+mx_core = None
 if profile.abi == 'arm64-v8a':
     # Private picker-only build reuses the exact preview.56 native payloads.
     if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
@@ -108,10 +109,13 @@ if profile.abi == 'arm64-v8a':
     if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
         recovered_core = Path(os.environ.get('OPENSAAB_RECOVERED_CORE') or repo / 'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu')
         validate_elf(recovered_core.read_bytes()[:20], profile)
+        if not os.environ.get('OPENSAAB_MX_CORE'):run('sh', repo / 'scripts/android/build-mx-core.sh')
+        mx_core = Path(os.environ.get("OPENSAAB_MX_CORE") or repo / "target/mx-native/aarch64-linux-android/release/tech2-emu")
+        validate_elf(mx_core.read_bytes()[:20], profile)
 native_baseline = repo / 'android/tech2-app/native-payload-baseline.json' if profile.abi=='arm64-v8a' else None
 if native_baseline and native_baseline.is_file():
     payloads={f'lib/{profile.abi}/libtech2_emu.so':emulator,f'lib/{profile.abi}/libnano_probe.so':probe,f'lib/{profile.abi}/libchipsoft_probe.so':chipsoft}
-    for name,path in [('libopensaab_connection.so',connection_core),('libtech2_recovered.so',recovered_core),('libopensaab_mdi_android.so',mdi_module),('libtech2_mdi.so',mdi_bridge)]:
+    for name,path in [('libopensaab_connection.so',connection_core),('libtech2_recovered.so',recovered_core),('libtech2_mx.so',mx_core),('libopensaab_mdi_android.so',mdi_module),('libtech2_mdi.so',mdi_bridge)]:
         if path is not None:payloads[f'lib/{profile.abi}/{name}']=path
     verify_files(json.loads(native_baseline.read_text()),payloads)
 else:native_baseline=None
@@ -166,6 +170,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
     z.write(chipsoft, f'lib/{profile.abi}/libchipsoft_probe.so')
     if connection_core is not None:z.write(connection_core, 'lib/arm64-v8a/libopensaab_connection.so')
     if recovered_core is not None:z.write(recovered_core, 'lib/arm64-v8a/libtech2_recovered.so')
+    if mx_core is not None:z.write(mx_core, 'lib/arm64-v8a/libtech2_mx.so')
     if mdi_module is not None:
         z.write(mdi_module,'lib/arm64-v8a/libopensaab_mdi_android.so')
         z.write(mdi_bridge,'lib/arm64-v8a/libtech2_mdi.so')
@@ -191,5 +196,5 @@ else:
         run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
             '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
-run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--native-baseline',native_baseline] if native_baseline else []), *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
+run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--native-baseline',native_baseline] if native_baseline else []), *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--mx-core-sha256', hashlib.sha256(mx_core.read_bytes()).hexdigest()] if mx_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
 print(apk)

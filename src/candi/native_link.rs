@@ -207,6 +207,16 @@ impl NativeLink {
         self.events.push("Direct Android Chipsoft USB; original firmware requests; completion=device-reply-compatibility electrical_ack=unverified".into());
         Ok(())
     }
+    pub fn attach_obdlink(&mut self, token: &str, directory: &Path, reset_counters: bool) -> Result<(), String> {
+        let bridge = tech2_emu::adapters::obdlink_guest::Bridge::start_with_reset(token, directory, reset_counters)?;
+        for controller in [0, 2] {
+            self.machine.enable_can_transport(controller)?;
+        }
+        self.bridge = Some(Box::new(tech2_emu::can_adapter::TranslationBackend::new(Box::new(bridge))));
+        self.live_clock = Some((std::time::Instant::now(), self.machine.elapsed_cycles()));
+        self.events.push("Android MX+ RFCOMM; original CANdi requests; serialized HS/SW; electrical ACK unverified".into());
+        Ok(())
+    }
     pub fn enable_ignition_monitor(&mut self, directory: &Path) {
         if self.bridge.is_some() {
             self.ignition = Some(tech2_emu::ignition::Monitor::new(directory));

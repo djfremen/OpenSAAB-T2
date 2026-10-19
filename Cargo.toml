@@ -1,6 +1,6 @@
 [package]
 name = "tech2-emu"
-version = "0.1.0"
+version = "0.1.1-preview.11"
 edition = "2021"
 license = "MPL-2.0 AND LGPL-3.0-only"
 rust-version = "1.93"
@@ -12,6 +12,7 @@ gui = ["dep:minifb"]
 load-test = []
 
 [dependencies]
+opensaab-adapter-translation = { path = "core-recovered/shared/adapter-translation" }
 opensaab-session-evidence = { path = "shared/session-evidence" }
 m68k = { version = "0.12.1", features = ["serde"] }
 serde_json = "1.0"

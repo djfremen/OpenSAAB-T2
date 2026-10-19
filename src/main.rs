@@ -1467,6 +1467,13 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
                 .map_err(|e| (2, e))?;
         }
     }
+    if let Some(token) = &opts.candi_obdlink_token {
+        bus.candi_link
+            .as_mut()
+            .ok_or_else(|| (2, "Missing native CANdi".into()))?
+            .attach_obdlink(token, &opts.output, opts.candi_obdlink_reset_engine_counters)
+            .map_err(|e| (2, e))?;
+    }
     if let Some(token) = &opts.candi_chipsoft_usb_token {
         bus.candi_link
             .as_mut()
@@ -1614,6 +1621,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
             sample_hotspots: !opts.interactive_headless,
             interactive: opts.interactive_headless,
             android_live: opts.candi_nano_usb_token.is_some()
+                || opts.candi_obdlink_token.is_some()
                 || opts.candi_chipsoft_usb_token.is_some()
                 || options::env_flag("TECH2_ANDROID_LIVE"),
             harness_target: test_harness.then_some(opts.target),

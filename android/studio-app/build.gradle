@@ -26,11 +26,11 @@ tasks.register('buildVlinkerWorkflow', Exec) {
     commandLine 'sh', new File(repo, 'scripts/android/build-vlinker-workflow.sh')
 }
 tasks.register('prepareAndroidInputs', Exec) {
-    dependsOn 'buildRust', 'buildVlinkerWorkflow', 'buildRecoveredCore', 'buildMdiMcpBridge'
+    dependsOn 'buildRust', 'buildVlinkerWorkflow', 'buildRecoveredCore', 'buildMxCore', 'buildMdiMcpBridge'
     workingDir repo
     environment 'OPENSAAB_SUPPORT_ROOT', supportRoot
-    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.8')
-    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('101008')
+    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.11')
+    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('101011')
     environment 'OPENSAAB_RELEASE_DATE', providers.gradleProperty('appReleaseDate').getOrElse('2026-10-19')
     commandLine python, new File(repo, 'scripts/android/prepare-studio-inputs.py'), generated.get().asFile
     if (bundleSupport) args '--bundle-support'
@@ -43,8 +43,8 @@ android {
         applicationId 'com.opensaab.tech2'
         minSdk 26
         targetSdk 36
-        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(101008)
-        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.8')
+        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(101011)
+        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.11')
         ndk { abiFilters 'arm64-v8a' }
     }
     sourceSets.main {
@@ -87,6 +87,7 @@ tasks.register('verifyDebugApk', Exec) {
     args '--native-baseline',new File(repo,'android/tech2-app/native-payload-baseline.json')
     if (bundleSupport) args '--allow-bundled-support'
     doFirst {
+        args '--mx-core-sha256', new File(repo,'target/mx-native/aarch64-linux-android/release/tech2-emu').bytes.digest('SHA-256')
         args '--recovered-core-sha256', new File(repo,'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu').bytes.digest('SHA-256')
         args '--mdi-module-sha256', new File(repo,'retained-native/libopensaab_mdi_android.so').bytes.digest('SHA-256')
         args '--mdi-bridge-sha256', new File(repo,'retained-native/libtech2_mdi.so').bytes.digest('SHA-256')
@@ -127,4 +128,12 @@ tasks.register('buildRecoveredCore', Exec) {
     environment 'ANDROID_NDK_HOME', providers.environmentVariable('ANDROID_NDK_HOME').getOrElse(new File(android.sdkDirectory, 'ndk/android-ndk-r29').path)
     environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
     commandLine 'sh', new File(repo, 'scripts/android/build-recovered-core.sh')
+}
+
+tasks.register('buildMxCore', Exec) {
+    workingDir repo
+    environment 'ANDROID_NDK_HOME', providers.environmentVariable('ANDROID_NDK_HOME')
+        .getOrElse(new File(android.sdkDirectory, 'ndk/android-ndk-r29').path)
+    environment 'PATH', System.getenv('PATH') + File.pathSeparator + new File(System.getProperty('user.home'), '.cargo/bin')
+    commandLine 'sh', new File(repo, 'scripts/android/build-mx-core.sh')
 }

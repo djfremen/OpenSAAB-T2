@@ -370,6 +370,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "opensaab-adapter-translation"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "opensaab-session-evidence"
 version = "0.1.0"
 dependencies = [
@@ -591,11 +598,12 @@ dependencies = [
 
 [[package]]
 name = "tech2-emu"
-version = "0.1.0"
+version = "0.1.1-preview.11"
 dependencies = [
  "libc",
  "m68k",
  "minifb",
+ "opensaab-adapter-translation",
  "opensaab-session-evidence",
  "serde_json",
  "sha2",

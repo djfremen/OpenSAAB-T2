@@ -202,3 +202,7 @@ impl CommandGate {
         allowed_for_profile(controller, tx, profile)
     }
 }
+
+#[path = "../../../shared/native-policy/key_status.rs"]
+mod key_status;
+pub(crate) use key_status::KeyStatusGate;

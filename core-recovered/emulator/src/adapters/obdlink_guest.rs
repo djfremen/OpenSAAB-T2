@@ -58,13 +58,16 @@ struct Link {
     active_tx: Option<FailureContext>,
 }
 impl Link {
-    fn open(token: &str, directory: &Path) -> Result<Self, String> {
+    fn open(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
         let socket =
             TcpStream::connect_timeout(&"127.0.0.1:35676".parse().unwrap(), Duration::from_secs(2))
                 .map_err(|e| e.to_string())?;
-        Self::from_socket(token, directory, socket)
+        Self::from_socket_profile(token, directory, socket, reset_counters)
     }
     fn from_socket(token: &str, directory: &Path, socket: TcpStream) -> Result<Self, String> {
+        Self::from_socket_profile(token, directory, socket, false)
+    }
+    fn from_socket_profile(token: &str, directory: &Path, socket: TcpStream, reset_counters: bool) -> Result<Self, String> {
         socket.set_nodelay(true).map_err(|e| e.to_string())?;
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
@@ -73,7 +76,8 @@ impl Link {
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
         let mut socket = SocketUsb(BufReader::new(socket));
-        if socket.command(&format!("HELLO {token}"))? != "READY obdlink-native-read" {
+        let expected = if reset_counters { "READY obdlink-native-reset-counters" } else { "READY obdlink-native-read" };
+        if socket.command(&format!("HELLO {token}"))? != expected {
             return Err("Native MX+ ownership unavailable".into());
         }
         let mut options = OpenOptions::new();
@@ -398,17 +402,25 @@ pub struct Bridge {
     stop: Arc<AtomicBool>,
     worker: Option<JoinHandle<()>>,
     gate: CommandGate,
+    profile: Profile,
     key_status: KeyStatusGate,
     confirmations: u64,
 }
 impl Bridge {
     pub fn start(token: &str, directory: &Path) -> Result<Self, String> {
+        Self::start_with_reset(token, directory, false)
+    }
+    pub fn start_with_reset(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
         if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("Invalid MX+ owner token".into());
         }
-        Ok(Self::from_link(Link::open(token, directory)?))
+        Ok(Self::from_link_profile(Link::open(token, directory, reset_counters)?,
+            if reset_counters { Profile::ResetEngineCounters } else { Profile::Read }))
     }
-    fn from_link(mut link: Link) -> Self {
+    fn from_link(link: Link) -> Self {
+        Self::from_link_profile(link, Profile::Read)
+    }
+    fn from_link_profile(mut link: Link, profile: Profile) -> Self {
         let (input, requests) = mpsc::sync_channel::<(usize, CanTransmission)>(32);
         let (events, output) = mpsc::sync_channel(4096);
         let (error, errors) = mpsc::channel();
@@ -419,7 +431,7 @@ impl Bridge {
                 link.setup()?;
                 while !cancelled.load(Ordering::Relaxed) {
                     if link.started.elapsed() > Duration::from_secs(1800) {
-                        return Err("Private MX+ read session reached its 30-minute limit".into());
+                        return Err("Private MX+ firmware session reached its 30-minute limit".into());
                     }
                     if let Ok((controller, tx)) = requests.try_recv() {
                         link.interrupt_monitor(&events, "next-guest-request")?;
@@ -502,6 +514,7 @@ impl Bridge {
             stop,
             worker: Some(worker),
             gate: CommandGate::default(),
+            profile,
             // This private read preview supports the exact captured native
             // Service > Check Ignition Key Status query, at most three times
             // in this owned session. Other DeviceControl remains rejected.
@@ -530,10 +543,10 @@ impl Backend for Bridge {
         encode(controller, &tx)?;
         if !self
             .gate
-            .allowed(controller, &tx, Profile::Read, Instant::now())
+            .allowed(controller, &tx, self.profile, Instant::now())
             && !self.key_status.allowed(controller, &tx)
         {
-            return Err("STN original-firmware read policy rejected request".into());
+            return Err("STN original-firmware session policy rejected request".into());
         }
         self.input
             .as_ref()
@@ -609,3 +622,40 @@ mod tests {
 #[cfg(test)]
 #[path = "obdlink_guest_tests.rs"]
 mod byte_peer_tests;
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+    use crate::candi_cpu::{CanElectricalState, CanFrame};
+    fn guarded(profile: Profile) -> (Bridge, Receiver<(usize, CanTransmission)>) {
+        let (input, requests) = mpsc::sync_channel(32);
+        let (_, output) = mpsc::sync_channel(1);
+        let (_, errors) = mpsc::channel();
+        (Bridge { input: Some(input), output, errors, failure: None,
+            stop: Arc::new(AtomicBool::new(false)), worker: None,
+            gate: CommandGate::default(), profile,
+            key_status: KeyStatusGate {enabled:true, sent:0}, confirmations:0 }, requests)
+    }
+    fn request(data: [u8;8]) -> CanTransmission {
+        CanTransmission {ticket:1,frame:CanFrame {id:0x7e0,extended:false,rtr:false,dlc:8,data:data.to_vec()},
+            btr0:0xc1,btr1:0x36,electrical:CanElectricalState::StandardCan}
+    }
+    #[test]
+    fn counter_reset_is_explicit_exact_and_does_not_open_other_writes() {
+        let reset=request([2,0xae,0x14,0,0,0,0,0]);
+        let (mut read, read_queue)=guarded(Profile::Read);
+        assert!(read.transmit(0,reset.clone()).is_err());
+        assert!(read_queue.try_recv().is_err());
+        let (mut maintenance, queue)=guarded(Profile::ResetEngineCounters);
+        maintenance.transmit(0,reset).unwrap();
+        assert_eq!(queue.try_recv().unwrap().1.frame.data,[2,0xae,0x14,0,0,0,0,0]);
+        for forbidden in [[2,0xae,0x15,0,0,0,0,0],[2,0xae,0x14,1,0,0,0,0],
+            [1,4,0,0,0,0,0,0],[2,0x27,1,0,0,0,0,0],[2,0x27,2,0,0,0,0,0]] {
+            assert!(maintenance.transmit(0,request(forbidden)).is_err());
+            assert!(queue.try_recv().is_err());
+        }
+        assert!(maintenance.transmit(2,request([2,0xae,0x14,0,0,0,0,0])).is_err());
+        maintenance.transmit(0,request([2,0x1a,0x90,0,0,0,0,0])).unwrap();
+        assert_eq!(queue.try_recv().unwrap().1.frame.data,[2,0x1a,0x90,0,0,0,0,0]);
+    }
+}

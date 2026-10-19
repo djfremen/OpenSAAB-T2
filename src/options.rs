@@ -34,6 +34,8 @@ pub struct Options {
     pub candi_j2534_adapter: tech2_emu::vcx::J2534Adapter,
     pub candi_nano_usb_token: Option<String>,
     pub candi_chipsoft_usb_token: Option<String>,
+    pub candi_obdlink_token: Option<String>,
+    pub candi_obdlink_reset_engine_counters: bool,
     pub candi_chipsoft_symbol_only: bool,
     pub candi_chipsoft_seeds: bool,
     pub candi_chipsoft_audible: bool,
@@ -123,6 +125,8 @@ impl Options {
             candi_j2534_adapter: tech2_emu::vcx::J2534Adapter::default(),
             candi_nano_usb_token: None,
             candi_chipsoft_usb_token: None,
+            candi_obdlink_token: None,
+            candi_obdlink_reset_engine_counters: false,
             candi_chipsoft_symbol_only: false,
             candi_chipsoft_seeds: false,
             candi_chipsoft_audible: false,
@@ -176,6 +180,7 @@ impl Options {
                     "--strict" => { out.strict = true; continue; }
                     "--candi-on-demand" => { out.candi_on_demand = true; continue; }
                     "--candi-native-link" => { out.candi_native_link = true; out.candi = true; continue; }
+                    "--candi-obdlink-reset-engine-counters" => { out.candi_obdlink_reset_engine_counters = true; continue; }
                     "--candi-nano-clear-dtc" => { out.candi_nano_clear_dtc = true; continue; }
                     "--candi-nano-reset-engine-counters" => { out.candi_nano_reset_engine_counters = true; continue; }
                     "--candi-nano-key-status" => { out.candi_nano_key_status = true; continue; }
@@ -188,13 +193,14 @@ impl Options {
                     "--candi" => { out.candi = true; continue; }
                     "--ecm-information" => { out.ecm_information = true; continue; }
                     "--help" | "-help" => { out.help = true; continue; }
-                    "--candi-chipsoft-usb-token" | "--candi-j2534-adapter" | "--candi-nano-usb-token" | "--candi-nano-ssh" | "--candi-nano-control" | "--ibus-dtc" | "--vcx-ecu" | "--vcx-ssh" | "--vcx-ssh-control" | "--candi-firmware" | "--replay-keys" | "--boot" | "--opsys" | "--config" | "--output-dir" | "--max-insns" | "--warmup-insns" | "--harness-target" => {
+                    "--candi-obdlink-token" | "--candi-chipsoft-usb-token" | "--candi-j2534-adapter" | "--candi-nano-usb-token" | "--candi-nano-ssh" | "--candi-nano-control" | "--ibus-dtc" | "--vcx-ecu" | "--vcx-ssh" | "--vcx-ssh-control" | "--candi-firmware" | "--replay-keys" | "--boot" | "--opsys" | "--config" | "--output-dir" | "--max-insns" | "--warmup-insns" | "--harness-target" => {
                         let value = args.next().filter(|v| !v.is_empty() && !v.starts_with("--"))
                             .ok_or_else(|| format!("{arg} requires a value"))?;
                         match arg.as_str() {
                             "--candi-j2534-adapter" => out.candi_j2534_adapter = tech2_emu::vcx::J2534Adapter::parse(&value)?,
                             "--candi-nano-ssh" => out.candi_nano_ssh = Some(value),
                             "--candi-nano-usb-token" => out.candi_nano_usb_token = Some(value),
+                            "--candi-obdlink-token" => out.candi_obdlink_token = Some(value),
                             "--candi-chipsoft-usb-token" => out.candi_chipsoft_usb_token = Some(value),
                             "--candi-nano-control" => out.candi_nano_control = Some(value.into()),
                             "--ibus-dtc" => out.ibus_dtc = Some(tech2_emu::ibus_dtc::Module::parse(&value)?),
@@ -298,6 +304,27 @@ impl Options {
         }
         if out.candi_native_link && !out.research {
             return Err("--candi-native-link requires research mode".into());
+        }
+        if out.candi_obdlink_reset_engine_counters && out.candi_obdlink_token.is_none() {
+            return Err("MX+ counter reset requires the owned MX+ native session".into());
+        }
+        if let Some(token) = &out.candi_obdlink_token {
+            if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err("Invalid MX+ owner token".into());
+            }
+            if !out.test_harness || !out.candi_native_link
+                || out.target != HarnessTarget::NativeManual
+                || out.interactive_headless || out.candi_on_demand
+                || out.candi_nano_usb_token.is_some() || out.candi_nano_ssh.is_some()
+                || out.candi_chipsoft_usb_token.is_some() || out.vcx_ssh.is_some()
+                || out.replay.is_some() || out.candi_nano_clear_dtc
+                || out.candi_nano_reset_engine_counters || out.candi_nano_key_status
+                || out.candi_nano_full_native || out.candi_nano_seeds
+                || out.candi_chipsoft_seeds || out.candi_chipsoft_symbol_only
+                || out.candi_chipsoft_audible || out.candi_seatbelt_audible
+            {
+                return Err("MX+ requires exclusive native-manual test-harness mode".into());
+            }
         }
         if out.candi_nano_reset_engine_counters
             && (out.candi_nano_usb_token.is_none()
@@ -479,6 +506,8 @@ Usage: tech2-emu [OPTIONS] [CARD_IMAGE]
   --candi-chipsoft-seeds           Original firmware security collection; manual vehicle selection
   --candi-chipsoft-audible         Scoped BCM audible operation for current 2004 vehicle
   --candi-chipsoft-symbol-only      Scoped BCM reversal with fresh per-run authority
+  --candi-obdlink-token TOKEN  Owned Android MX+ original-firmware manual session
+  --candi-obdlink-reset-engine-counters  Explicit T8 counter-reset profile; requires MX+ token
   --candi-chipsoft-usb-token TOKEN  Direct Android Chipsoft USB; original firmware read-only
   --candi-seatbelt-audible Explicit constrained BCM seatbelt operation; requires per-run authority
   --candi-j2534-adapter nano|chipsoft-pro Installed Windows driver profile; default nano
@@ -525,6 +554,28 @@ mod tests {
     use std::path::Path;
     fn parse(a: &[&str]) -> Result<Options, String> {
         Options::parse(a.iter().map(|s| s.to_string()), |_| None)
+    }
+    #[test]
+    fn mxplus_native_profile_is_owned_manual_and_exclusive() {
+        let base = ["--test-harness", "--harness-target", "native-manual", "--candi-native-link",
+            "--candi-obdlink-token", "0123456789abcdef0123456789abcdef"];
+        assert!(!parse(&base).unwrap().candi_obdlink_reset_engine_counters);
+        let mut reset = base.to_vec(); reset.push("--candi-obdlink-reset-engine-counters");
+        assert!(parse(&reset).unwrap().candi_obdlink_reset_engine_counters);
+        assert!(parse(&["--candi-obdlink-reset-engine-counters"]).is_err());
+        for flag in ["--interactive-headless", "--candi-nano-full-native", "--candi-nano-seeds",
+            "--candi-nano-clear-dtc", "--candi-nano-reset-engine-counters", "--candi-chipsoft-seeds"] {
+            let mut bad=base.to_vec();bad.push(flag);assert!(parse(&bad).is_err(), "{flag}");
+        }
+        for flag in ["--candi-nano-usb-token", "--candi-chipsoft-usb-token"] {
+            let mut bad=base.to_vec();bad.extend([flag, "0123456789abcdef0123456789abcdef"]);
+            assert!(parse(&bad).is_err());
+        }
+        for target in ["menus", "security-link-1367", "dtc-link-1367"] {
+            let mut bad=base;bad[2]=target;assert!(parse(&bad).is_err());
+        }
+        let mut bad=base;bad[5]="bad";assert!(parse(&bad).is_err());
+        assert!(parse(&base[1..]).is_err());
     }
     #[test]
     fn nano_counter_reset_requires_exclusive_direct_usb_manual_mode() {

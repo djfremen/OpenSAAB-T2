@@ -24,6 +24,8 @@ pub mod vin_probe;
 pub mod adapter_diagnostics;
 pub mod adapter_compatibility;
 pub mod can_adapter;
+#[path = "../core-recovered/emulator/src/adapter_failure.rs"]
+pub mod adapter_failure;
 pub use adapters::j2534::bridge as candi_nano;
 pub use adapters::vcx_nano::channel as nano_channel;
 pub use adapters::vcx_nano::native as nano_native;
@@ -32,3 +34,5 @@ pub use adapters::vcx_nano::protocol as nano_usb;
 pub use adapters::vcx_nano::backend as nano_backend;
 
 pub mod native_menu;
+
+pub use opensaab_adapter_translation as adapter_translation;

@@ -106,6 +106,7 @@ pub enum CompletionSource {
     J2534SoftwareLoopback,
     VcxUsbWriteCompatibility,
     ChipsoftDeviceReplyCompatibility,
+    StnRfcommWriteCompatibility,
 }
 impl CompletionSource {
     pub fn label(self) -> &'static str {
@@ -113,6 +114,7 @@ impl CompletionSource {
             Self::J2534SoftwareLoopback => "j2534-software-loopback",
             Self::VcxUsbWriteCompatibility => "vcx-usb-write-compatibility",
             Self::ChipsoftDeviceReplyCompatibility => "chipsoft-device-reply-compatibility",
+            Self::StnRfcommWriteCompatibility => "stn-rfcomm-write-compatibility",
         }
     }
 }
@@ -144,20 +146,33 @@ pub fn realtime_delay(cycles: u64, elapsed: Duration) -> Duration {
 /// Implementations own bounded I/O, deadlines and cleanup. `poll` must not wait
 /// for USB or ECU responses on the emulation thread. RX remains real raw CAN;
 /// segmentation and diagnostic requests belong to the original guest firmware.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FailureContext {
+    pub tx: crate::adapter_failure::TxContext,
+    pub ticket: u64,
+    pub phase: &'static str,
+}
 pub trait Backend {
     fn poll(&mut self) -> Result<Vec<Event>, String>;
     fn transmit(&mut self, controller: usize, tx: CanTransmission) -> Result<(), String>;
     fn confirmations(&self) -> u64;
+    fn failure_context(&self) -> Option<FailureContext> { None }
     fn close(&mut self);
 }
 
 /// Capture-backed electrical route shared by Chipsoft, VCX Nano and Windows J2534.
 /// Flags are deliberately named by layer; J2534 and VCX wire values differ.
 #[derive(Debug, PartialEq, Eq)]
+pub enum ElectricalMode {
+    Data,
+    SingleWireWake,
+}
+#[derive(Debug, PartialEq, Eq)]
 pub struct ElectricalRoute {
     pub channel: u8,
     pub j2534_flags: u32,
     pub wire_flags: u32,
+    pub mode: ElectricalMode,
 }
 pub fn electrical_route(
     controller: usize,
@@ -172,6 +187,7 @@ pub fn electrical_route(
             channel: 0,
             j2534_flags: 0,
             wire_flags: 0,
+            mode: ElectricalMode::Data,
         }),
         (
             2,
@@ -187,11 +203,13 @@ pub fn electrical_route(
                 channel: 1,
                 j2534_flags: 0x400,
                 wire_flags: 0x1000,
+                mode: ElectricalMode::SingleWireWake,
             }),
             3 => Ok(ElectricalRoute {
                 channel: 1,
                 j2534_flags: 0,
                 wire_flags: 0,
+                mode: ElectricalMode::Data,
             }),
             _ => Err("Unverified SWCAN electrical state/frame combination".into()),
         },
@@ -202,3 +220,7 @@ pub fn electrical_route(
 // Compatibility aliases for callers using the former adapter-specific names.
 pub use electrical_route as nano_route;
 pub type NanoRoute = ElectricalRoute;
+
+#[path = "../shared/native-policy/translation_backend.rs"]
+mod translation_backend;
+pub use translation_backend::TranslationBackend;

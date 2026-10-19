@@ -11,6 +11,7 @@
     "lib/arm64-v8a/libtech2_mdi.so": "62162925bbe942f83cd3af2f776730b3f398ea9ba315ee6230db061fc04dc650"
   },
   "allowed_changed": [
-    "lib/arm64-v8a/libtech2_recovered.so"
+    "lib/arm64-v8a/libtech2_recovered.so",
+    "lib/arm64-v8a/libtech2_mx.so"
   ]
 }

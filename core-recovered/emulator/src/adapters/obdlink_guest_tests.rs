@@ -4,6 +4,8 @@ use super::*;
 use std::io::BufRead;
 use std::net::TcpListener;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
+static PEER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy)]
 enum Mode {
@@ -24,8 +26,9 @@ impl Peer {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let directory = std::env::temp_dir().join(format!(
-            "opensaab-stn-peer-{}-{}",
+            "opensaab-stn-peer-{}-{}-{}",
             std::process::id(),
+            PEER_SEQUENCE.fetch_add(1, Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

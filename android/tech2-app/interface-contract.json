@@ -1206,5 +1206,23 @@
     "qualification": "A fresh ECU response, firmware completion and post-reset counter readings are required on each exact installed artifact/adapter; USB acceptance alone does not pass.",
     "candidate": "0.1.1-preview.1 Android ARM64; physical tests pending",
     "other_targets": "Android ARM32, macOS ARM64/x86_64, Windows x86_64, Linux x86_64 and iOS adoption and installed physical checks pending; no inherited pass."
+  },
+  "android_mxplus_worker_preview11": {
+    "version": "0.1.1-preview.11",
+    "source_adoption": "Android ARM64 MX+ uses a separate legacy-engine worker with the shared authenticated STN backend, raw-frame boundary and bounded key-status policy. Six legacy USB/connection workers stay byte-pinned to preview.1.",
+    "read_profile": "Original firmware diagnostic reads plus exact bounded SW241 AE0302 key-status query; other DeviceControl, clear and security-key commands remain blocked.",
+    "counter_reset_profile": "Explicit confirmation starts a separate T8 maintenance session. Adds only HS7E0 02AE140000000000; engine-stopped check and original firmware confirmation required for the owner test.",
+    "control": "Original native-manual mailbox, canonical key encoders, persistent authenticated MCP and no automatic replay. Offline recovered runtime remains separate.",
+    "qualification": "Host firmware/menu and policy checks only until an exact Fire install and physical session are recorded. No inherited USB-adapter pass.",
+    "interface_gap": "MX+ firmware and counter-reset entries remain secondary App menu development paths; primary Connect and start currently performs discovery only. Shared cross-platform workflow integration remains pending.",
+    "targets": {
+      "android-arm64": "Source candidate; exact install/vehicle qualification pending",
+      "android-arm32": "No MX+ worker in this package; source/installed qualification pending",
+      "macos-arm64": "Pending",
+      "macos-x86_64": "Pending",
+      "windows-x64": "Pending",
+      "linux-x86_64": "Pending",
+      "ios-arm64": "Pending"
+    }
   }
 }

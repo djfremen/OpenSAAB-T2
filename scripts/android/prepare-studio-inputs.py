@@ -41,6 +41,7 @@ if connection_core:
         raise SystemExit('vLinker connection core must be a locally built ELF64 executable')
     shutil.copy2(connection_core, native / 'libopensaab_connection.so')
 shutil.copy2(repo/'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu', native/'libtech2_recovered.so')
+shutil.copy2(repo/'target/mx-native/aarch64-linux-android/release/tech2-emu', native/'libtech2_mx.so')
 shutil.copy2(repo/'retained-native/libopensaab_mdi_android.so',native/'libopensaab_mdi_android.so')
 shutil.copy2(repo/'retained-native/libtech2_mdi.so',native/'libtech2_mdi.so')
 baseline=repo/'android/tech2-app/native-payload-baseline.json'
@@ -50,8 +51,8 @@ if baseline.is_file():
 shutil.copy2(repo/'android/adapters/mdi/MDI_NOTICES.txt',legal/'MDI_NOTICES.txt')
 import subprocess
 from release_metadata import preview_metadata
-version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.1-preview.8')
-code=int(os.environ.get('OPENSAAB_VERSION_CODE','101008'))
+version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.1-preview.11')
+code=int(os.environ.get('OPENSAAB_VERSION_CODE','101011'))
 (output/'assets/build.json').write_text(json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'source_dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip()),'version_name':version,'version_code':code,'architecture':'arm64-v8a','source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':True,**preview_metadata(True)},sort_keys=True))
 # Keep the existing manifest authoritative; SDK/debug attributes belong to AGP.
 ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')

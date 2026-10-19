@@ -12,6 +12,7 @@ pub enum Profile {
     Read,
     Seeds,
     ClearDtc,
+    ResetEngineCounters,
 }
 impl Profile {
     pub fn collection(seeds: bool) -> Self {
@@ -40,6 +41,18 @@ pub fn allowed_for_profile(controller: usize, tx: &CanTransmission, profile: Pro
     };
     let id = tx.frame.id;
     let data = &tx.frame.data;
+    // Original T8 "Reset Misfire and Knock Counters", captured from firmware.
+    // An explicit maintenance session admits only this exact HS request. Keep
+    // Read/Seeds/ClearDtc unchanged; never synthesize the request on the host.
+    if profile == Profile::ResetEngineCounters
+        && controller == 0
+        && route.channel == 0
+        && route.mode == ElectricalMode::Data
+        && id == 0x7e0
+        && data.as_slice() == [2, 0xae, 0x14, 0, 0, 0, 0, 0]
+    {
+        return true;
+    }
     if route.mode == ElectricalMode::SingleWireWake {
         return controller == 2 && id == 0x100 && data.is_empty();
     }
@@ -190,25 +203,6 @@ impl CommandGate {
     }
 }
 
-// Captured only after original Service > Check Ignition Key Status. This is
-// a diagnostic DeviceControl request, not a general read-service allowance.
-#[derive(Default)]
-pub(crate) struct KeyStatusGate {
-    pub(crate) enabled: bool,
-    pub(crate) sent: u8,
-}
-impl KeyStatusGate {
-    pub(crate) fn allowed(&mut self, controller: usize, tx: &CanTransmission) -> bool {
-        if !self.enabled
-            || self.sent >= 3
-            || controller != 2
-            || tx.frame.id != 0x241
-            || tx.frame.data != [3, 0xae, 3, 2, 0, 0, 0, 0]
-            || crate::can_adapter::electrical_route(controller, tx).is_err()
-        {
-            return false;
-        }
-        self.sent += 1;
-        true
-    }
-}
+#[path = "../../../../../shared/native-policy/key_status.rs"]
+mod key_status;
+pub(crate) use key_status::KeyStatusGate;

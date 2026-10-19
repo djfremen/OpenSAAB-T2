@@ -13,11 +13,14 @@ from native_payload_baseline import verify_baseline
 
 KOTLIN_RESOURCES = json.loads((Path(__file__).resolve().parents[2] / 'android/shared/kotlin-runtime-resources.json').read_text())
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
-def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None, native_baseline=None):
+def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None, native_baseline=None, mx_core_sha256=None):
     profile = PROFILES[profile_name]
     native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     connection_core = 'lib/arm64-v8a/libopensaab_connection.so'
     recovered_core = 'lib/arm64-v8a/libtech2_recovered.so'
+    mx_core = 'lib/arm64-v8a/libtech2_mx.so'
+    if mx_core_sha256 is not None and (profile_name != 'arm64' or not re.fullmatch('[0-9a-f]{64}',mx_core_sha256)):
+        raise ValueError('MX+ core requires exact ARM64 SHA-256 pin')
     if connection_core_sha256 is not None and (profile_name != 'arm64' or not re.fullmatch('[0-9a-f]{64}', connection_core_sha256)):
         raise ValueError('vLinker connection core requires an exact ARM64 SHA-256 pin')
     mdi_pins = {}
@@ -116,6 +119,12 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if hashlib.sha256(data).hexdigest() != connection_core_sha256:
                     raise ValueError('vLinker connection executable differs from the locally built source pin')
                 continue
+            if name == mx_core and mx_core_sha256 is not None:
+                data = apk.read(name)
+                validate_elf(data[:20],profile)
+                if hashlib.sha256(data).hexdigest() != mx_core_sha256:
+                    raise ValueError('MX+ core executable differs from source pin')
+                continue
             if name == recovered_core and recovered_core_sha256 is not None:
                 data = apk.read(name)
                 validate_elf(data[:20], profile)
@@ -133,9 +142,11 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             raise ValueError('Missing emulator or USB executable')
         if connection_core_sha256 is not None and connection_core not in names:
             raise ValueError('Missing pinned vLinker connection executable')
+        if mx_core_sha256 is not None and mx_core not in names:
+            raise ValueError('Missing pinned MX+ core executable')
         if recovered_core_sha256 is not None and recovered_core not in names:
             raise ValueError('Missing pinned recovered core executable')
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256')
-    parser.add_argument('--recovered-core-sha256');parser.add_argument('--native-baseline');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256,args.native_baseline)
+    parser.add_argument('--mx-core-sha256');parser.add_argument('--recovered-core-sha256');parser.add_argument('--native-baseline');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256,args.native_baseline,args.mx_core_sha256)

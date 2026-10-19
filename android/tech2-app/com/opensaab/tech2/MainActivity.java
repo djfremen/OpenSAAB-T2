@@ -35,7 +35,7 @@ public final class MainActivity extends Activity {
     private boolean autoStarted;
     private File session;
     private android.bluetooth.BluetoothDevice mxDevice;
-    private boolean mxCompatibility;
+    private boolean mxCompatibility,mxResetCounters;
     private volatile com.opensaab.usb.MxNativeBridge mxBridge;
     private long sessionStarted,beatStamp,beatObserved;
     private final com.opensaab.usb.McpMenuCache mcpMenuCache=new com.opensaab.usb.McpMenuCache();
@@ -43,12 +43,12 @@ public final class MainActivity extends Activity {
         public org.json.JSONObject state()throws Exception{return mcpState(true);}
         public org.json.JSONObject inspect()throws Exception{return mcpState(false);}
         public void close(){mcpMenuCache.close();}
-        public boolean key(int code){com.opensaab.usb.InteractiveKeyPump p=keyPump;return running&&!stopping.get()&&p!=null&&p.offer(String.format(Locale.ROOT,"0x%02x",code));}
+        public boolean key(int code){com.opensaab.usb.InteractiveKeyPump p=keyPump;boolean accepted=running&&!stopping.get()&&p!=null&&p.offer(String.format(Locale.ROOT,"0x%02x",code));if(accepted)offlineEvidence.input();return accepted;}
         public void startOffline(){mxDevice=null;startSession();}
         public void stop(){stopSession("Stopped by AI control");}
     };
     private org.json.JSONObject mcpState(boolean fresh)throws Exception {
-        org.json.JSONObject j=new org.json.JSONObject().put("session",running&&session!=null?session.getName():"").put("session_running",running).put("emulator_alive",process!=null&&process.isAlive()).put("busy",(simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy)||com.opensaab.usb.FirmwareGate.busy()||com.opensaab.usb.SecurityAccessView.workflowBusy()).put("mode",mxDevice==null?"offline":"mxp_read").put("input_idle",keyPump!=null&&keyPump.idle()).put("session_age_ms",running?android.os.SystemClock.elapsedRealtime()-sessionStarted:0);
+        org.json.JSONObject j=new org.json.JSONObject().put("session",running&&session!=null?session.getName():"").put("session_running",running).put("emulator_alive",process!=null&&process.isAlive()).put("busy",(simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy)||com.opensaab.usb.FirmwareGate.busy()||com.opensaab.usb.SecurityAccessView.workflowBusy()).put("mode",mxDevice==null?"offline":mxResetCounters?"mxp_reset_counters":"mxp_read").put("input_idle",keyPump!=null&&keyPump.idle()).put("session_age_ms",running?android.os.SystemClock.elapsedRealtime()-sessionStarted:0);
         org.json.JSONObject cachedMenu=mcpMenuCache.get(running?session:null,fresh);
         if(running&&session!=null){
             File beat=new File(session,"emulator-heartbeat");if(beat.lastModified()!=beatStamp){beatStamp=beat.lastModified();beatObserved=android.os.SystemClock.elapsedRealtime();}
@@ -58,7 +58,8 @@ public final class MainActivity extends Activity {
         }
         return j;
     }
-    private void startMx(){if(!idleTool())return;selectVlinker((device,compatibility)->{try{if(device.getName()==null||!device.getName().startsWith("OBDLink MX")){status.setText("Select the OBDLink MX+ for original firmware diagnostics");return;}mxDevice=device;mxCompatibility=compatibility;startSession();}catch(SecurityException denied){status.setText("Allow Nearby devices before connecting MX+");}});}
+    private void startMx(){startMx(false);}
+    private void startMx(boolean resetCounters){if(!idleTool())return;selectVlinker((device,compatibility)->{try{if(device.getName()==null||!device.getName().startsWith("OBDLink MX")){status.setText("Select the OBDLink MX+ for original firmware diagnostics");return;}mxDevice=device;mxCompatibility=compatibility;mxResetCounters=resetCounters;startSession();}catch(SecurityException denied){status.setText("Allow Nearby devices before connecting MX+");}});}
 
     private TextView status, console;
     private TextView vehicleSummary,connectionDate,authStatus,authDate;
@@ -259,6 +260,10 @@ public final class MainActivity extends Activity {
         if(com.opensaab.usb.SetupCleanup.available(this))menu.add("Remove installer",()->{if(idleTool())com.opensaab.usb.SetupCleanup.remove(this);});
         menu.add("AI control (MCP)",()->com.opensaab.usb.AndroidMcp.show(this));
         menu.add("MX+ firmware session",this::startMx);
+        menu.add("MX+ reset misfire and knock counters",()->new AlertDialog.Builder(this)
+            .setTitle("Reset misfire and knock counters?")
+            .setMessage("Start a T8 counter-reset session with MX+. Read the existing values first and keep the engine stopped. Only the original Reset Misfire and Knock Counters request is added to the read profile. Follow the firmware confirmation.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->startMx(true)).show());
         menu.add("Run without an adapter",()->{if(idleTool()){mxDevice=null;startSession();}});
         menu.add("Firmware selection",()->{if(idleTool())startActivity(new android.content.Intent(this,com.opensaab.usb.FirmwareActivity.class));})
             .add("Preferences",controls::showPreferences)
@@ -410,7 +415,7 @@ public final class MainActivity extends Activity {
         if(com.opensaab.usb.DemandStartup.enabled(this)){startup=new com.opensaab.usb.StartupMeasurement(this,autoStarted?android.os.SystemClock.elapsedRealtime():launchOrigin);autoStarted=true;}
         offlineBackgroundStop=null;running=true; stopping.set(false); logs.setLength(0);consoleDirty=true;
         start.setEnabled(false); lcd.frame=null; lcd.invalidate();
-        status.setText(mxDevice==null?"Emulation mode • Offline • No vehicle connection":"MX+ read session • Starting original firmware");
+        status.setText(mxDevice==null?"Emulation mode • Offline • No vehicle connection":(mxResetCounters?"MX+ counter-reset session • Starting original firmware":"MX+ read session • Starting original firmware"));
         new Thread(()->runSession(firmware),"tech2-session").start();
     }
     private volatile Boolean offlineBackgroundStop;
@@ -427,24 +432,26 @@ public final class MainActivity extends Activity {
                 for(int i=0;i<old.length-2;i++) remove(old[i]); }
             session=new File(runs,UUID.randomUUID().toString());
             if(!session.mkdir()) throw new IOException("Cannot create session directory");
-            offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,"libtech2_recovered.so"),firmware,mxDevice==null?"offline_native":"mxp_research");
+            String engine=mxDevice==null?"libtech2_recovered.so":"libtech2_mx.so";
+            offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,engine),firmware,mxDevice==null?"offline_native":mxResetCounters?"mxp_reset_counters":"mxp_native_read");
             sessionStarted=android.os.SystemClock.elapsedRealtime();beatStamp=beatObserved=0;
             if(offlineBackgroundStop!=null)offlineEvidence.requestStop(offlineBackgroundStop);
             List<String> args=new ArrayList<>(Arrays.asList(
-                getApplicationInfo().nativeLibraryDir+"/libtech2_recovered.so",
-                "--interactive-headless",
+                getApplicationInfo().nativeLibraryDir+"/"+engine,
+                mxDevice==null?"--interactive-headless":"--test-harness",
                 "--boot",new File(firmware,"eprom.bin").toString(),
                 "--max-insns",Long.toString(com.opensaab.usb.OfflineSessionEvidence.INSTRUCTION_LIMIT),"--output-dir",session.toString(),
                 new File(firmware,"card.bin").toString()));
+            if(mxDevice==null){
             File captures=new File(getFilesDir(),"captures");if(!captures.isDirectory()&&!captures.mkdirs())throw new IOException("Cannot prepare capture storage");
             args.add(args.size()-1,"--data-display");args.add(args.size()-1,"--capture-allow-empty");args.add(args.size()-1,"--capture-directory");args.add(args.size()-1,captures.toString());
+            }
             if(mxDevice!=null){
-                // Preserve the existing live MX+ startup profile until it is
-                // separately qualified with the recovered host kernel.
-                args.add(args.size()-1,"--research-harness");args.add(args.size()-1,"--candi-native-link");
+                args.add(args.size()-1,"--candi-native-link");
                 args.add(args.size()-1,"--candi-firmware");args.add(args.size()-1,new File(firmware,"candi.bin").toString());
                 args.add(args.size()-1,"--opsys");args.add(args.size()-1,new File(firmware,"opsys.dwn").toString());
-                mxBridge=new com.opensaab.usb.MxNativeBridge(this,mxDevice,mxCompatibility);args.add(args.size()-1,"--candi-obdlink-token");args.add(args.size()-1,mxBridge.token());args.add(args.size()-1,"--harness-target");args.add(args.size()-1,"native-manual");
+                mxBridge=new com.opensaab.usb.MxNativeBridge(this,mxDevice,mxCompatibility,mxResetCounters);args.add(args.size()-1,"--candi-obdlink-token");args.add(args.size()-1,mxBridge.token());args.add(args.size()-1,"--harness-target");args.add(args.size()-1,"native-manual");
+                if(mxResetCounters)args.add(args.size()-1,"--candi-obdlink-reset-engine-counters");
             }
             ProcessBuilder builder=new ProcessBuilder(args).directory(session).redirectErrorStream(true);
             com.opensaab.usb.DemandStartup.configure(this,builder);
@@ -456,7 +463,7 @@ public final class MainActivity extends Activity {
             if(stopping.get()) child.destroy();
             Thread reader=new Thread(()->readLogs(child),"tech2-console"); reader.start();
             long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(com.opensaab.usb.OfflineSessionEvidence.DEADLINE_MS);
-            File mailbox=new File(session,"interactive-key.txt");
+            File mailbox=new File(session,mxDevice==null?"interactive-key.txt":"native-key.txt");
             keyPump=new com.opensaab.usb.InteractiveKeyPump(mailbox,e->ui.post(()->append("Input stopped: "+e)));
             health.begin(session);
             lcdPump.setDirectory(session);
@@ -472,7 +479,7 @@ public final class MainActivity extends Activity {
             reader.join(2000);
             // NativeLcdPump observes final frame publication as well.
             exitCode=child.exitValue();completed=exitCode==0;
-            end=stopping.get()?"Offline menus stopped":completed?"Offline session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
+            end=stopping.get()?(mxDevice==null?"Offline menus stopped":"MX+ session stopped"):completed?"Firmware session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
         } catch(Exception e) {
             end="Cannot run firmware: "+e.getMessage();
         } finally {
@@ -512,7 +519,7 @@ public final class MainActivity extends Activity {
                 final String text=line;
                 // Avoid thousands of pending UI callbacks from boot diagnostics.
                 if(text.startsWith("LCD:") || text.startsWith("KEYPAD:") || text.startsWith("SESSION:") || text.contains("ERROR") || text.contains("CRASH") || text.contains("| CANDI]")) {
-                    ui.post(()->{append(text);if(text.startsWith("LCD:") && process==child && running && !stopping.get())status.setText("Emulation mode • Offline • No vehicle connection");});
+                    ui.post(()->{append(text);if(text.startsWith("LCD:") && process==child && running && !stopping.get())status.setText(mxDevice==null?"Emulation mode • Offline • No vehicle connection":mxResetCounters?"MX+ counter-reset session":"MX+ read session");});
                 }
             }
         } catch(IOException e) { ui.post(()->append("Console closed: "+e.getMessage())); }
