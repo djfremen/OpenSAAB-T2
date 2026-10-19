@@ -932,12 +932,12 @@
   },
   "experimental_adapter_tests": {
     "mongoose": {
-      "scope": "Separate personal Android ARM64 Developer Preview 0.1.1-preview.3. Preserves startup, HS-CAN channel and one HS-CAN VIN; adds bounded I-Bus CIM ignition/VIN control and one captured high-voltage-wake comparison. DTCs, security processing/import and full original-firmware backend are unavailable.",
-      "entry": "Fresh-launch Developer Preview welcome > Continue > Mongoose connection test; no diagnostic-card download. Installed name and main-window title read OpenSAAB 0.1.1-preview.3 ARM64 from packaged metadata.",
+      "scope": "Separate personal Android ARM64 Developer Preview 0.1.1-preview.4. Preserves startup, HS-CAN channel and one HS-CAN VIN; adds bounded I-Bus CIM ignition/VIN control and one captured high-voltage-wake comparison. DTCs, security processing/import and full original-firmware backend are unavailable.",
+      "entry": "Fresh-launch Developer Preview welcome > Continue > Mongoose connection test; no diagnostic-card download. Installed name and main-window title read OpenSAAB 0.1.1-preview.4 ARM64 from packaged metadata.",
       "workflow": "Explicit USB permission and selected power/ignition context; Read I-Bus CIM without HV wake or Wake I-Bus and read CIM; finite fresh session with four/five vehicle transmit attempts respectively. Contributor sleep/ignition context is reported, never automatically proven. Stop, unplug and deadline trigger captured stop/channel/device/control/USB cleanup. Unique saved ZIPs are reviewed before the user chooses a share recipient.",
       "identity": "GM II descriptor candidate 18e1:0107; captured envelope/replies and firmware1.2.8.0/bootloader1.1.8.0 verified before channel test. USB readiness is distinct from a live ECU.",
       "targets": {
-        "android-arm64": "Personal 0.1.1-preview.3 candidate. Beta.1 four reviewed contributor startup/channel passes retained; beta.2 VIN and new I-Bus/wake physical qualification remain pending. Installed emulator evidence is scoped to simulated USB.",
+        "android-arm64": "Personal 0.1.1-preview.4 candidate. Beta.1 four reviewed contributor startup/channel passes retained; beta.2 VIN and new I-Bus/wake physical qualification remain pending. Installed emulator evidence is scoped to simulated USB.",
         "android-arm32": "No packaged Mongoose connection test; no inherited hardware or interface qualification",
         "windows-x64": "No packaged Mongoose connection test; no inherited hardware or interface qualification",
         "macos-arm64": "No packaged Mongoose connection test; no inherited hardware or interface qualification",
@@ -960,7 +960,7 @@
       },
       "single_wire_test": {
         "capture_receipt": "releases/consistent-baseline/MONGOOSE_NATIVE_BODY_SLEEP_2026-10-14.json",
-        "version": "0.1.1-preview.3",
+        "version": "0.1.1-preview.4",
         "channels": "Captured paired ISO1801/raw1701, pin1,33333bit/s; exact CIM641/241 flow filter and raw541 filter; successful captured firmware/bootloader profile remains required.",
         "requests": "Optional one raw1701/100 empty-data TX flag0x400; then one functional tester-present101/FE013E, AA0101 status, CIM1A90 VIN and20 stop. No retries, keys, seeds, erase, programming or arbitrary transmit.",
         "success": "Accepted and route/sequence-correlated0x106 completion for each requested exchange; fresh raw1701/541 DPID01 status; complete ordered ISO1801/641 VIN; confirmed stop/channel/device/vendor-control and real USB release. A valid CIM reply can pass with ignition state unknown.",
@@ -1123,7 +1123,7 @@
       "core_scope": "Recovered core for offline/MX+; retained Android engine for Chipsoft/Nano; matching preview.70 MDI engine extended with shared menu publisher and verified Saab148 startup guard. Physical carrier tests and recovered MDI kernel migration remain pending."
     },
     "latency_update_2026_10_18": {
-      "candidate": "0.1.1-preview.3 Android ARM64; unpublished",
+      "candidate": "0.1.1-preview.4 Android ARM64; unpublished",
       "transport": "Keep one MCP stdio bridge and ADB forward per process. Negotiate wait_state_v1; older endpoints retain bounded state polling.",
       "observation": "File-observed immutable menu snapshots for inspection; fresh native-menu read for every command admission. Waits run off the UI thread, are limited to 1500 ms per request and one active waiter, and allow concurrent state/health/Stop requests.",
       "navigation": "Reuse the last observed state across exact-label path steps; no blind key batching. Require consumed input, idle state and a changed menu revision before proceeding. Lost replies/timeouts never replay a key.",

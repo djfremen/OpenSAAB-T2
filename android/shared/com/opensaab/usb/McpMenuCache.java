@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 package com.opensaab.usb;
 
-import android.os.FileObserver;
+import android.os.SystemClock;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import org.json.JSONObject;
@@ -9,9 +9,10 @@ import org.json.JSONObject;
 /** Observational snapshots only. Command admission always requests a fresh read. */
 public final class McpMenuCache implements AutoCloseable {
     private File directory;
-    private FileObserver observer;
+    private DirectoryWatch.Registration observer;
     private String encoded;
     private boolean loaded;
+    private long loadedAt;
     private final int maxBytes;
     public McpMenuCache(){this(131071);}
     public McpMenuCache(int maxBytes){if(maxBytes<1||maxBytes>131071)throw new IllegalArgumentException("Menu limit");this.maxBytes=maxBytes;}
@@ -21,27 +22,24 @@ public final class McpMenuCache implements AutoCloseable {
         if (!root.equals(directory)) {
             close(); directory = root;
             final File watched = root;
-            observer = new FileObserver(root.getAbsolutePath(), FileObserver.MOVED_TO |
-                    FileObserver.CLOSE_WRITE | FileObserver.DELETE | FileObserver.DELETE_SELF |
-                    FileObserver.MOVE_SELF) {
-                public void onEvent(int event, String path) {
+            observer = DirectoryWatch.watch(root, (event,path) -> {
                     if (path != null && !path.equals("native-menu.json")) return;
                     synchronized (McpMenuCache.this) {
                         if (!watched.equals(directory)) return;
                         try { load(watched); } catch (Exception ignored) { encoded = null; loaded = true; }
                     }
                     AndroidMcp.changed();
-                }
-            };
-            observer.startWatching();
+            });
         }
-        if (fresh || !loaded) load(root);
+        // Recovery for a missed event or an unavailable kernel watch. Normal
+        // updates arrive through the shared directory observer off the UI thread.
+        if (fresh || !loaded || SystemClock.elapsedRealtime()-loadedAt>=1000) load(root);
         // Never share a mutable JSONObject across the UI and observer threads.
         return encoded == null ? null : new JSONObject(encoded);
     }
 
     private void load(File root) throws Exception {
-        encoded = null; loaded = true;
+        encoded = null; loaded = true; loadedAt=SystemClock.elapsedRealtime();
         File file = new File(root, "native-menu.json");
         if (!file.isFile()) return;
         try (InputStream in = new FileInputStream(file);
@@ -56,7 +54,7 @@ public final class McpMenuCache implements AutoCloseable {
     }
 
     public synchronized void close() {
-        if (observer != null) observer.stopWatching();
+        if (observer != null) observer.close();
         observer = null; directory = null; encoded = null; loaded = false;
     }
 }

@@ -24,15 +24,21 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
     private void cacheTests()throws Exception {
         File root=new File(getTargetContext().getCacheDir(),"mcp-cache-fixture");root.mkdirs();File menu=new File(root,"native-menu.json"),temp=new File(root,"native-menu.json.tmp");
         McpMenuCache cache=new McpMenuCache();
+        DirectoryWatch.Registration second=null;
         try{
             Files.write(menu.toPath(),"{\"revision\":\"first\"}".getBytes(StandardCharsets.UTF_8));
             JSONObject first=cache.get(root,false);first.put("revision","mutated client copy");check(cache.get(root,false).getString("revision").equals("first"),"Mutable snapshot escaped cache");
+            second=DirectoryWatch.watch(root,(event,path)->{});
             Files.write(temp.toPath(),"{\"revision\":\"second\"}".getBytes(StandardCharsets.UTF_8));Files.move(temp.toPath(),menu.toPath(),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
-            long deadline=SystemClock.elapsedRealtime()+2000;while(!cache.get(root,false).getString("revision").equals("second")&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(5);
+            long deadline=SystemClock.elapsedRealtime()+500;while(!cache.get(root,false).getString("revision").equals("second")&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(5);
             check(cache.get(root,false).getString("revision").equals("second"),"Atomic native publication did not refresh cache");
+            second.close();second=null;
+            Files.write(temp.toPath(),"{\"revision\":\"after-close\"}".getBytes(StandardCharsets.UTF_8));Files.move(temp.toPath(),menu.toPath(),StandardCopyOption.REPLACE_EXISTING,StandardCopyOption.ATOMIC_MOVE);
+            deadline=SystemClock.elapsedRealtime()+500;while(!cache.get(root,false).getString("revision").equals("after-close")&&SystemClock.elapsedRealtime()<deadline)Thread.sleep(5);
+            check(cache.get(root,false).getString("revision").equals("after-close"),"Closing another directory consumer revoked menu observation");
             Files.write(menu.toPath(),"{\"revision\":\"command-fresh\"}".getBytes(StandardCharsets.UTF_8));check(cache.get(root,true).getString("revision").equals("command-fresh"),"Command admission used an old cache");
             Files.delete(menu.toPath());check(cache.get(root,true)==null,"Deleted native menu remained actionable");
-        }finally{cache.close();menu.delete();temp.delete();root.delete();}
+        }finally{if(second!=null)second.close();cache.close();menu.delete();temp.delete();root.delete();}
     }
     private void freshAdmission(Activity activity,String token)throws Exception {
         File root=new File(getTargetContext().getCacheDir(),"mcp-admission-fixture");root.mkdirs();File menu=new File(root,"native-menu.json");final int[] keys={0};

@@ -2,7 +2,6 @@
 package com.opensaab.usb;
 
 import android.graphics.Bitmap;
-import android.os.FileObserver;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.ImageView;
@@ -27,7 +26,7 @@ public final class NativeLcdPump implements AutoCloseable {
     private final AtomicReference<Frame> ready = new AtomicReference<>();
     private volatile boolean closed;
     private volatile File directory;
-    private FileObserver observer;
+    private DirectoryWatch.Registration observer;
     private String appliedStamp = "", lastError = ""; // worker thread only
 
     private static final class Frame {
@@ -50,7 +49,7 @@ public final class NativeLcdPump implements AutoCloseable {
 
     public synchronized void setDirectory(File directory) {
         if (closed) return;
-        if (observer != null) observer.stopWatching();
+        if (observer != null) observer.close();
         this.directory = directory;
         long epoch=generation.incrementAndGet();
         Frame pending=ready.getAndSet(null);if(pending!=null)pending.bitmap.recycle();
@@ -58,15 +57,12 @@ public final class NativeLcdPump implements AutoCloseable {
         if(Looper.myLooper()==Looper.getMainLooper())clear.run();else ui.post(clear);
         revision.incrementAndGet();
         if (directory != null) {
-            observer = new FileObserver(directory.getPath(), FileObserver.MOVED_TO | FileObserver.CLOSE_WRITE) {
-                public void onEvent(int event, String path) {
+            observer = DirectoryWatch.watch(directory, (event,path) -> {
                     if (path != null && path.endsWith(".ppm")) {
                         revision.incrementAndGet();
                         request();
                     }
-                }
-            };
-            observer.startWatching();
+            });
         }
         request();
     }
@@ -138,7 +134,7 @@ public final class NativeLcdPump implements AutoCloseable {
     public synchronized void close() {
         closed = true;
         directory = null;generation.incrementAndGet();
-        if (observer != null) observer.stopWatching();
+        if (observer != null) observer.close();
         worker.shutdownNow();
         Frame frame = ready.getAndSet(null);
         if (frame != null) frame.bitmap.recycle();
