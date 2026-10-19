@@ -89,7 +89,7 @@
       ],
       "launch_controls": "Stacked full-width Connect and start, Get security access, then Run without an adapter; firmware selection stays in App menu.",
       "details": "Tap the summary to open Vehicle and security details.",
-      "limitation": "Keep a missing adapter firmware transport visible after successful VIN identification.",
+      "limitation": "After fresh identification and confirmed discovery cleanup, start the selected available firmware binding. Keep a missing binding visible; never substitute offline emulation. Android preview.16 binds verified MX+ to the existing native read profile; other Bluetooth models remain unavailable.",
       "simulator_scope": "Debug Android ARM64 and iOS ARM64 simulator bindings use the same shared Rust startup/protocol and an explicitly selected loopback-only M4 Bluetooth helper: observed MC+ BLE or Carista EVO Classic SPP. This does not qualify physical phone Bluetooth or full firmware diagnostics."
     },
     "visual_design": {
@@ -1104,6 +1104,22 @@
       "windows-x64": "Native binding/package metadata and installed verification pending",
       "linux-x86_64": "Native binding/package metadata and installed verification pending",
       "ios-arm64": "Native binding/package metadata and installed verification pending"
+    }
+  },
+  "android_mxplus_primary_route_preview16": {
+    "version": "0.1.1-preview.16",
+    "workflow": "Connect and start -> Bluetooth adapters -> explicit endpoint -> verified fresh VIN -> confirmed discovery cleanup and owner release -> original MX+ firmware read session using that same selected endpoint. No second picker.",
+    "qualification": "Source implementation; exact installed normal-route vehicle test pending. Preview.15 native-menu results did not qualify the primary route.",
+    "guards": "Only actual shared discovery model obdlink_mxp and complete, single-request, no-replay, closed receipt; one-shot current foreground attempt. Cancel/background/stale/failed discovery or held owner never starts firmware. No offline fallback.",
+    "capability": "Default original read profile; maintenance remains separately consented. Other Bluetooth models retain explicit unavailable firmware binding.",
+    "targets": {
+      "android-arm64": "Implemented, pending exact artifact and physical verification",
+      "android-arm32": "Binding source shared; build/install/physical qualification pending",
+      "macos-arm64": "No adoption or qualification from Android",
+      "macos-x86_64": "No adoption or qualification from Android",
+      "windows-x64": "No adoption or qualification from Android",
+      "linux-x86_64": "No adoption or qualification from Android",
+      "ios-arm64": "No implementation; Android validation first"
     }
   }
 }

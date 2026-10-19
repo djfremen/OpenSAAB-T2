@@ -36,6 +36,7 @@ public final class MainActivity extends Activity {
     private File session;
     private android.bluetooth.BluetoothDevice mxDevice;
     private boolean mxCompatibility,mxResetCounters;
+    private final com.opensaab.usb.BluetoothFirmwareHandoff bluetoothHandoff=new com.opensaab.usb.BluetoothFirmwareHandoff();
     private volatile com.opensaab.usb.MxNativeBridge mxBridge;
     private long sessionStarted,beatStamp,beatObserved;
     private final com.opensaab.usb.McpMenuCache mcpMenuCache=new com.opensaab.usb.McpMenuCache();
@@ -118,11 +119,11 @@ public final class MainActivity extends Activity {
         workspace=new com.opensaab.usb.SessionWorkspace(this,getApplicationInfo().loadLabel(getPackageManager()).toString(),controls,this::showAppMenu,()->com.opensaab.usb.SessionSheet.show(this,"Vehicle and security details",details));
         simulatorConnection=new com.opensaab.usb.SimulatorVehicleConnection(this,this::simulatorChanged);
         connectionStatus=label("",12);connectionStatus.setTag("connection-status");connectionStatus.setVisibility(View.GONE);workspace.addLaunch(connectionStatus);
-        cancelConnection=new Button(this);cancelConnection.setText("Cancel");cancelConnection.setTag("cancel-connection");com.opensaab.usb.SessionStyle.button(cancelConnection,false);cancelConnection.setOnClickListener(v->simulatorConnection.stop());cancelConnection.setVisibility(View.GONE);workspace.addLaunch(cancelConnection);
+        cancelConnection=new Button(this);cancelConnection.setText("Cancel");cancelConnection.setTag("cancel-connection");com.opensaab.usb.SessionStyle.button(cancelConnection,false);cancelConnection.setOnClickListener(v->{bluetoothHandoff.cancel();status.setText("Connection cancelled · Releasing adapter…");simulatorConnection.stop();});cancelConnection.setVisibility(View.GONE);workspace.addLaunch(cancelConnection);
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         start.setTag("connect-start");
         Button securityStart=new Button(this);securityStart.setText("Get security access");securityStart.setTag("security-start");com.opensaab.usb.SessionStyle.button(securityStart,false);securityStart.setOnClickListener(v->chooseSecurityCollection());workspace.addLaunch(securityStart);
-        offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool())startSession();});workspace.addLaunch(offline);
+        offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool()){mxDevice=null;startSession();}});workspace.addLaunch(offline);
         details.addView(label(com.opensaab.usb.AppUpdates.identity(this),13));
         updateReminder=new com.opensaab.usb.AppUpdates.Reminder(this,()->!running);workspace.addLaunch(updateReminder.view());
         com.opensaab.usb.SessionStyle.stack(details);updateWorkspace();setContentView(workspace);com.opensaab.usb.ProjectSupport.attachFooter(this);
@@ -326,13 +327,38 @@ public final class MainActivity extends Activity {
             if(bluetooth&&index==0){
                 if(!allowEmulation){showHscanProbe();return;}
                 Runnable begin=()->{clearSimulatorIdentity();status.setText("Opening selected adapter · Reading a fresh vehicle VIN…");simulatorConnection.start();updateWorkspace();};
-                if(localMac)begin.run();else selectVlinker((device,compatibility)->{simulatorConnection=com.opensaab.usb.VlinkerVehicleConnection.direct(this,this::simulatorChanged,device,compatibility);begin.run();});
+                if(localMac)begin.run();else selectVlinker((device,compatibility)->{beginBluetoothStartup(device,compatibility);});
             }else connectAdapter(devices.get(index-(bluetooth?1:0)),mode,!allowEmulation);
         });
         picker.setPositiveButton("Refresh",(dialog,which)->selectAdapter(mode,allowEmulation));
         picker.setNegativeButton("Cancel",null);
-        if(allowEmulation)picker.setNeutralButton("Run in emulation mode",(dialog,which)->startSession());
+        if(allowEmulation)picker.setNeutralButton("Run in emulation mode",(dialog,which)->{mxDevice=null;startSession();});
         adapterPicker=picker.show();
+    }
+    private void beginBluetoothStartup(android.bluetooth.BluetoothDevice device,boolean compatibility){
+        final long attempt=bluetoothHandoff.begin();
+        simulatorConnection=com.opensaab.usb.VlinkerVehicleConnection.direct(this,snapshot->{
+            if(!bluetoothHandoff.current(attempt)){if(!running&&!com.opensaab.usb.VlinkerVehicleConnection.active())updateWorkspace();return;}
+            if(!snapshot.optBoolean("startup_terminal")){simulatorChanged(snapshot);return;}
+            org.json.JSONObject receipt=snapshot.optJSONObject("startup_report"),vehicle=snapshot.optJSONObject("vehicle");
+            boolean verified=receipt!=null&&vehicle!=null&&receipt.optString("status").equals("vin_received")
+                &&receipt.optBoolean("bluetooth_closed")&&!receipt.optBoolean("automatic_replay",true)
+                &&receipt.optInt("host_vehicle_request_attempts")==1&&receipt.optInt("host_vehicle_requests_written")==1
+                &&receipt.optJSONObject("result")!=null&&receipt.optJSONObject("result").optString("adapter_model").equals(vehicle.optString("adapter_model"));
+            boolean available=new File(getApplicationInfo().nativeLibraryDir,"libtech2_mx.so").canExecute();
+            boolean ready=bluetoothHandoff.finish(attempt,foreground&&!isDestroyed()&&!running&&available
+                &&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy(),
+                !simulatorConnection.busy&&!com.opensaab.usb.VlinkerVehicleConnection.active(),snapshot.optString("state"),
+                vehicle==null?"":vehicle.optString("adapter_model"),verified);
+            if(ready){
+                // Discovery closed its socket and released its owner. Reopen this exact selection.
+                // Never rediscover, replay a VIN request, or fall back to offline firmware.
+                mxDevice=device;mxCompatibility=compatibility;mxResetCounters=false;
+                status.setText("Vehicle identified · Starting original firmware…");startSession();
+            }else simulatorChanged(snapshot);
+        },device,compatibility);
+        clearSimulatorIdentity();status.setText("Opening selected adapter · Reading a fresh vehicle VIN…");
+        simulatorConnection.start();updateWorkspace();
     }
     private void selectVlinker(com.opensaab.usb.VlinkerDevicePicker.Selection selected){
         if(bluetoothPicker!=null)bluetoothPicker.close();
@@ -405,7 +431,7 @@ public final class MainActivity extends Activity {
     private void startSession() {
         if(!previewContinued)return;
         if(com.opensaab.usb.MdiUsbActivity.sessionActive()||com.opensaab.usb.VlinkerVehicleConnection.active())return;
-        clearSimulatorIdentity();
+        bluetoothHandoff.cancel();clearSimulatorIdentity();
         if(running || !foreground || com.opensaab.usb.SecurityAccessView.workflowBusy()) return;
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
@@ -543,7 +569,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume(){resumed=true;if(previewContinued)com.opensaab.usb.AndroidMcp.bind(this,mcpOwner);super.onResume();if(updateReminder!=null)updateReminder.resume();}
     @Override protected void onPause(){resumed=false;if(updateReminder!=null)updateReminder.pause();super.onPause();}
-    @Override protected void onStop() { com.opensaab.usb.AndroidMcp.unbind(this); foreground=false;if(!previewContinued){super.onStop();return;}if(bluetoothPicker!=null)bluetoothPicker.close();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();clearSimulatorIdentity();ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
+    @Override protected void onStop() { com.opensaab.usb.AndroidMcp.unbind(this); foreground=false;bluetoothHandoff.cancel();if(!previewContinued){super.onStop();return;}if(bluetoothPicker!=null)bluetoothPicker.close();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();clearSimulatorIdentity();ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     @Override protected void onSaveInstanceState(Bundle state){state.putBoolean("preview_continued",previewContinued);super.onSaveInstanceState(state);}
     private void refreshVehicleHistory(){
         if(!foreground||isDestroyed()||!historyPending.compareAndSet(false,true))return;

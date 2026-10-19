@@ -11,6 +11,8 @@ jdk=Path(os.environ.get('JAVA_HOME','/Applications/Android Studio.app/Contents/j
 with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
     subprocess.run([str(jdk/'bin/javac'),'-d',output,
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
+        str(repo/'android/shared/com/opensaab/usb/BluetoothFirmwareHandoff.java'),
+        str(repo/'android/tests/BluetoothFirmwareHandoffTest.java'),
         str(repo/'android/shared/com/opensaab/usb/FirmwareCatalog.java'),
         str(repo/'android/tests/FirmwareCatalogTest.java'),
         str(repo/'android/shared/com/opensaab/usb/AdapterProfile.java'),
@@ -73,6 +75,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/tests/ChipsoftCommandGateTest.java'),
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.BluetoothFirmwareHandoffTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.NanoRebootHandoffTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.MdiUsbConfigurationTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.FirmwareCatalogTest'],check=True)

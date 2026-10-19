@@ -200,7 +200,7 @@ public class VlinkerVehicleConnection {
     }
     private void run(){
         if(!probeMode.isEmpty()){runProbe();return;}
-        JSONObject result=null,snapshot=null;String error="";boolean success=false;
+        JSONObject result=null,snapshot=null,startupReport=null;String error="";boolean success=false;
         try{
             traceDirectory=new File(context.getFilesDir(),(evidenceKind.equals("android-classic-spp")?"vlinker-startup-tests/":"simulator-vlinker-tests/")+java.util.UUID.randomUUID());if(!traceDirectory.mkdirs())throw new IOException("Cannot save connection evidence");
             transcript=new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(traceDirectory,"transcript.jsonl")),StandardCharsets.UTF_8));
@@ -216,6 +216,7 @@ public class VlinkerVehicleConnection {
             JSONObject report=new JSONObject().put("schema",1).put("shared_workflow",workflowManifest).put("selected_device",transportIdentity).put("transport",evidenceKind).put("app_version",AppBuildProfile.installedVersion(context))
                 .put("status",success?"vin_received":"failed").put("bluetooth_closed",closed).put("host_vehicle_request_attempts",attempts).put("host_vehicle_requests_written",written).put("automatic_replay",false).put("command_attempts",commandAttempts).put("command_writes",commandWrites).put("error",error);
             if(success)report.put("result",result);
+            startupReport=report;
             Files.write(new File(traceDirectory,"result.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
             if(cancelled.get()){
                 snapshot=connection(op("cancel"));snapshot=connection(op("transport_closed").put("bluetooth_closed",closed));
@@ -231,7 +232,11 @@ public class VlinkerVehicleConnection {
             if(link!=null){link.shutdown();link=null;}
             if(core!=null){core.destroy();core=null;}try{if(transcript!=null)transcript.close();}catch(Exception ignored){}
             final JSONObject terminal=snapshot;
-            ui.post(()->{OWNER.compareAndSet(this,null);busy=false;if(terminal!=null)listener.changed(terminal);});
+            final JSONObject receipt=startupReport;
+            ui.post(()->{OWNER.compareAndSet(this,null);busy=false;if(terminal!=null){
+                try{terminal.put("startup_terminal",true);if(receipt!=null)terminal.put("startup_report",receipt);}catch(JSONException impossible){throw new AssertionError(impossible);}
+                listener.changed(terminal);
+            }});
         }
     }
 }
