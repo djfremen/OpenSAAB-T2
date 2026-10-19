@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import sys
 import xml.etree.ElementTree as ET
+from native_payload_baseline import verify_files
 
 repo = Path(__file__).resolve().parents[2]
 output = Path(sys.argv[1])
@@ -33,7 +34,7 @@ native = output / 'jniLibs/arm64-v8a'
 native.mkdir(parents=True, exist_ok=True)
 for source, dest in [('tech2-emu', 'libtech2_emu.so'), ('nano-usb-probe', 'libnano_probe.so'), ('chipsoft-usb-probe', 'libchipsoft_probe.so')]:
     shutil.copy2(repo / 'target/aarch64-linux-android/release' / source, native / dest)
-connection_core = os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or str(repo / 'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection')
+connection_core = os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or str(repo / 'retained-native/libopensaab_connection.so')
 if connection_core:
     data = Path(connection_core).read_bytes()
     if data[:5] != b'\x7fELF\x02':
@@ -41,12 +42,16 @@ if connection_core:
     shutil.copy2(connection_core, native / 'libopensaab_connection.so')
 shutil.copy2(repo/'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu', native/'libtech2_recovered.so')
 shutil.copy2(repo/'retained-native/libopensaab_mdi_android.so',native/'libopensaab_mdi_android.so')
-shutil.copy2(repo/'core-mdi/mdi-firmware-engine/OpenSAAB-T2/target/aarch64-linux-android/release/tech2-emu',native/'libtech2_mdi.so')
+shutil.copy2(repo/'retained-native/libtech2_mdi.so',native/'libtech2_mdi.so')
+baseline=repo/'android/tech2-app/native-payload-baseline.json'
+if baseline.is_file():
+    verify_files(json.loads(baseline.read_text()),{'lib/arm64-v8a/'+p.name:p for p in native.iterdir() if p.is_file()})
+    shutil.copy2(baseline,output/'assets/native-payload-baseline.json')
 shutil.copy2(repo/'android/adapters/mdi/MDI_NOTICES.txt',legal/'MDI_NOTICES.txt')
 import subprocess
 from release_metadata import preview_metadata
-version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.0-preview.92')
-code=int(os.environ.get('OPENSAAB_VERSION_CODE','100092'))
+version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.1-preview.6')
+code=int(os.environ.get('OPENSAAB_VERSION_CODE','101006'))
 (output/'assets/build.json').write_text(json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'source_dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip()),'version_name':version,'version_code':code,'architecture':'arm64-v8a','source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':True,**preview_metadata(True)},sort_keys=True))
 # Keep the existing manifest authoritative; SDK/debug attributes belong to AGP.
 ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')

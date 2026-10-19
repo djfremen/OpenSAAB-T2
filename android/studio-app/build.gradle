@@ -29,9 +29,9 @@ tasks.register('prepareAndroidInputs', Exec) {
     dependsOn 'buildRust', 'buildVlinkerWorkflow', 'buildRecoveredCore', 'buildMdiMcpBridge'
     workingDir repo
     environment 'OPENSAAB_SUPPORT_ROOT', supportRoot
-    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.5')
-    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('101005')
-    environment 'OPENSAAB_RELEASE_DATE', providers.gradleProperty('appReleaseDate').getOrElse('2026-10-16')
+    environment 'OPENSAAB_VERSION_NAME', providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.6')
+    environment 'OPENSAAB_VERSION_CODE', providers.gradleProperty('appVersionCode').getOrElse('101006')
+    environment 'OPENSAAB_RELEASE_DATE', providers.gradleProperty('appReleaseDate').getOrElse('2026-10-18')
     commandLine python, new File(repo, 'scripts/android/prepare-studio-inputs.py'), generated.get().asFile
     if (bundleSupport) args '--bundle-support'
 }
@@ -43,8 +43,8 @@ android {
         applicationId 'com.opensaab.tech2'
         minSdk 26
         targetSdk 36
-        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(101005)
-        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.5')
+        versionCode providers.gradleProperty('appVersionCode').map { it.toInteger() }.getOrElse(101006)
+        versionName providers.gradleProperty('appVersionName').getOrElse('0.1.1-preview.6')
         ndk { abiFilters 'arm64-v8a' }
     }
     sourceSets.main {
@@ -84,13 +84,14 @@ tasks.register('verifyDebugApk', Exec) {
     workingDir repo
     commandLine python, new File(repo, 'scripts/android/check-apk-firmware.py'),
         layout.buildDirectory.file('outputs/apk/debug/app-debug.apk').get().asFile
+    args '--native-baseline',new File(repo,'android/tech2-app/native-payload-baseline.json')
     if (bundleSupport) args '--allow-bundled-support'
     doFirst {
         args '--recovered-core-sha256', new File(repo,'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu').bytes.digest('SHA-256')
         args '--mdi-module-sha256', new File(repo,'retained-native/libopensaab_mdi_android.so').bytes.digest('SHA-256')
-        args '--mdi-bridge-sha256', new File(repo,'core-mdi/mdi-firmware-engine/OpenSAAB-T2/target/aarch64-linux-android/release/tech2-emu').bytes.digest('SHA-256')
+        args '--mdi-bridge-sha256', new File(repo,'retained-native/libtech2_mdi.so').bytes.digest('SHA-256')
     }
-    def connectionCore = providers.environmentVariable('OPENSAAB_VLINKER_CONNECTION_CORE').orElse(providers.environmentVariable('OPENSAAB_SIMULATOR_CONNECTION_CORE')).getOrElse(new File(repo,'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection').path)
+    def connectionCore = providers.environmentVariable('OPENSAAB_VLINKER_CONNECTION_CORE').orElse(providers.environmentVariable('OPENSAAB_SIMULATOR_CONNECTION_CORE')).getOrElse(new File(repo,'retained-native/libopensaab_connection.so').path)
     doFirst { args '--connection-core-sha256', new File(connectionCore).bytes.digest('SHA-256') }
 }
 tasks.register('buildMdiMcpBridge', Exec) {

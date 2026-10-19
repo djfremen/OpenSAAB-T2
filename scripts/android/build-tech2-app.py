@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from build_profiles import PROFILES, validate_elf
 from report_dependencies import ReportDependencies
 from release_metadata import preview_metadata
+from native_payload_baseline import verify_files
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
@@ -107,6 +108,13 @@ if profile.abi == 'arm64-v8a':
     if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
         recovered_core = Path(os.environ.get('OPENSAAB_RECOVERED_CORE') or repo / 'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu')
         validate_elf(recovered_core.read_bytes()[:20], profile)
+native_baseline = repo / 'android/tech2-app/native-payload-baseline.json' if profile.abi=='arm64-v8a' else None
+if native_baseline and native_baseline.is_file():
+    payloads={f'lib/{profile.abi}/libtech2_emu.so':emulator,f'lib/{profile.abi}/libnano_probe.so':probe,f'lib/{profile.abi}/libchipsoft_probe.so':chipsoft}
+    for name,path in [('libopensaab_connection.so',connection_core),('libtech2_recovered.so',recovered_core),('libopensaab_mdi_android.so',mdi_module),('libtech2_mdi.so',mdi_bridge)]:
+        if path is not None:payloads[f'lib/{profile.abi}/{name}']=path
+    verify_files(json.loads(native_baseline.read_text()),payloads)
+else:native_baseline=None
 deps = ReportDependencies(repo, build, env)
 unsigned = build / 'unsigned.apk'
 ns = 'http://schemas.android.com/apk/res/android'
@@ -147,6 +155,7 @@ with zipfile.ZipFile(unsigned, 'a') as z:
     for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
     z.write(source / 'interface-contract.json', 'assets/interface-contract.json', compress_type=zipfile.ZIP_DEFLATED)
+    if native_baseline:z.write(native_baseline,'assets/native-payload-baseline.json',compress_type=zipfile.ZIP_DEFLATED)
     z.write(support_manifest, 'assets/system/manifest.json', compress_type=zipfile.ZIP_DEFLATED)
     for name, spec in (support.items() if bundle_support else []):
         z.write(support_root / spec['source'], 'assets/system/' + name, compress_type=zipfile.ZIP_DEFLATED)
@@ -182,5 +191,5 @@ else:
         run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
             '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
-run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
+run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--native-baseline',native_baseline] if native_baseline else []), *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
 print(apk)

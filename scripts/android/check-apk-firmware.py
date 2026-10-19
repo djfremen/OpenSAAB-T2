@@ -9,10 +9,11 @@ import os
 from datetime import date
 from pathlib import PurePosixPath, Path
 from build_profiles import PROFILES, validate_elf
+from native_payload_baseline import verify_baseline
 
 KOTLIN_RESOURCES = json.loads((Path(__file__).resolve().parents[2] / 'android/shared/kotlin-runtime-resources.json').read_text())
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
-def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None):
+def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None, native_baseline=None):
     profile = PROFILES[profile_name]
     native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     connection_core = 'lib/arm64-v8a/libopensaab_connection.so'
@@ -33,6 +34,12 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
         names = apk.namelist()
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK payload name')
+        baseline_asset='assets/native-payload-baseline.json'
+        if native_baseline is not None and baseline_asset not in names:raise ValueError('Missing approved native payload baseline')
+        if baseline_asset in names:
+            data=apk.read(baseline_asset)
+            if len(data)>4096 or (native_baseline is not None and data!=Path(native_baseline).read_bytes()):raise ValueError('Packaged native baseline differs from matching source')
+            verify_baseline(json.loads(data),{n:hashlib.sha256(apk.read(n)).hexdigest() for n in names if n.startswith('lib/') and not n.endswith('/')})
         support_names = {'assets/system/' + name for name in SUPPORT}
         required = {'assets/system/manifest.json'} | (support_names if allow_bundled_support else set())
         legal = {'assets/legal/' + Path(n).name: n for n in ('LICENSE','LICENSING.md','THIRD_PARTY_NOTICES.md','licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt')}
@@ -50,6 +57,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             name=info.filename
             if info.is_dir():
                 continue
+            if name==baseline_asset:continue
             if name in required:
                 if name.endswith('/manifest.json'):
                     continue
@@ -130,5 +138,4 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256')
-    parser.add_argument('--recovered-core-sha256');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256)
-
+    parser.add_argument('--recovered-core-sha256');parser.add_argument('--native-baseline');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256,args.native_baseline)
