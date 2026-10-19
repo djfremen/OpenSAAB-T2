@@ -44,6 +44,29 @@ fn encode(controller: usize, tx: &CanTransmission) -> Result<String, String> {
     let data: String = tx.frame.data.iter().map(|b| format!("{b:02X}")).collect();
     Ok(format!("STPXH:{:03X},D:{data},R:0", tx.frame.id))
 }
+
+fn functional_tester_present(tx: &CanTransmission) -> bool {
+    !tx.frame.extended && !tx.frame.rtr && tx.frame.id == 0x101
+        && tx.frame.dlc == 8 && tx.frame.data == [0xfe, 1, 0x3e, 0, 0, 0, 0, 0]
+}
+
+#[derive(Default)]
+struct ReceivePreference {
+    // A functional tester-present must not replace the receive bus chosen by
+    // the last other guest frame. In particular, preserve addressed CIM work.
+    last_non_tester_controller: Option<usize>,
+    return_to_hs: bool,
+}
+impl ReceivePreference {
+    fn transmitted(&mut self, controller: usize, tx: &CanTransmission) {
+        self.return_to_hs = false;
+        if functional_tester_present(tx) {
+            self.return_to_hs = controller == 2 && self.last_non_tester_controller == Some(0);
+        } else {
+            self.last_non_tester_controller = Some(controller);
+        }
+    }
+}
 struct Link {
     socket: SocketUsb,
     parser: Parser,
@@ -57,6 +80,7 @@ struct Link {
     monitoring: bool,
     active_tx: Option<FailureContext>,
     batch_pending: bool,
+    receive_preference: ReceivePreference,
 }
 impl Link {
     fn open(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
@@ -104,6 +128,7 @@ impl Link {
             monitoring: false,
             active_tx: None,
             batch_pending: false,
+            receive_preference: ReceivePreference::default(),
         })
     }
     fn record(&mut self, event: serde_json::Value) -> Result<(), String> {
@@ -221,6 +246,54 @@ impl Link {
         self.record(serde_json::json!({"explicit_protocol_open_before_mode_or_TX":true,"controller":self.controller}))?;
         Ok(())
     }
+
+    fn exact_setup_batch(&mut self, commands: &[(&str, &str)]) -> Result<(), String> {
+        // FRPM F 16.2: verbose output has one response per command, N-1
+        // boundaries and one final prompt. No vehicle frame is in this batch.
+        if commands.is_empty() || commands.iter().any(|(cmd, _)|
+            cmd.is_empty() || cmd.bytes().any(|b| matches!(b, b'|' | b'\r' | b'\n'))) {
+            return Err("STN setup batch requires nonempty individual commands; never replay an empty line".into());
+        }
+        let wire = commands.iter().map(|(cmd, _)| *cmd).collect::<Vec<_>>().join("|");
+        let result = (|| {
+            self.send(&wire)?;
+            let deadline = Instant::now() + Duration::from_secs(3);
+            let mut index = 0;
+            let mut lines = Vec::new();
+            let mut prompted = false;
+            while self.receiving {
+                if Instant::now() >= deadline { return Err("STN setup batch prompt timeout".into()); }
+                for item in self.packet()? {
+                    if prompted { return Err("STN setup batch data after final prompt".into()); }
+                    match item {
+                        Item::Line(line) => lines.push(line),
+                        Item::BatchBoundary | Item::Prompt => {
+                            let Some((command, expected)) = commands.get(index) else {
+                                return Err("STN setup batch has excess responses".into());
+                            };
+                            if lines.len() != 1 || lines[0].split_whitespace().collect::<String>()
+                                != expected.split_whitespace().collect::<String>() {
+                                return Err(format!("STN setup batch readback rejected {command}: {lines:?}"));
+                            }
+                            lines.clear();
+                            index += 1;
+                            prompted = matches!(item, Item::Prompt);
+                            if prompted != (index == commands.len()) {
+                                return Err("STN setup batch boundary/prompt count mismatch".into());
+                            }
+                        }
+                    }
+                }
+            }
+            if !prompted || index != commands.len() { return Err("STN setup batch incomplete".into()); }
+            Ok(())
+        })();
+        if result.is_err() {
+            self.synchronized = false;
+            self.protocol_open = false;
+        }
+        result
+    }
     fn setup(&mut self) -> Result<(), String> {
         // A sleeping adapter may publish a reset banner when RFCOMM opens.
         // Drain only pre-session startup bytes before issuing the first reset.
@@ -282,29 +355,32 @@ impl Link {
         if ![0, 2].contains(&controller) {
             return Err("MX+ controller unavailable".into());
         }
-        self.exact("STPC", "OK")?;
-        self.exact(if controller == 0 { "STP31" } else { "STP61" }, "OK")?;
-        self.exact("STPR", if controller == 0 { "31" } else { "61" })?;
-        self.exact("STPBRR", if controller == 0 { "500000" } else { "33333" })?;
-        self.exact("STCMM1", "OK")?;
-        self.exact("STCSEGT0", "OK")?;
-        self.exact("STCSEGR0", "OK")?;
-        self.exact("ATR1", "OK")?;
-        self.exact("STFAC", "OK")?;
-        self.exact(
-            if controller == 0 {
-                "STFPA400,400"
-            } else {
-                "STFPA000,000"
-            },
-            "OK",
-        )?;
-        self.exact("STPO", "OK")?;
-        if controller == 2 {
-            self.exact("STCSWM3", "OK")?;
-        }
+        let mut commands = vec![
+            ("STPC", "OK"), (if controller == 0 { "STP31" } else { "STP61" }, "OK"),
+            ("STPR", if controller == 0 { "31" } else { "61" }),
+            ("STPBRR", if controller == 0 { "500000" } else { "33333" }),
+            ("STCMM1", "OK"), ("STCSEGT0", "OK"), ("STCSEGR0", "OK"),
+            ("ATR1", "OK"), ("STFAC", "OK"),
+            (if controller == 0 { "STFPA400,400" } else { "STFPA000,000" }, "OK"),
+            ("STPO", "OK"),
+        ];
+        if controller == 2 { commands.push(("STCSWM3", "OK")); }
+        self.exact_setup_batch(&commands)?;
+        self.protocol_open = true;
         self.controller = controller;
         self.record(serde_json::json!({"selected_controller":controller,"bus":if controller==0 {"HS-CAN"} else {"SW-CAN"},"simultaneous_buses":false}))
+    }
+
+    fn restore_idle_hs_receive(&mut self, events: &SyncSender<Event>) -> Result<bool, String> {
+        if !self.receive_preference.return_to_hs { return Ok(false); }
+        self.interrupt_monitor(events, "restore-HS-after-functional-SW-tester-present")?;
+        self.select_bus(0)?;
+        self.send("STM")?;
+        self.receive_preference.return_to_hs = false;
+        self.record(serde_json::json!({"idle_receive_restored_to_controller":0,
+            "reason":"last non-tester guest frame was HS; exact functional SW tester-present completed",
+            "guest_frame_altered":false,"simultaneous_buses":false}))?;
+        Ok(true)
     }
     fn receive(&mut self, events: &SyncSender<Event>) -> Result<(), String> {
         let monitoring = self.monitoring;
@@ -469,12 +545,15 @@ impl Bridge {
                             ticket: tx.ticket,
                             phase: "bus-setup",
                         });
-                        if link.controller != controller {
+                        let switched = link.controller != controller;
+                        if switched {
                             link.select_bus(controller)?;
                         }
                         let route = electrical_route(controller, &tx)?;
-                        link.ensure_protocol_open()?;
-                        if controller == 2 {
+                        // A successful switch batch has just validated STPO.
+                        // Otherwise cancellation invalidates cached open state.
+                        if !switched { link.ensure_protocol_open()?; }
+                        if controller == 2 && (!switched || route.mode == ElectricalMode::SingleWireWake) {
                             link.exact(
                                 if route.mode == ElectricalMode::SingleWireWake {
                                     "STCSWM2"
@@ -521,7 +600,10 @@ impl Bridge {
                                 source: if route.mode == ElectricalMode::SingleWireWake { CompletionSource::StnRfcommWriteCompatibility } else { CompletionSource::StnBatchBoundaryWriteCompatibility },
                             })
                             .map_err(|_| "STN event queue full".to_string())?;
+                        link.receive_preference.transmitted(controller, &tx);
                         link.active_tx = None;
+                    } else if link.restore_idle_hs_receive(&events)? {
+                        // Queued original requests take priority over idle parking.
                     } else if !link.receiving {
                         link.send("STM")?;
                     } else {

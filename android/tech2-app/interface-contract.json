@@ -1248,5 +1248,22 @@
     "failure_rules": "No batch support, early prompt, duplicate boundary, CAN ERROR, STOPPED or missing boundary prevents completion and stops queued work; no automatic replay.",
     "qualification": "Owned helper confirmed batching and two read-only adapter queries on the actual MX+; no CAN request in the helper. Exact app physical tests still pending.",
     "retained": "Preview.12 initialized controller model, bounded T8 reset policy and six original executable pins. Other architectures/platforms and shared primary workflow pending."
+  },
+  "android_mxplus_receive_scheduler_preview14": {
+    "version": "0.1.1-preview.14",
+    "source_adoption": "Shared MX+ STN backend used by dedicated legacy-engine worker and recovered runtime. Six retained USB/connection executables remain pinned.",
+    "receive_scheduling": "After exact functional SW ID101 FE013E0000000000, return idle receive to HS only if the last non-tester guest frame was HS. Pending guest frames take priority; addressed SW/CIM work retains SW reception. No simultaneous-bus claim.",
+    "configuration": "Batch prior bus-switch commands with exact per-command protocol/bitrate/OK validation and boundary/prompt count. Failure stops further writes without replay; no vehicle frame is in a setup batch.",
+    "unchanged": "Original guest bytes and flow control, explicit exact maintenance profile, no operator password, native consent, pairing, cancellation and manual-input guards.",
+    "qualification": "Owned synthetic periodic-stream/byte-peer and host policy tests only; Fire installation and all physical workflows pending. No sub-100 ms or lossless physical reception claim. Virtual CANdi FIFO drops and native report context remain open.",
+    "targets": {
+      "android-arm64": "Source candidate; exact installed and physical qualification pending",
+      "android-arm32": "Native binding/source adoption and exact installed/physical qualification pending",
+      "macos-arm64": "Native binding/source adoption and exact installed/physical qualification pending",
+      "macos-x86_64": "Native binding/source adoption and exact installed/physical qualification pending",
+      "windows-x64": "Native binding/source adoption and exact installed/physical qualification pending",
+      "linux-x86_64": "Native binding/source adoption and exact installed/physical qualification pending",
+      "ios-arm64": "Native binding/source adoption and exact installed/physical qualification pending"
+    }
   }
 }
