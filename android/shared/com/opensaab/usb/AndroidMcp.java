@@ -85,9 +85,12 @@ public final class AndroidMcp {
         if(!waiter.tryAcquire())throw new IOException("Another transition wait is active");
         long began=SystemClock.elapsedRealtime(),deadline=began+duration;
         try{
+            JSONObject last=null;
             while(server==endpoint){
+                if(last!=null&&SystemClock.elapsedRealtime()>=deadline)return new JSONObject().put("state",last).put("observed_transition",false).put("wait_elapsed_ms",SystemClock.elapsedRealtime()-began);
                 long observed;synchronized(signal){observed=changeSequence;}
                 JSONObject state=onUi(endpoint,new JSONObject().put("op","state"),deadline);
+                last=state;
                 if(!request.optString("session").equals(state.optString("session"))||!state.optBoolean("session_running")||request.optLong("manual_generation",-1)!=state.optLong("manual_generation",-2))throw new IOException("Session replacement or manual takeover");
                 JSONObject menu=state.optJSONObject("menu");
                 boolean transitioned=menu!=null&&state.optBoolean("input_idle")&&menu.optBoolean("input_idle")&&menu.optLong("input_sequence",-1)>request.getLong("after_sequence")&&!menu.optString("revision").equals(request.getString("after_revision"));

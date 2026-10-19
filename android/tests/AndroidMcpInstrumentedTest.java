@@ -64,7 +64,7 @@ public final class AndroidMcpInstrumentedTest extends Instrumentation {
             runOnMainSync(()->owner.idle=false);state=call(token,"state",new JSONObject());check(call(token,"key",key(owner.session,"fixture-menu",state.getLong("manual_generation"))).has("error"),"Busy input admitted");
             JSONObject health=call(token,"health",new JSONObject());check(!health.getJSONObject("current").getBoolean("static_screen_is_failure"),"Static LCD became failure");check(!call(token,"crash_details",new JSONObject()).getBoolean("history_is_current_failure"),"OS history became current failure");
             runOnMainSync(()->owner.idle=true);state=call(token,"state",new JSONObject());
-            int keysBefore=owner.keys;JSONObject timed=call(token,"wait_state",waitArgs(state,80));check(!timed.getBoolean("observed_transition")&&owner.keys==keysBefore,"Transition wait manufactured a key/completion");
+            int keysBefore=owner.keys;JSONObject timed=call(token,"wait_state",waitArgs(state,80));check(!timed.has("error"),"Timeout wait failed instead of returning observation: "+timed);check(!timed.getBoolean("observed_transition")&&owner.keys==keysBefore,"Transition wait manufactured a key/completion");
             check(call(token,"wait_state",waitArgs(state,1600)).has("error"),"Unbounded wait admitted");
             ExecutorService worker=Executors.newSingleThreadExecutor();
             try{

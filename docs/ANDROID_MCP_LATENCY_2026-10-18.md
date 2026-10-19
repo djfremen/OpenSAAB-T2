@@ -1,6 +1,6 @@
 # Android MCP latency candidate
 
-Next candidate: **OpenSAAB 0.1.1-preview.2 ARM64**, version code 101002.
+Next candidate: **OpenSAAB 0.1.1-preview.3 ARM64**, version code 101003.
 This is unpublished work following the Fire 0.1.1-preview.1 adapter tests.
 Those tests and the installed Fire application retain their original identity.
 
@@ -49,7 +49,7 @@ Verification commands:
 ```sh
 python3 scripts/android/test-mcp-bridge.py -v
 python3 scripts/android/test-mcp-bridge.py --benchmark-baseline /private/baseline-bridge.py
-python3 scripts/android/test-lcd-on-device.py --serial emulator-5560 --suite mcp --expected-version 0.1.1-preview.2 --classes target/android-tech2-release/classes
+python3 scripts/android/test-lcd-on-device.py --serial emulator-5560 --suite mcp --expected-version 0.1.1-preview.3 --classes target/android-tech2-release/classes
 ```
 
 The host protocol tests use synthetic menus and TCP. The Android endpoint suite

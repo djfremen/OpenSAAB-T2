@@ -1123,7 +1123,7 @@
       "core_scope": "Recovered core for offline/MX+; retained Android engine for Chipsoft/Nano; matching preview.70 MDI engine extended with shared menu publisher and verified Saab148 startup guard. Physical carrier tests and recovered MDI kernel migration remain pending."
     },
     "latency_update_2026_10_18": {
-      "candidate": "0.1.1-preview.2 Android ARM64; unpublished",
+      "candidate": "0.1.1-preview.3 Android ARM64; unpublished",
       "transport": "Keep one MCP stdio bridge and ADB forward per process. Negotiate wait_state_v1; older endpoints retain bounded state polling.",
       "observation": "File-observed immutable menu snapshots for inspection; fresh native-menu read for every command admission. Waits run off the UI thread, are limited to 1500 ms per request and one active waiter, and allow concurrent state/health/Stop requests.",
       "navigation": "Reuse the last observed state across exact-label path steps; no blind key batching. Require consumed input, idle state and a changed menu revision before proceeding. Lost replies/timeouts never replay a key.",
