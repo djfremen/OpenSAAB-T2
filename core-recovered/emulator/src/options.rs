@@ -464,7 +464,8 @@ impl Options {
             return Err("--strict cannot be combined with research mode".into());
         }
         if target_set && !out.test_harness && out.candi_chipsoft_port.is_none()
-            && !(out.interactive_headless && interactive_local_j2534) {
+            && !(out.interactive_headless
+                && (interactive_local_j2534 || out.candi_obdlink_token.is_some())) {
             return Err("--harness-target requires --test-harness".into());
         }
         Ok(out)
@@ -526,6 +527,27 @@ HEADLESS, TEST_HARNESS, MAX_INSNS and WARMUP_INSNS are also supported.";
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn android_mx_manual_launch_accepts_its_validated_target() {
+        let args = ["--interactive-headless", "--research-harness", "--candi-native-link",
+            "--candi-obdlink-token", "0123456789abcdef0123456789abcdef",
+            "--harness-target", "native-manual", "--data-display",
+            "--capture-allow-empty", "--capture-directory", "captures"];
+        let options = parse(&args).unwrap();
+        assert!(options.interactive_headless && !options.test_harness);
+        assert_eq!(options.target, HarnessTarget::NativeManual);
+        for (index, value) in [(0, "--headless"), (4, "invalid"), (6, "menus")] {
+            let mut invalid = args.to_vec();
+            invalid[index] = value;
+            assert!(parse(&invalid).is_err(), "{invalid:?}");
+        }
+        for extra in [vec!["--test-harness"], vec!["--replay-keys", "keys.txt"],
+            vec!["--candi-chipsoft-usb-token", "0123456789abcdef0123456789abcdef"]] {
+            let mut invalid = args.to_vec();
+            invalid.extend(extra);
+            assert!(parse(&invalid).is_err(), "{invalid:?}");
+        }
+    }
     #[test]
     fn local_j2534_is_platform_scoped_and_exclusive() {
         let make = |extra: &[&str]| {
