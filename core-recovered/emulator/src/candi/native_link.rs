@@ -178,7 +178,7 @@ impl NativeLink {
     }
     pub fn attach_obdlink(&mut self, token: &str, directory: &Path) -> Result<(), String> {
         let bridge = tech2_emu::adapters::obdlink_guest::Bridge::start(token, directory)?;
-        for controller in [0,2] { self.machine.enable_can_transport(controller)?; }
+        for controller in 0..3 { self.machine.enable_can_transport(controller)?; }
         self.bridge = Some(Box::new(tech2_emu::can_adapter::TranslationBackend::new(Box::new(bridge))));
         self.live_clock = Some((std::time::Instant::now(), self.machine.elapsed_cycles()));
         self.events.push("Android MX+ RFCOMM; original CANdi requests; serialized HS/SW; electrical ACK unverified".into());

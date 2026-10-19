@@ -209,7 +209,9 @@ impl NativeLink {
     }
     pub fn attach_obdlink(&mut self, token: &str, directory: &Path, reset_counters: bool) -> Result<(), String> {
         let bridge = tech2_emu::adapters::obdlink_guest::Bridge::start_with_reset(token, directory, reset_counters)?;
-        for controller in [0, 2] {
+        // The guest initializes all three controllers. Controller 1 remains
+        // physically disconnected in poll_bridge: retain TX pending, never ACK/remap.
+        for controller in 0..3 {
             self.machine.enable_can_transport(controller)?;
         }
         self.bridge = Some(Box::new(tech2_emu::can_adapter::TranslationBackend::new(Box::new(bridge))));

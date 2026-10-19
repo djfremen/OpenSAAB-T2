@@ -1224,5 +1224,20 @@
       "linux-x86_64": "Pending",
       "ios-arm64": "Pending"
     }
+  },
+  "android_mxplus_worker_preview12": {
+    "version": "0.1.1-preview.12",
+    "change": "Initialize all three emulated CANdi controllers before MX+ attachment. Keep controller 1 disconnected: poll_bridge records its TX as pending without an ACK; never remap it to HS or SW.",
+    "reason": "Exact Fire preview.11 reached menus and sent the original zero-DLC SW wake; guest then stopped at unsupported middle-controller register write 0x00201001. No diagnostic payload/counter reset was transmitted.",
+    "retained": "Preview.11 shared STN backend and explicit exact T8 reset policy; six original workers remain byte-pinned.",
+    "targets": {
+      "android-arm64": "Source candidate; exact installed/live retest pending",
+      "android-arm32": "Pending",
+      "macos-arm64": "Pending",
+      "macos-x86_64": "Pending",
+      "windows-x64": "Pending",
+      "linux-x86_64": "Pending",
+      "ios-arm64": "Pending"
+    }
   }
 }
