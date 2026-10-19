@@ -98,11 +98,7 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let released = (!ownsDevice || !device.isConnected()) && channel?.isOpen() != true && channelResult == kIOReturnSuccess && deviceResult == kIOReturnSuccess
         let result: [String:Any] = ["type":"closed", "bluetooth_closed":released, "error":closeError.isEmpty && !released ? "Native Bluetooth release was not confirmed" : closeError,
                  "channel_close_result":channelResult, "device_close_result":deviceResult]
-        // The MX+ needs a settle period after RFCOMM release before the same endpoint
-        // can be reopened (discovery -> original-firmware handoff), as on Android.
-        if (device.name ?? "").hasPrefix("OBDLink MX+") {
-            DispatchQueue.main.asyncAfter(deadline:.now()+3) { [self] in packet?(result) }
-        } else {packet?(result)}
+        packet?(result)
     }
     func shutdown() { packet = nil; if !finished { close() }; channel?.setDelegate(nil); channel = nil }
 }

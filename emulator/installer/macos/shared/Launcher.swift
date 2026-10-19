@@ -662,22 +662,16 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     if !current.running {
       lastConsole = current.consoleText
       let code = current.process.terminationStatus
-      if let mx = current.mx {
-        mx.close()
-        // Preview.18: a request the read gate refused before transmit is an
-        // unsupported operation, not a crash. No retry, replay or offline fallback.
-        if MxSessionOutcome.unsupported(mxSession: true, rejected: MxSessionOutcome.rejected(lastConsole), forced: false, launchFailed: false) {
-          let outcome: [String:Any] = ["result":"unsupported_operation", "blocked_request_sent":false, "lifecycle":"UNSUPPORTED_OPERATION", "child_exit_code":Int(code)]
-          try? JSONSerialization.data(withJSONObject:outcome, options:[.sortedKeys]).write(to:current.run.appendingPathComponent("mx-session-outcome.json"), options:.atomic)
-          recordSessionEnd(current.run, reason: "unsupported_operation", exitCode: code, began: sessionBegan)
-          session = nil
-          lcd.image = nil
-          lcd.caption = "MX+ session ended\nOperation unavailable"
-          status.stringValue = MxSessionOutcome.unavailableMessage
-          vehicle.stringValue = "Session ended · Connect again for a fresh VIN"
-          refresh()
-          return
+      if current.mx != nil {
+        // Natural MX+ exit: release Bluetooth and drain the console off the main
+        // thread, then classify. Connect stays disabled until the release is known.
+        session = nil; lcd.image = nil; busy = true
+        status.stringValue = "MX+ session ended · Releasing Bluetooth…"; refresh()
+        DispatchQueue.global().async {
+          let clean = current.stop()
+          DispatchQueue.main.async { self.busy = false; self.mxSessionEnded(current, clean: clean, userStop: false) }
         }
+        return
       }
       // The emulator classifies adapter stops in shared Rust (adapter_failure.rs) and writes
       // the result to report.json; this shell only presents it.
@@ -744,6 +738,40 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       showError(error.localizedDescription)
     }
   }
+  /// One MX+ end-of-session presenter (Android runSession parity): an unsupported
+  /// operation is reported as a capability limit even on stop; never a crash prompt.
+  func mxSessionEnded(_ ended: EmulatorSession, clean: Bool, userStop: Bool) {
+    lastConsole = ended.consoleText
+    let code: Int32? = ended.process.isRunning ? nil : ended.process.terminationStatus
+    let forced = ended.stopOutcome?.forcedProcessExit == true
+    let released = ended.mx?.bluetoothClosed == true
+    lcd.image = nil
+    vehicle.stringValue = "Session ended · Connect again for a fresh VIN"
+    if MxSessionOutcome.unsupported(mxSession: true, rejected: ended.mxPolicyRejected, forced: forced, launchFailed: false) {
+      let outcome: [String:Any] = ["result":"unsupported_operation", "blocked_request_sent":false, "lifecycle":"UNSUPPORTED_OPERATION",
+        "child_exit_code":code.map { Int($0) } ?? -1, "bluetooth_closed":released, "operator_stop":userStop]
+      try? JSONSerialization.data(withJSONObject:outcome, options:[.sortedKeys]).write(to:ended.run.appendingPathComponent("mx-session-outcome.json"), options:.atomic)
+      recordSessionEnd(ended.run, reason: "unsupported_operation", exitCode: code, began: sessionBegan)
+      lcd.caption = "MX+ session ended\nOperation unavailable"
+      status.stringValue = MxSessionOutcome.unavailableMessage + (released ? "" : " · Bluetooth release not confirmed")
+      refresh(); return
+    }
+    if userStop {
+      recordSessionEnd(ended.run, reason: ended.stopOutcome?.sessionEndReason ?? "unconfirmed_stop", exitCode: code, began: sessionBegan)
+      status.stringValue = clean ? "MX+ session stopped · Bluetooth released" :
+        forced ? "MX+ session stopped forcibly. See Console." : "MX+ session stopped · Bluetooth release not confirmed. See Console."
+      lcd.caption = clean ? nil : status.stringValue
+      refresh(); return
+    }
+    let failure = AdapterFailure.read(run: ended.run)
+    status.stringValue = (failure.map { $0.title + " · See Console." } ?? "MX+ session ended · exit \(code ?? -1) · See Console")
+      + (released ? "" : " · Bluetooth release not confirmed")
+    recordSessionEnd(ended.run, reason: failure?.sessionEndReason ?? "exited", exitCode: code, began: sessionBegan)
+    lcd.caption = failure.map { "Communication stopped\n" + $0.title }
+    refresh()
+    if let failure { sessionFailure(failure.message) }
+    else if code != 0 { sessionFailure("The MX+ session ended unexpectedly (exit \(code ?? -1)).") }
+  }
   func sessionFailure(_ text: String) {
     recordAppError(text, kind: "session_error")
     status.stringValue = text
@@ -781,6 +809,9 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       let clean = stopping.stop()
       let text = stopping.consoleText
       DispatchQueue.main.async {
+        if stopping.mx != nil {
+          self.busy = false; self.mxSessionEnded(stopping, clean: clean, userStop: true); completion(); return
+        }
         self.recordSessionEnd(stopping.run, reason: stopping.stopOutcome?.sessionEndReason ?? "unconfirmed_stop",
           exitCode: stopping.process.isRunning ? nil : stopping.process.terminationStatus, began: self.sessionBegan)
         self.connectionAttempt?.finish(clean ? "COMPLETED" : "FAILED", clean ? "USER_STOP" : "CLEANUP_FAILED")

@@ -87,9 +87,22 @@ extension Shell {
         guard let device = IOBluetoothDevice(addressString:address), (device.name ?? "").hasPrefix("OBDLink MX+") else {
             status.stringValue = "MX+ firmware session unavailable · Adapter no longer selectable · No offline fallback"; return
         }
+        // The MX+ needs a short settle after the discovery RFCOMM release before the
+        // same endpoint is reopened. Hold the UI busy so nothing else claims it.
+        busy = true; status.stringValue = MxSessionOutcome.readSummary + " · Releasing discovery connection"; refresh()
+        DispatchQueue.main.asyncAfter(deadline:.now()+3) { [weak self] in
+            guard let self else { return }
+            self.busy = false
+            guard self.session == nil, !device.isConnected() else {
+                self.status.stringValue = "MX+ firmware session unavailable · Adapter still connected elsewhere · No offline fallback"; self.refresh(); return
+            }
+            self.openMXFirmware(device:device, vehicle:vehicle)
+        }
+    }
+    private func openMXFirmware(device: IOBluetoothDevice, vehicle: [String:Any]) {
         let bridge: MacMXFirmwareBridge
         do { bridge = try MacMXFirmwareBridge(device:device) }
-        catch { status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription; return }
+        catch { status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription; refresh(); return }
         bridge.vehicle = vehicle
         busy = true; status.stringValue = MxSessionOutcome.readSummary + " · Opening adapter"; refresh()
         bridge.open { [weak self] result in

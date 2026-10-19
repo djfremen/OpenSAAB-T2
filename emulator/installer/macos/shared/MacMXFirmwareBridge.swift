@@ -30,6 +30,7 @@ final class MacMXFirmwareBridge {
   private var closedPacket: [String: Any]?
   private var listener: Int32 = -1
   private var client: Int32 = -1
+  private var wake: [Int32] = [-1, -1]
   private var ready = false, closing = false, closeRequested = false, serving = false
   private var readyCallback: ((Result<Void, Error>) -> Void)?
 
@@ -60,6 +61,7 @@ final class MacMXFirmwareBridge {
     deviceName = name; deviceAddress = address
     transport = MacSPPTransport(device: device, allowed: MacMXFirmwareBridge.acceptsWrite)
     listener = try Self.bindLoopback()
+    guard pipe(&wake) == 0 else { Darwin.close(listener); listener = -1; throw ShellError.message("MX+ bridge wake pipe unavailable.") }
   }
 
   private static func bindLoopback() throws -> Int32 {
@@ -127,11 +129,15 @@ final class MacMXFirmwareBridge {
 
   private func serve() {
     defer { finishServing() }
-    var poller = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
-    guard poll(&poller, 1, 12_000) > 0 else { return }
+    var pollers = [pollfd(fd: listener, events: Int16(POLLIN), revents: 0), pollfd(fd: wake[0], events: Int16(POLLIN), revents: 0)]
+    guard poll(&pollers, 2, 12_000) > 0, pollers[1].revents == 0, pollers[0].revents & Int16(POLLIN) != 0 else { return }
+    cond.lock()
+    if closing { cond.unlock(); return }
     let accepted = accept(listener, nil, nil)
+    if accepted >= 0 { client = accepted }
+    Darwin.close(listener); listener = -1
+    cond.unlock()
     guard accepted >= 0 else { return }
-    cond.lock(); client = accepted; Darwin.close(listener); listener = -1; cond.unlock()
     var timeout = timeval(tv_sec: 5, tv_usec: 0)
     setsockopt(accepted, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     var nosig: Int32 = 1
@@ -143,7 +149,8 @@ final class MacMXFirmwareBridge {
         let request = try line(accepted)
         if request == "CLOSE" {
           requestNativeClose()
-          guard waitForRelease(seconds: 8) && bluetoothClosed else { throw ShellError.message("Bluetooth release unconfirmed") }
+          // The worker reads this reply with a 3 s timeout (SocketUsb); answer within it.
+          guard waitForRelease(seconds: 2.5) && bluetoothClosed else { throw ShellError.message("Bluetooth release unconfirmed") }
           try reply(accepted, "CLOSED")
           return
         } else if request == "READ" {
@@ -174,7 +181,11 @@ final class MacMXFirmwareBridge {
         queue.removeFirst()
         let type = packet["type"] as? String
         if type == "write_completed" { continue }
-        guard type == "rx", let bytes = packet["bytes"] as? [UInt8] else { throw ShellError.message("Unexpected Bluetooth event") }
+        guard type == "rx", var bytes = packet["bytes"] as? [UInt8] else { throw ShellError.message("Unexpected Bluetooth event") }
+        if bytes.count > 1024 {
+          queue.insert(["type": "rx", "bytes": Array(bytes[1024...])], at: 0)
+          bytes = Array(bytes[..<1024])
+        }
         let json = try JSONSerialization.data(withJSONObject: ["type": "rx", "bytes": bytes.map { Int($0) }])
         return String(decoding: json, as: UTF8.self)
       }
@@ -186,7 +197,13 @@ final class MacMXFirmwareBridge {
   private func nativeWrite(_ request: [String: Any]) throws {
     cond.lock(); let failed = transportError ?? (closedPacket != nil ? "Bluetooth disconnected" : nil); cond.unlock()
     if let failed { throw ShellError.message(failed) }
-    DispatchQueue.main.sync { transport.send(request) }
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async { [self] in transport.send(request); done.signal() }
+    if done.wait(timeout: .now() + 2) == .timedOut {
+      cond.lock(); if transportError == nil { transportError = "Bluetooth write timed out" }; cond.unlock()
+      requestNativeClose()
+      throw ShellError.message("Bluetooth write timed out")
+    }
     cond.lock(); let error = transportError; cond.unlock()
     if let error { throw ShellError.message(error) }
   }
@@ -202,6 +219,7 @@ final class MacMXFirmwareBridge {
     cond.lock()
     if client >= 0 { Darwin.close(client); client = -1 }
     if listener >= 0 { Darwin.close(listener); listener = -1 }
+    serving = false
     cond.unlock()
     requestNativeClose()
   }
@@ -219,10 +237,11 @@ final class MacMXFirmwareBridge {
   /// Ends ownership from the app side (stop, launch failure, process exit). Safe to repeat.
   func close() {
     cond.lock()
+    closing = true
     if serving {
-      // Wake the server thread; it closes its own descriptors on exit.
+      // Wake the server thread (accept wait or blocked read); it closes its own descriptors.
       if client >= 0 { shutdown(client, SHUT_RDWR) }
-      if listener >= 0 { shutdown(listener, SHUT_RDWR) }
+      if wake[1] >= 0 { var byte: UInt8 = 1; _ = write(wake[1], &byte, 1) }
     } else if listener >= 0 { Darwin.close(listener); listener = -1 }
     cond.unlock()
     requestNativeClose()
@@ -256,6 +275,7 @@ final class MacMXFirmwareBridge {
   deinit {
     if client >= 0 { Darwin.close(client) }
     if listener >= 0 { Darwin.close(listener) }
+    for fd in wake where fd >= 0 { Darwin.close(fd) }
   }
 }
 

@@ -330,6 +330,10 @@ final class EmulatorSession {
   var canAcceptMenuKey: Bool {running && queue.isEmpty && !fm.fileExists(atPath:mailbox.path)}
   private let pipe = Pipe(), log: FileHandle, lock = NSLock()
   private var bytes = 0, console = Data(), queue: [String] = [], frameDate: Date?
+  // MX+ outcome evidence latched per line as output streams (Android readLogs parity),
+  // so console truncation or late delivery cannot hide the read-gate rejection.
+  private var partialLine = Data(), rejectedLatched = false, outputEnded = false
+  var mxPolicyRejected: Bool { lock.lock(); defer { lock.unlock() }; return rejectedLatched }
   var running: Bool { process.isRunning }
   var mdiPhase = ""
   func updateMDIIdentity() {
@@ -448,6 +452,17 @@ final class EmulatorSession {
       }
       self.console.append(data)
       if self.console.count > 24000 { self.console = self.console.suffix(20000) }
+      if data.isEmpty { self.outputEnded = true; handle.readabilityHandler = nil }
+      if self.mx != nil && !self.rejectedLatched {
+        self.partialLine.append(data)
+        while let newline = self.partialLine.firstIndex(of: 10) {
+          let line = String(decoding: self.partialLine[self.partialLine.startIndex..<newline], as: UTF8.self)
+          self.partialLine.removeSubrange(self.partialLine.startIndex...newline)
+          if MxSessionOutcome.rejected(line) { self.rejectedLatched = true; break }
+        }
+        if self.outputEnded, MxSessionOutcome.rejected(String(decoding: self.partialLine, as: UTF8.self)) { self.rejectedLatched = true }
+        if self.partialLine.count > 4096 { self.partialLine = Data(self.partialLine.suffix(512)) }
+      }
     }
     do { try process.run() } catch {
       pipe.fileHandleForReading.readabilityHandler = nil
@@ -487,7 +502,10 @@ final class EmulatorSession {
   @discardableResult func stop() -> Bool {
     queue.removeAll()
     if let outcome = stopOutcome { return outcome.continuationSafe }
-    if !running { return finishStop(forced: false) }
+    if !running {
+      if mx != nil { releaseMX() }
+      return finishStop(forced: false)
+    }
     if adapter?.kind == .mdi { try? Data("stop\n".utf8).write(to:run.appendingPathComponent("mdi-stop"),options:.atomic) }
     try? Data("stop\n".utf8).write(to: mailbox, options: .atomic)
     // Nano can finish its bounded startup and six 3s shutdown exchanges on stop.
@@ -501,11 +519,22 @@ final class EmulatorSession {
       if running { kill(process.processIdentifier, SIGKILL) }
     }
     process.waitUntilExit()
-    if let mx {
-      mx.close()
-      if !Thread.isMainThread { mx.waitForRelease(seconds: 8) }
-    }
+    if mx != nil { releaseMX() }
     return finishStop(forced: !clean)
+  }
+  /// MX+ end of session: release the native owner, then let the console reach EOF so
+  /// outcome classification sees the final line. Call off the main thread.
+  private func releaseMX() {
+    guard let mx else { return }
+    mx.close()
+    guard !Thread.isMainThread else { return }
+    mx.waitForRelease(seconds: 8)
+    let deadline = Date().addingTimeInterval(2)
+    while Date() < deadline {
+      lock.lock(); let ended = outputEnded; lock.unlock()
+      if ended { break }
+      Thread.sleep(forTimeInterval: 0.02)
+    }
   }
   private func finishStop(forced: Bool) -> Bool {
     let outcome = SessionStopOutcome(forcedProcessExit: forced,
