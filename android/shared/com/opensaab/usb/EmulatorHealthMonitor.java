@@ -23,6 +23,7 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
     public synchronized void input(){if(directory!=null)state.input(SystemClock.uptimeMillis());}
     public synchronized void frame(){state.frame();}
     public synchronized void expectedStop(){SessionDiagnostics.record(directory,SessionDiagnostics.Event.EXPECTED_STOP);directory=null;generation++;}
+    public synchronized void unsupportedOperation(){SessionDiagnostics.record(directory,SessionDiagnostics.Event.UNSUPPORTED_OPERATION);directory=null;generation++;}
     public synchronized void ended(){ended(null);}
     public synchronized void ended(String explanation){ended(explanation,explanation==null?null:"Single-wire CAN wake-up failed");}
     public synchronized void ended(String explanation,String title){if(directory==null)return;SessionDiagnostics.record(directory,SessionDiagnostics.Event.UNEXPECTED_EXIT);incident(explanation==null?"unexpected_emulator_exit":"vehicle_network_failure",explanation,title);directory=null;}

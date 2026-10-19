@@ -1,0 +1,5 @@
+# MX+ unsupported operation · preview.18
+
+Two owner Clear Vehicle DTC attempts on preview.17 reached HS0x245 service04. The unchanged Read-profile gate rejected the erase before it reached the adapter queue, then the native worker stopped with exit3 and confirmed cleanup. That was a real unsupported-operation exit, distinct from the prior operator-stop UI issue.
+
+Preview.18 consumes that exact existing native rejection marker, preserves forced/startup/unknown failures, records unsupported_operation / blocked_request_sent=false in the host end record and UNSUPPORTED_OPERATION in lifecycle evidence, and suppresses the generic crash prompt for this classified outcome. It ends the session with a clear capability message and labels the default MX+ profile read-only. No request permission, native transport, DTC-clear capability, automatic replay/restart or offline fallback is added. The separately consented reset profile remains unchanged. Hardware-keyboard input and the earlier operator-stop reporting defect are outside this fix. Every other target requires its own adoption/verification.

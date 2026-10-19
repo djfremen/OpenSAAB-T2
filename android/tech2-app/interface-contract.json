@@ -1287,5 +1287,20 @@
     "predecessor": "Preview.16 normal handoff reached firmware, but touch Enter wrote offline-only enter and native parser exited4. Preview.16 remains retained with failed startup evidence.",
     "workflow": "Same selected verified MX+ primary-route handoff with foreground, once-only and cleanup guards. Touch Enter uses native encoder0x10; offline logical Enter unchanged.",
     "qualification": "Exact physical touch Enter and main connection route pending; no new USB, packet policy, maintenance or iOS adoption."
+  },
+  "android_mxplus_unavailable_operation_preview18": {
+    "version": "0.1.1-preview.18",
+    "scope": "Classify the exact existing MX+ policy rejection as unsupported_operation with blocked_request_sent=false and UNSUPPORTED_OPERATION lifecycle event. Read-only capability wording is explicit. No code-clear capability, packet-policy or native transport behavior change.",
+    "evidence": "Two owner preview.17 Clear Vehicle DTC attempts requested HS0x245 service04; gate rejected before transport; both native cleanups confirmed. Not the earlier operator-stop warning.",
+    "qualification": "Source implementation; exact installed negative-operation verification pending.",
+    "targets": {
+      "android-arm64": "Source adopted; exact install/negative operation test pending",
+      "android-arm32": "Shared source only; installed/physical scope pending",
+      "macos-arm64": "Pending adoption and verification",
+      "macos-x86_64": "Pending adoption and verification",
+      "windows-x64": "Pending adoption and verification",
+      "linux-x86_64": "Pending adoption and verification",
+      "ios-arm64": "No implementation; Android validation first"
+    }
   }
 }

@@ -44,14 +44,16 @@ public final class OfflineSessionEvidence {
     public synchronized void input(){if(directory!=null){inputs++;lastInput=SystemClock.elapsedRealtime()-started;}}
     public synchronized void frame(){if(directory!=null){frames++;lastFrame=SystemClock.elapsedRealtime()-started;}}
     public synchronized void requestStop(boolean background){if(directory!=null&&stopIntent.equals("none"))stopIntent=background?"background_stop":"user_stop";}
-    public synchronized void ended(Integer exitCode,boolean deadline,boolean forced,boolean launchFailed){
+    public synchronized void ended(Integer exitCode,boolean deadline,boolean forced,boolean launchFailed){ended(exitCode,deadline,forced,launchFailed,false);}
+    public synchronized void ended(Integer exitCode,boolean deadline,boolean forced,boolean launchFailed,boolean unsupportedOperation){
         if(directory==null)return;
         try{
-            String reason=!stopIntent.equals("none")?stopIntent:launchFailed?"startup_failure":deadline?"host_deadline":forced?"forced_stop":"process_exit";
+            String reason=unsupportedOperation?"unsupported_operation":!stopIntent.equals("none")?stopIntent:launchFailed?"startup_failure":deadline?"host_deadline":forced?"forced_stop":"process_exit";
             JSONObject end=new JSONObject().put("reason",reason).put("elapsed_ms",SystemClock.elapsedRealtime()-started)
                 .put("input_count",inputs).put("frame_count",frames).put("forced_stop",forced);
             if(lastInput>=0)end.put("last_input_elapsed_ms",lastInput);if(lastFrame>=0)end.put("last_frame_elapsed_ms",lastFrame);
             if(exitCode!=null)end.put("exit_code",exitCode);
+            if(unsupportedOperation)end.put("blocked_request_sent",false);
             FirmwareStore.writeJson(new File(directory,"session-end.json"),end);
         }catch(Exception ignored){}finally{directory=null;}
     }
@@ -85,10 +87,11 @@ public final class OfflineSessionEvidence {
         }if(h.length()>0)safe.put("firmware_sha256",h);if(raw.optBoolean("unavailable"))safe.put("unavailable",true);return safe;
     }
     static JSONObject end(JSONObject raw)throws JSONException{
-        JSONObject safe=new JSONObject();label(raw,safe,"reason","background_stop","user_stop","startup_failure","host_deadline","forced_stop","process_exit");
+        JSONObject safe=new JSONObject();label(raw,safe,"reason","background_stop","user_stop","startup_failure","host_deadline","forced_stop","process_exit","unsupported_operation");
         numbers(raw,safe,"elapsed_ms","input_count","frame_count","last_input_elapsed_ms","last_frame_elapsed_ms");
         Object code=raw.opt("exit_code");if(code instanceof Integer)safe.put("exit_code",code);
-        if(raw.opt("forced_stop") instanceof Boolean)safe.put("forced_stop",raw.getBoolean("forced_stop"));return safe;
+        if(raw.opt("forced_stop") instanceof Boolean)safe.put("forced_stop",raw.getBoolean("forced_stop"));
+        if(raw.optString("reason").equals("unsupported_operation")&&Boolean.FALSE.equals(raw.opt("blocked_request_sent")))safe.put("blocked_request_sent",false);return safe;
     }
     static void collect(File dir,JSONObject session){
         if(!id(dir).startsWith("offline-"))return;
