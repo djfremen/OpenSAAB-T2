@@ -79,6 +79,11 @@ public class NativeCommandGateTest {
         check(!new NativeCommandGate.Stream().allowed(reset,true,false,false,true,0));
         check(!new NativeCommandGate.Stream().allowed(reset,false,true,false,true,0));
         check(!new NativeCommandGate.Stream().allowed(reset,false,false,true,true,0));
+        NativeCommandGate.Stream resetSession=new NativeCommandGate.Stream();
+        byte[] keyPosition=frame(1,0x241,3,0xae,3,2,0,0,0,0);
+        for(int n=0;n<3;n++)check(resetSession.allowed(keyPosition,false,false,false,true,n));
+        check(!resetSession.allowed(keyPosition,false,false,false,true,3));
+        check(resetSession.allowed(reset,false,false,false,true,4));
         for(int position=0;position<8;position++){
             int[] changed={2,0xae,0x14,0,0,0,0,0};changed[position]^=1;
             check(!NativeCommandGate.allowed(frame(0,0x7e0,changed),false,false,true));

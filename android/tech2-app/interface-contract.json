@@ -1158,7 +1158,7 @@
     "chipsoft": "Original firmware full control; restricted mode cannot start reset.",
     "mdi": "Original firmware menus; physical result qualified separately.",
     "qualification": "A fresh ECU response, firmware completion and post-reset counter readings are required on each exact installed artifact/adapter; USB acceptance alone does not pass.",
-    "candidate": "0.1.0-preview.99 Android ARM64; physical tests pending",
+    "candidate": "0.1.1-preview.1 Android ARM64; physical tests pending",
     "other_targets": "Android ARM32, macOS ARM64/x86_64, Windows x86_64, Linux x86_64 and iOS adoption and installed physical checks pending; no inherited pass."
   }
 }

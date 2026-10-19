@@ -166,7 +166,7 @@ impl Bridge {
             let mut ledger = if full_native {
                 TxLedger::with_full_native()
             } else {
-                TxLedger::with_key_status(profile == Profile::Read)
+                TxLedger::with_key_status(profile.permits_key_status_read())
             };
             let mut observe = |frame: &crate::nano_usb::Frame| -> Result<(), String> {
                 if frame.header[2] != 0 {
@@ -321,7 +321,7 @@ impl Bridge {
             worker: Some(worker),
             confirmations: 0,
             gate: CommandGate::default(),
-            key_status: KeyStatusGate::new(profile == Profile::Read),
+            key_status: KeyStatusGate::new(profile.permits_key_status_read()),
             full_native,
             profile,
         };

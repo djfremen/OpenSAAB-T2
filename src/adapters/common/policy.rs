@@ -12,6 +12,9 @@ pub enum Profile {
     ResetEngineCounters,
 }
 impl Profile {
+    pub fn permits_key_status_read(self) -> bool {
+        matches!(self, Self::Read | Self::ResetEngineCounters)
+    }
     pub fn collection(seeds: bool) -> Self {
         if seeds {
             Self::Seeds

@@ -1,6 +1,6 @@
 # Explicit T8 counter reset candidate
 
-Candidate 0.1.0-preview.99 adds **Reset misfire and knock counters** to Actions.
+Candidate 0.1.1-preview.1 adds **Reset misfire and knock counters** to Actions.
 It starts original firmware menus. The owner selects the vehicle and original
 Reset Misfire and Knock Counters operation and follows its instructions.
 
@@ -9,7 +9,8 @@ diagnostic reads, it admits only standard HS-CAN ID `0x7E0` with the captured
 eight bytes `02 AE 14 00 00 00 00 00`. Read, seed collection and DTC clearing
 do not inherit this permission. Rust and the Android USB owner both validate
 the request; a distinct handshake binds the selected maintenance profile.
-No host-generated reset, arbitrary DeviceControl, security key, programming
+The existing exact three-request ignition-key-status read is retained for the
+firmware's prerequisite key-position check. No host-generated reset, arbitrary DeviceControl, security key, programming
 or download operation is introduced. Existing stop, cleanup and session limits
 remain in force. Nano support for other engines or reset requests is unavailable.
 

@@ -69,7 +69,7 @@ public final class NativeCommandGate {
             if((seeds?1:0)+(clearDtc?1:0)+(keyStatus?1:0)+(resetCounters?1:0)>1)return false;
             Decoded p=decode(wire);if(p==null)return false;
             byte[] b=p.b;int pci=b[14]&255;
-            if(!seeds && !clearDtc && !resetCounters && p.channel==1 && p.id==0x241 && p.count==8
+            if(!seeds && !clearDtc && p.channel==1 && p.id==0x241 && p.count==8
                 && b[4]==0 && b[5]==0 && b[6]==0 && b[7]==0
                 && b[14]==3 && b[15]==(byte)0xae && b[16]==3 && b[17]==2
                 && b[18]==0 && b[19]==0 && b[20]==0 && b[21]==0){

@@ -22,7 +22,7 @@ pub(crate) fn full_native_allowed(controller: usize, tx: &CanTransmission) -> bo
 }
 
 /// The original Service > Check Ignition Key Status DeviceControl request.
-/// Normal Nano read diagnostics and explicit key-status sessions share this
+/// Normal Nano read diagnostics, counter-reset prerequisites and explicit key-status sessions share this
 /// exact three-request allowance. It never extends the generic DeviceControl
 /// policy or the seed/clear profiles.
 #[derive(Default)]
@@ -212,7 +212,8 @@ impl TxLedger {
         profile: Profile,
     ) -> Result<Prepared, String> {
         self.check_deadline(now)?;
-        if (self.key_status.enabled || self.full_native) && profile != Profile::Read {
+        if (self.full_native && profile != Profile::Read)
+            || (self.key_status.enabled && !profile.permits_key_status_read()) {
             return self.fail("Nano explicit native mode cannot combine with seeds or clear mode");
         }
         // Validate before indexing arrays or mutating any ledger state.
@@ -748,7 +749,20 @@ mod tests {
         malformed=request.clone(); malformed.frame.rtr=true;
         assert!(!allowed_for_profile(0, &malformed, profile));
         assert!(TxLedger::with_full_native().prepare_for_profile(0, &request, Instant::now(), profile).is_err());
-        assert!(TxLedger::with_key_status(true).prepare_for_profile(0, &request, Instant::now(), profile).is_err());
+        assert!(TxLedger::with_key_status(true).prepare_for_profile(0, &request, Instant::now(), profile).is_ok());
+    }
+
+    #[test]
+    fn counter_reset_retains_bounded_key_position_prerequisite() {
+        let now=Instant::now();
+        let mut ledger=TxLedger::with_key_status(Profile::ResetEngineCounters.permits_key_status_read());
+        for ticket in 1..=3 {
+            let request=tx(2,ticket,0x241,&[3,0xae,3,2,0,0,0,0]);
+            let prepared=ledger.prepare_for_profile(2,&request,now,Profile::ResetEngineCounters).unwrap();
+            let bytes=prepared.wire.len();
+            assert!(ledger.usb_write_finished(2,ticket,Ok(bytes),now).is_ok());
+        }
+        assert!(ledger.prepare_for_profile(2,&tx(2,4,0x241,&[3,0xae,3,2,0,0,0,0]),now,Profile::ResetEngineCounters).is_err());
     }
 
     #[test]
