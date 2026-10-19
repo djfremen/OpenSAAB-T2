@@ -12,18 +12,29 @@ import org.json.*;
 
 /** Explicit opt-in, token-authenticated app-owned IPC. ADB forwarding carries no authority itself. */
 public final class AndroidMcp {
-    public interface Owner {JSONObject state()throws Exception;boolean key(int code);void startOffline();void stop();}
+    public interface Owner {
+        JSONObject state()throws Exception;
+        default JSONObject inspect()throws Exception{return state();}
+        default void close(){}
+        boolean key(int code);void startOffline();void stop();
+    }
     private static Owner owner;
     private static Activity activity;
-    private static LocalServerSocket server;
-    private static String token="";
+    private static volatile LocalServerSocket server;
+    private static volatile String token="";
+    private static ThreadPoolExecutor clients;
+    private static final java.util.Set<LocalSocket> sockets=ConcurrentHashMap.newKeySet();
+    private static final Semaphore waiter=new Semaphore(1);
+    private static final Object signal=new Object();
+    private static long changeSequence;
     private static long uiHeartbeat,manualGeneration;
     private static String admittedSession="";private static long admittedSequence=-1;
     private static final Handler ui=new Handler(Looper.getMainLooper());
     private static final Runnable beat=new Runnable(){public void run(){uiHeartbeat=SystemClock.elapsedRealtime();if(server!=null)ui.postDelayed(this,1000);}};
-    public static synchronized void bind(Activity a,Owner o){activity=a;owner=o;}
+    public static synchronized void bind(Activity a,Owner o){if(owner!=null&&owner!=o)owner.close();activity=a;owner=o;changed();}
     public static synchronized void unbind(Activity a){if(activity==a){disable();owner=null;activity=null;}}
-    public static void manual(){manualGeneration++;}
+    public static void manual(){manualGeneration++;changed();}
+    public static void changed(){synchronized(signal){changeSequence++;signal.notifyAll();}}
     public static synchronized boolean enabled(){return server!=null;}
     public static void show(Activity a){
         if(enabled())new AlertDialog.Builder(a).setTitle("AI control (MCP)").setMessage("Enabled for this app session. Pairing code:\n"+token+"\n\nUse the local Android MCP bridge over this phone’s paired ADB connection. Manual keypad input cancels automatic navigation.")
@@ -37,22 +48,61 @@ public final class AndroidMcp {
         // Preview tooling may read this private file with run-as. Production pairing uses the displayed code.
         File file=new File(a.getNoBackupFilesDir(),"mcp-pairing-token");try(FileOutputStream out=new FileOutputStream(file)){out.write(token.getBytes(StandardCharsets.US_ASCII));}file.setReadable(false,false);file.setWritable(false,false);file.setReadable(true,true);file.setWritable(true,true);
         LocalServerSocket endpoint=new LocalServerSocket(a.getPackageName()+".mcp");server=endpoint;admittedSession="";admittedSequence=-1;ui.post(beat);
-        new Thread(()->serve(endpoint),"android-mcp-endpoint").start();
+        ThreadPoolExecutor workers=new ThreadPoolExecutor(0,4,15,TimeUnit.SECONDS,new SynchronousQueue<>(),r->new Thread(r,"android-mcp-client"));clients=workers;
+        new Thread(()->serve(endpoint,workers),"android-mcp-endpoint").start();changed();
     }
-    public static synchronized void disable(){LocalServerSocket s=server;server=null;token="";ui.removeCallbacks(beat);if(activity!=null)new File(activity.getNoBackupFilesDir(),"mcp-pairing-token").delete();if(s!=null)try{s.close();}catch(IOException ignored){}}
-    private static byte[] read(InputStream in)throws IOException{ByteArrayOutputStream b=new ByteArrayOutputStream();int n;while((n=in.read())!=-1&&n!=10){if(b.size()>=16384)throw new IOException("Request exceeds limit");b.write(n);}if(n<0)throw new EOFException();return b.toByteArray();}
-    private static void serve(LocalServerSocket endpoint){
-        while(server==endpoint){try(LocalSocket socket=endpoint.accept()){
-            socket.setSoTimeout(3000);JSONObject request=new JSONObject(new String(read(socket.getInputStream()),StandardCharsets.UTF_8));
-            String supplied=request.optString("token");if(token.isEmpty()||!MessageDigest.isEqual(token.getBytes(StandardCharsets.US_ASCII),supplied.getBytes(StandardCharsets.US_ASCII)))throw new IOException("Authentication rejected");
-            final long deadline=SystemClock.elapsedRealtime()+2000;FutureTask<JSONObject> task=new FutureTask<>(()->{if(SystemClock.elapsedRealtime()>deadline||server!=endpoint)throw new IOException("Request expired");return dispatch(request);});ui.post(task);
-            JSONObject response;try{response=task.get(2100,TimeUnit.MILLISECONDS);}catch(Exception e){task.cancel(false);response=new JSONObject().put("error",e.getCause()!=null?e.getCause().getMessage():"Request expired; current UI state unavailable");}
-            socket.getOutputStream().write((response.toString()+"\n").getBytes(StandardCharsets.UTF_8));
-        }catch(Exception ignored){}}
+    public static synchronized void disable(){LocalServerSocket s=server;server=null;token="";ui.removeCallbacks(beat);if(owner!=null)owner.close();changed();if(activity!=null)new File(activity.getNoBackupFilesDir(),"mcp-pairing-token").delete();if(s!=null)try{s.close();}catch(IOException ignored){}for(LocalSocket socket:sockets)try{socket.close();}catch(IOException ignored){}if(clients!=null){clients.shutdownNow();clients=null;}}
+    private static byte[] read(InputStream source)throws IOException{InputStream in=new BufferedInputStream(source,4096);ByteArrayOutputStream b=new ByteArrayOutputStream();int n;while((n=in.read())!=-1&&n!=10){if(b.size()>=16384)throw new IOException("Request exceeds limit");b.write(n);}if(n<0)throw new EOFException();return b.toByteArray();}
+    private static void serve(LocalServerSocket endpoint,ThreadPoolExecutor workers){
+        while(server==endpoint){try{
+            LocalSocket socket=endpoint.accept();sockets.add(socket);
+            try{workers.execute(()->handle(endpoint,socket));}catch(RejectedExecutionException full){sockets.remove(socket);socket.close();}
+        }catch(IOException closed){if(server!=endpoint)return;}}
+    }
+    private static void handle(LocalServerSocket endpoint,LocalSocket socket){
+        try(LocalSocket connection=socket){
+            connection.setSoTimeout(3000);JSONObject request=new JSONObject(new String(read(connection.getInputStream()),StandardCharsets.UTF_8));
+            String supplied=request.optString("token"),expected=token;
+            if(server!=endpoint||expected.isEmpty()||!MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII),supplied.getBytes(StandardCharsets.US_ASCII)))throw new IOException("Authentication rejected");
+            JSONObject response;
+            try{response=request.optString("op").equals("wait_state")?waitState(endpoint,request):onUi(endpoint,request);}
+            catch(Exception e){response=new JSONObject().put("error",e.getMessage()==null?"Request failed":e.getMessage());}
+            connection.getOutputStream().write((response.toString()+"\n").getBytes(StandardCharsets.UTF_8));
+        }catch(Exception ignored){}finally{sockets.remove(socket);}
+    }
+    private static JSONObject onUi(LocalServerSocket endpoint,JSONObject request)throws Exception {
+        return onUi(endpoint,request,SystemClock.elapsedRealtime()+2000);
+    }
+    private static JSONObject onUi(LocalServerSocket endpoint,JSONObject request,long deadline)throws Exception {
+        FutureTask<JSONObject> task=new FutureTask<>(()->{if(SystemClock.elapsedRealtime()>deadline||server!=endpoint)throw new IOException("Request expired");return dispatch(request);});ui.post(task);
+        try{return task.get(Math.max(1,deadline-SystemClock.elapsedRealtime()+100),TimeUnit.MILLISECONDS);}
+        catch(ExecutionException e){throw new IOException(e.getCause().getMessage(),e.getCause());}
+        catch(Exception e){task.cancel(false);throw new IOException("Request expired; current UI state unavailable",e);}
+    }
+    private static JSONObject waitState(LocalServerSocket endpoint,JSONObject request)throws Exception {
+        int duration=request.optInt("wait_ms",1000);
+        if(duration<1||duration>1500||!request.has("after_sequence")||!request.has("after_revision"))throw new IOException("Bounded transition wait required");
+        if(!waiter.tryAcquire())throw new IOException("Another transition wait is active");
+        long began=SystemClock.elapsedRealtime(),deadline=began+duration;
+        try{
+            while(server==endpoint){
+                long observed;synchronized(signal){observed=changeSequence;}
+                JSONObject state=onUi(endpoint,new JSONObject().put("op","state"),deadline);
+                if(!request.optString("session").equals(state.optString("session"))||!state.optBoolean("session_running")||request.optLong("manual_generation",-1)!=state.optLong("manual_generation",-2))throw new IOException("Session replacement or manual takeover");
+                JSONObject menu=state.optJSONObject("menu");
+                boolean transitioned=menu!=null&&state.optBoolean("input_idle")&&menu.optBoolean("input_idle")&&menu.optLong("input_sequence",-1)>request.getLong("after_sequence")&&!menu.optString("revision").equals(request.getString("after_revision"));
+                long remaining=deadline-SystemClock.elapsedRealtime();
+                if(transitioned||remaining<=0)return new JSONObject().put("state",state).put("observed_transition",transitioned).put("wait_elapsed_ms",SystemClock.elapsedRealtime()-began);
+                // Observer notifications wake this worker immediately. The bounded
+                // fallback also covers owners without file observers and liveness changes.
+                synchronized(signal){if(observed==changeSequence&&server==endpoint)signal.wait(Math.min(remaining,100));}
+            }
+            throw new IOException("Endpoint revoked");
+        }finally{waiter.release();}
     }
     private static JSONObject dispatch(JSONObject request)throws Exception {
         if(owner==null||activity==null||activity.isFinishing())throw new IOException("Foreground owner unavailable");
-        String op=request.optString("op");JSONObject state=owner.state();state.put("enabled",true).put("app_version",AppBuildProfile.installedVersion(activity)).put("architecture",AppBuildProfile.abi(activity)).put("app_pid",android.os.Process.myPid()).put("manual_generation",manualGeneration);
+        String op=request.optString("op");JSONObject state=(op.equals("state")||op.equals("health")||op.equals("crash_details"))?owner.inspect():owner.state();state.put("enabled",true).put("app_version",AppBuildProfile.installedVersion(activity)).put("architecture",AppBuildProfile.abi(activity)).put("app_pid",android.os.Process.myPid()).put("manual_generation",manualGeneration).put("mcp_features",new JSONArray().put("wait_state_v1"));
         if(op.equals("state"))return state;
         if(op.equals("health")||op.equals("crash_details")){
             long now=SystemClock.elapsedRealtime();JSONObject facts=new JSONObject().put("app_alive",true).put("ui_heartbeat_age_ms",now-uiHeartbeat).put("session_running",state.optBoolean("session_running")).put("emulator_alive",state.optBoolean("emulator_alive")).put("emulator_heartbeat_age_ms",state.opt("emulator_heartbeat_age_ms")).put("session_age_ms",state.opt("session_age_ms"));

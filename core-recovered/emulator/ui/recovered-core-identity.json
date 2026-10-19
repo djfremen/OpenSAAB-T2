@@ -1,5 +1,5 @@
 {
   "product": "OpenSAAB",
-  "version": "0.1.1-preview.1",
+  "version": "0.1.1-preview.2",
   "scope": "Rust core development preview; common platform shell integration and physical qualification pending"
 }

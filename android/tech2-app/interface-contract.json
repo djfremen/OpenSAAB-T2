@@ -1121,6 +1121,23 @@
       ],
       "qualified_scope": "Exact installed 0.1.0-findings.13 ARM64 API36 AVD: authentication/revocation, genuine recovered offline menu/navigation/Stop and actual MDI activity/worker with an offline carrier fixture. Physical Chipsoft/MDI/Nano qualification pending.",
       "core_scope": "Recovered core for offline/MX+; retained Android engine for Chipsoft/Nano; matching preview.70 MDI engine extended with shared menu publisher and verified Saab148 startup guard. Physical carrier tests and recovered MDI kernel migration remain pending."
+    },
+    "latency_update_2026_10_18": {
+      "candidate": "0.1.1-preview.2 Android ARM64; unpublished",
+      "transport": "Keep one MCP stdio bridge and ADB forward per process. Negotiate wait_state_v1; older endpoints retain bounded state polling.",
+      "observation": "File-observed immutable menu snapshots for inspection; fresh native-menu read for every command admission. Waits run off the UI thread, are limited to 1500 ms per request and one active waiter, and allow concurrent state/health/Stop requests.",
+      "navigation": "Reuse the last observed state across exact-label path steps; no blind key batching. Require consumed input, idle state and a changed menu revision before proceeding. Lost replies/timeouts never replay a key.",
+      "guards": "Preserve authentication, foreground revocation, session/menu/manual generation checks, input-consumption sequencing, physical prompts and diagnostic command policy.",
+      "timing": "Expose argument-free per-tool connector elapsed time, request count and request time. Synthetic benchmarks and installed/vehicle measurements remain separate.",
+      "targets": {
+        "android-arm64": "Source implemented; exact candidate package and installed AVD/physical results recorded separately.",
+        "android-arm32": "Shared Java source; package and installed qualification pending.",
+        "macos-arm64": "Latency binding adoption and qualification pending.",
+        "macos-x86_64": "Latency binding adoption and qualification pending.",
+        "windows-x64": "Latency binding adoption and qualification pending.",
+        "linux-x86_64": "Latency binding adoption and qualification pending.",
+        "ios-arm64": "Latency binding adoption and qualification pending."
+      }
     }
   },
   "developer_preview_welcome": {

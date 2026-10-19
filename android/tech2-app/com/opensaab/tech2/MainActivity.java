@@ -38,18 +38,22 @@ public final class MainActivity extends Activity {
     private boolean mxCompatibility;
     private volatile com.opensaab.usb.MxNativeBridge mxBridge;
     private long sessionStarted,beatStamp,beatObserved;
+    private final com.opensaab.usb.McpMenuCache mcpMenuCache=new com.opensaab.usb.McpMenuCache();
     private final com.opensaab.usb.AndroidMcp.Owner mcpOwner=new com.opensaab.usb.AndroidMcp.Owner(){
-        public org.json.JSONObject state()throws Exception{return mcpState();}
+        public org.json.JSONObject state()throws Exception{return mcpState(true);}
+        public org.json.JSONObject inspect()throws Exception{return mcpState(false);}
+        public void close(){mcpMenuCache.close();}
         public boolean key(int code){com.opensaab.usb.InteractiveKeyPump p=keyPump;return running&&!stopping.get()&&p!=null&&p.offer(String.format(Locale.ROOT,"0x%02x",code));}
         public void startOffline(){mxDevice=null;startSession();}
         public void stop(){stopSession("Stopped by AI control");}
     };
-    private org.json.JSONObject mcpState()throws Exception {
+    private org.json.JSONObject mcpState(boolean fresh)throws Exception {
         org.json.JSONObject j=new org.json.JSONObject().put("session",running&&session!=null?session.getName():"").put("session_running",running).put("emulator_alive",process!=null&&process.isAlive()).put("busy",(simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy)||com.opensaab.usb.FirmwareGate.busy()||com.opensaab.usb.SecurityAccessView.workflowBusy()).put("mode",mxDevice==null?"offline":"mxp_read").put("input_idle",keyPump!=null&&keyPump.idle()).put("session_age_ms",running?android.os.SystemClock.elapsedRealtime()-sessionStarted:0);
+        org.json.JSONObject cachedMenu=mcpMenuCache.get(running?session:null,fresh);
         if(running&&session!=null){
             File beat=new File(session,"emulator-heartbeat");if(beat.lastModified()!=beatStamp){beatStamp=beat.lastModified();beatObserved=android.os.SystemClock.elapsedRealtime();}
             j.put("emulator_heartbeat_age_ms",beatStamp==0?org.json.JSONObject.NULL:android.os.SystemClock.elapsedRealtime()-beatObserved);
-            File menu=new File(session,"native-menu.json");if(menu.isFile()&&menu.length()<131072)j.put("menu",com.opensaab.usb.FirmwareStore.json(menu));
+            if(cachedMenu!=null)j.put("menu",cachedMenu);
             File statusFile=new File(session,"connection-status.json");if(statusFile.isFile()&&statusFile.length()<16384)j.put("connection",com.opensaab.usb.FirmwareStore.json(statusFile));
         }
         return j;
