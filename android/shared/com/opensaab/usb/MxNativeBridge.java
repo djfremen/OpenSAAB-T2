@@ -43,7 +43,7 @@ public final class MxNativeBridge implements AutoCloseable {
                 String request=line(in);
                 if(request.equals("CLOSE")){transport.shutdown();bluetoothClosed=transport.closeConfirmed();if(!bluetoothClosed)throw new IOException("Bluetooth release unconfirmed");reply(out,"CLOSED");break;}
                 if(request.equals("READ")){
-                    try{JSONObject packet;do{packet=transport.receive(50);}while(packet.optString("type").equals("write_completed"));if(!packet.optString("type").equals("rx"))throw new IOException("Unexpected Bluetooth event");reply(out,packet.toString());}
+                    try{JSONObject packet;do{packet=transport.receive(10);}while(packet.optString("type").equals("write_completed"));if(!packet.optString("type").equals("rx"))throw new IOException("Unexpected Bluetooth event");reply(out,packet.toString());}
                     catch(SocketTimeoutException idle){reply(out,"EMPTY");}
                 }else if(request.equals("INTERRUPT")){transport.send(new JSONObject().put("op","interrupt"));reply(out,"WRITTEN");}
                 else if(request.startsWith("WRITE ")){transport.send(new JSONObject().put("op","write").put("command",request.substring(6)));reply(out,"WRITTEN");}

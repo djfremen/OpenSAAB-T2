@@ -10,6 +10,7 @@ static PEER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy)]
 enum Mode {
     Success,
+    DiscoveryLateReply,
     CanError,
     Stopped,
     MissingPrompt,
@@ -81,6 +82,9 @@ impl Peer {
             let mut sw_reply_sent = false;
             let mut next_periodic = Instant::now();
             let mut periodic_count = 0u8;
+            let mut discovery_started = None;
+            let mut discovery_lost = false;
+            let mut discovery_replied = false;
             loop {
                 let mut line = String::new();
                 let Ok(n) = reader.read_line(&mut line) else {
@@ -98,6 +102,9 @@ impl Peer {
                         assert!(!ordinary && !monitor, "Setup batch raced live I/O");
                         let mut groups = Vec::new();
                         for c in wire.split('|') {
+                            if c == "STP61" && discovery_started.is_some() && !discovery_replied {
+                                discovery_lost = true;
+                            }
                             let value = if matches!(mode, Mode::ParkConfigError) && saw_sw_tester && c == "STP31" {
                                 "?"
                             } else if matches!(mode, Mode::ConfigWrongRate) && c == "STPBRR" {
@@ -126,6 +133,9 @@ impl Peer {
                             replies.push_back(b"01\r".to_vec());
                         }
                     } else if c == "FE013E0000000000" || (batched && c.starts_with("STPXH:")) {
+                        if protocol == 31 && c == "STPXH:101,D:FE021A9A00000000,R:0" {
+                            discovery_started = Some(Instant::now());
+                        }
                         if protocol == 61 && c == "STPXH:101,D:FE013E0000000000,R:0" { saw_sw_tester = true; }
                         if protocol == 61 && c.starts_with("STPXH:241,") { saw_sw_addressed = true; }
                         ordinary = true;
@@ -181,6 +191,11 @@ impl Peer {
                         } else {
                             serde_json::json!({"type":"rx","bytes":bytes}).to_string()
                         }
+                    } else if monitor && matches!(mode, Mode::DiscoveryLateReply) && protocol == 31
+                        && !discovery_lost && !discovery_replied
+                        && discovery_started.is_some_and(|start| start.elapsed() >= Duration::from_millis(60)) {
+                        discovery_replied = true;
+                        serde_json::json!({"type":"rx","bytes":b"651 5 04 5A 9A 00 01\r".to_vec()}).to_string()
                     } else if monitor && matches!(mode, Mode::PeriodicHsStream | Mode::ParkConfigError)
                         && protocol == 31 && Instant::now() >= next_periodic {
                         next_periodic = Instant::now() + Duration::from_millis(300);
@@ -656,4 +671,75 @@ fn failed_idle_return_stops_without_replaying_the_completed_tester() {
     let commands = peer.close();
     assert_eq!(commands.iter().filter(|s| s.starts_with("WRITE STPXH:")).count(), 2);
     assert_eq!(commands.iter().filter(|s| *s == "CLOSE").count(), 1);
+}
+
+
+#[test]
+fn discovery_catches_ehu_at_60ms_before_queued_sw_without_changing_requests() {
+    let (peer, link) = Peer::open(Mode::DiscoveryLateReply);
+    let mut backend = Bridge::from_link(link);
+    let mut discovery = tx(0, 131);
+    discovery.frame.data = vec![0xfe, 2, 0x1a, 0x9a, 0, 0, 0, 0];
+    backend.transmit(0, discovery).unwrap();
+    let mut events = vec![];
+    observe_until(&mut backend, &mut events, |v| v.iter().any(|e|
+        matches!(e, Event::Completed { ticket: 131, .. })));
+    // Same-bus tester work must not erase the outstanding collection window.
+    backend.transmit(0, tx(0, 133)).unwrap();
+    let mut sw = tx(2, 132);
+    sw.frame.data = vec![0xfe, 2, 0x1a, 0x9a, 0, 0, 0, 0];
+    backend.transmit(2, sw).unwrap();
+    observe_until(&mut backend, &mut events, |v| v.iter().any(|e|
+        matches!(e, Event::Completed { ticket: 132, .. })));
+    let ehu = events.iter().position(|e|
+        matches!(e, Event::Received(0, f) if f.id == 0x651 && f.data == [4, 0x5a, 0x9a, 0, 1])).expect("60ms EHU reply lost before switch");
+    let sw = events.iter().position(|e| matches!(e, Event::Completed { ticket: 132, .. })).unwrap();
+    assert!(ehu < sw);
+    backend.close();
+    let commands = peer.close();
+    assert_eq!(commands.iter().filter(|s| *s == "WRITE STPXH:101,D:FE021A9A00000000,R:0|STM").count(), 2);
+}
+
+#[test]
+fn reply_window_excludes_tester_physical_flow_control_and_sw() {
+    assert!(!functional_hs_reply_request(0, &tx(0, 1)));
+    assert!(!functional_hs_reply_request(0, &hs_read(2)));
+    let mut request = tx(0, 3);
+    request.frame.data = vec![0xfe, 2, 0x1a, 0x9a, 0, 0, 0, 0];
+    assert!(functional_hs_reply_request(0, &request));
+    assert!(!functional_hs_reply_request(2, &request));
+    request.frame.data[1] = 0x30;
+    assert!(!functional_hs_reply_request(0, &request));
+}
+
+#[test]
+fn cancel_during_discovery_window_does_not_send_queued_cross_bus_request() {
+    let (peer, link) = Peer::open(Mode::DiscoveryLateReply);
+    let mut backend = Bridge::from_link(link);
+    let mut discovery = tx(0, 141);
+    discovery.frame.data = vec![0xfe, 2, 0x1a, 0x9a, 0, 0, 0, 0];
+    backend.transmit(0, discovery).unwrap();
+    let mut events = vec![];
+    observe_until(&mut backend, &mut events, |v| v.iter().any(|e|
+        matches!(e, Event::Completed { ticket: 141, .. })));
+    backend.transmit(2, tx(2, 142)).unwrap();
+    backend.close();
+    let commands = peer.close();
+    assert!(!commands.iter().any(|s| s == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM"));
+    assert_eq!(commands.iter().filter(|s| *s == "CLOSE").count(), 1);
+}
+
+#[test]
+fn ordinary_hs_uses_explicit_stpx_header_without_redundant_setup_roundtrips() {
+    let (peer, link) = Peer::open(Mode::Success);
+    let mut backend = Bridge::from_link(link);
+    backend.transmit(0, hs_read(151)).unwrap();
+    let mut events = vec![];
+    observe_until(&mut backend, &mut events, |v| v.iter().any(|e|
+        matches!(e, Event::Completed { ticket: 151, .. })));
+    backend.close();
+    let commands = peer.close();
+    assert_eq!(commands.iter().filter(|s| *s == "WRITE STPO").count(), 1); // startup only
+    assert!(!commands.iter().any(|s| s.starts_with("WRITE ATSH")));
+    assert_eq!(commands.iter().filter(|s| *s == "WRITE STPXH:7E0,D:021A900000000000,R:0|STM").count(), 1);
 }

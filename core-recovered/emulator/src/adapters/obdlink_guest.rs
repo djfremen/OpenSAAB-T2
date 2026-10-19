@@ -50,6 +50,16 @@ fn functional_tester_present(tx: &CanTransmission) -> bool {
         && tx.frame.dlc == 8 && tx.frame.data == [0xfe, 1, 0x3e, 0, 0, 0, 0, 0]
 }
 
+// Only the existing policy-approved functional HS requests reach this point.
+// Tester-present has no reply collection window; physical module requests and
+// ISO-TP flow control keep their existing latency/ordering.
+fn functional_hs_reply_request(controller: usize, tx: &CanTransmission) -> bool {
+    controller == 0 && !tx.frame.extended && !tx.frame.rtr && tx.frame.id == 0x101
+        && tx.frame.dlc == 8 && tx.frame.data.first() == Some(&0xfe)
+        && tx.frame.data.get(1).is_some_and(|n| (1..=7).contains(n))
+        && !functional_tester_present(tx)
+}
+
 #[derive(Default)]
 struct ReceivePreference {
     // A functional tester-present must not replace the receive bus chosen by
@@ -81,6 +91,7 @@ struct Link {
     active_tx: Option<FailureContext>,
     batch_pending: bool,
     receive_preference: ReceivePreference,
+    hs_reply_until: Option<Instant>,
 }
 impl Link {
     fn open(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
@@ -129,6 +140,7 @@ impl Link {
             active_tx: None,
             batch_pending: false,
             receive_preference: ReceivePreference::default(),
+            hs_reply_until: None,
         })
     }
     fn record(&mut self, event: serde_json::Value) -> Result<(), String> {
@@ -534,11 +546,21 @@ impl Bridge {
         let worker = thread::spawn(move || {
             let result = (|| -> Result<(), String> {
                 link.setup()?;
+                let mut pending = None;
                 while !cancelled.load(Ordering::Relaxed) {
                     if link.started.elapsed() > Duration::from_secs(1800) {
                         return Err("Private MX+ firmware session reached its 30-minute limit".into());
                     }
-                    if let Ok((controller, tx)) = requests.try_recv() {
+                    if pending.is_none() { pending = requests.try_recv().ok(); }
+                    if pending.as_ref().is_some_and(|(controller, _)|
+                        link.controller == 0 && *controller != 0
+                        && link.hs_reply_until.is_some_and(|until| Instant::now() < until)) {
+                        // Preserve original request order while collecting late functional
+                        // HS replies. No new request is sent, retried or synthesized here.
+                        link.receive(&events)?;
+                        continue;
+                    }
+                    if let Some((controller, tx)) = pending.take() {
                         link.interrupt_monitor(&events, "next-guest-request")?;
                         link.active_tx = Some(FailureContext {
                             tx: crate::adapter_failure::TxContext::new(controller, &tx),
@@ -550,9 +572,10 @@ impl Bridge {
                             link.select_bus(controller)?;
                         }
                         let route = electrical_route(controller, &tx)?;
-                        // A successful switch batch has just validated STPO.
-                        // Otherwise cancellation invalidates cached open state.
-                        if !switched { link.ensure_protocol_open()?; }
+                        // FRPM F8.14: STPX opens the selected protocol itself.
+                        // SW mode changes still require a separately checked open;
+                        // ordinary HS STPX needs neither STPO nor a cached open.
+                        if !switched && controller == 2 { link.ensure_protocol_open()?; }
                         if controller == 2 && (!switched || route.mode == ElectricalMode::SingleWireWake) {
                             link.exact(
                                 if route.mode == ElectricalMode::SingleWireWake {
@@ -563,8 +586,11 @@ impl Bridge {
                                 "OK",
                             )?;
                         }
-                        // Set the real header after opening; cached state cannot survive cancellation.
-                        link.exact(&format!("ATSH{:03X}", tx.frame.id), "OK")?;
+                        // STPX always supplies H explicitly (FRPM F8.6), so ATSH
+                        // is redundant. Keep the previously verified wake setup.
+                        if route.mode == ElectricalMode::SingleWireWake {
+                            link.exact(&format!("ATSH{:03X}", tx.frame.id), "OK")?;
+                        }
                         let command = encode(controller, &tx)?;
                         link.record(serde_json::json!({"guest_tx":{"controller":controller,"ticket":tx.ticket,"id":tx.frame.id,"dlc":tx.frame.dlc,"data":tx.frame.data}}))?;
                         link.active_tx.as_mut().unwrap().phase = "can-request";
@@ -600,6 +626,12 @@ impl Bridge {
                                 source: if route.mode == ElectricalMode::SingleWireWake { CompletionSource::StnRfcommWriteCompatibility } else { CompletionSource::StnBatchBoundaryWriteCompatibility },
                             })
                             .map_err(|_| "STN event queue full".to_string())?;
+                        link.hs_reply_until = if functional_hs_reply_request(controller, &tx) {
+                            let until = Instant::now() + Duration::from_millis(100);
+                            link.record(serde_json::json!({"functional_HS_reply_window_ms":100,"ticket":tx.ticket,
+                                "guest_frame_altered":false,"scope":"defer only queued cross-bus work; preserve FIFO order"}))?;
+                            Some(until)
+                        } else if controller == 0 { link.hs_reply_until } else { None };
                         link.receive_preference.transmitted(controller, &tx);
                         link.active_tx = None;
                     } else if link.restore_idle_hs_receive(&events)? {
