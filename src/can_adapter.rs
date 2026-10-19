@@ -107,6 +107,7 @@ pub enum CompletionSource {
     VcxUsbWriteCompatibility,
     ChipsoftDeviceReplyCompatibility,
     StnRfcommWriteCompatibility,
+    StnBatchBoundaryWriteCompatibility,
 }
 impl CompletionSource {
     pub fn label(self) -> &'static str {
@@ -115,6 +116,7 @@ impl CompletionSource {
             Self::VcxUsbWriteCompatibility => "vcx-usb-write-compatibility",
             Self::ChipsoftDeviceReplyCompatibility => "chipsoft-device-reply-compatibility",
             Self::StnRfcommWriteCompatibility => "stn-rfcomm-write-compatibility",
+            Self::StnBatchBoundaryWriteCompatibility => "stn-batch-boundary-write-compatibility",
         }
     }
 }

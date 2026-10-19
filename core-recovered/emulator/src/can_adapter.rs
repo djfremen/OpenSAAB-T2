@@ -105,6 +105,7 @@ mod receive_staging_tests {
 pub enum CompletionSource {
     J2534SoftwareLoopback,
     StnRfcommWriteCompatibility,
+    StnBatchBoundaryWriteCompatibility,
     MicByteTransportWriteCompatibility,
     MicTranslatedWakeWriteCompatibility,
     VcxUsbWriteCompatibility,
@@ -114,6 +115,7 @@ impl CompletionSource {
     pub fn label(self) -> &'static str {
         match self {
             Self::StnRfcommWriteCompatibility => "stn-rfcomm-write-compatibility",
+            Self::StnBatchBoundaryWriteCompatibility => "stn-batch-boundary-write-compatibility",
             Self::MicByteTransportWriteCompatibility => "mic-byte-transport-write-compatibility",
             Self::MicTranslatedWakeWriteCompatibility => "mic-translated-wake-write-compatibility",
             Self::J2534SoftwareLoopback => "j2534-software-loopback",

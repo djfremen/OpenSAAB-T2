@@ -14,6 +14,10 @@ enum Mode {
     Stopped,
     MissingPrompt,
     TransmitOnly,
+    VinBurst,
+    NoBatchCapability,
+    EarlyPrompt,
+    DuplicateBoundary,
 }
 
 struct Peer {
@@ -49,6 +53,7 @@ impl Peer {
             let mut monitor = false;
             let mut ordinary_reads = 0;
             let mut requests = 0;
+            let mut batched = false;
             loop {
                 let mut line = String::new();
                 let Ok(n) = reader.read_line(&mut line) else {
@@ -61,7 +66,9 @@ impl Peer {
                 log.lock().unwrap().push(command.clone());
                 let response = if command.starts_with("HELLO ") {
                     "READY obdlink-native-read".to_string()
-                } else if let Some(c) = command.strip_prefix("WRITE ") {
+                } else if let Some(wire) = command.strip_prefix("WRITE ") {
+                    batched=wire.ends_with("|STM");
+                    let c=wire.strip_suffix("|STM").unwrap_or(wire);
                     assert!(!ordinary, "A new write raced an ordinary request");
                     if c == "STM" {
                         monitor = true;
@@ -69,7 +76,7 @@ impl Peer {
                             replies.push_back(b"541 1 ".to_vec());
                             replies.push_back(b"01\r".to_vec());
                         }
-                    } else if c == "FE013E0000000000" || c == "STPXH:101,D:FE013E0000000000,R:0" {
+                    } else if c == "FE013E0000000000" || (batched && c.starts_with("STPXH:")) {
                         ordinary = true;
                         ordinary_reads = 0;
                         requests += 1;
@@ -95,6 +102,7 @@ impl Peer {
                                 }
                             }
                             "ATCS" => "T:00 R:00",
+                            "STBC1" if matches!(mode, Mode::NoBatchCapability) => "?",
                             _ => "OK",
                         };
                         if c == "STP31" {
@@ -116,16 +124,28 @@ impl Peer {
                                 Mode::MissingPrompt => Vec::new(),
                                 Mode::CanError => b"CAN ERROR\r\r>".to_vec(),
                                 Mode::Stopped => b"STOPPED\r\r>".to_vec(),
-                                Mode::TransmitOnly => b"\r>".to_vec(),
+                                Mode::NoBatchCapability => unreachable!(),
+                                Mode::EarlyPrompt => b">".to_vec(),
+                                Mode::DuplicateBoundary => b"||".to_vec(),
+                                Mode::VinBurst => b"|641 8 21 41 42 43 44 45 46 47\r641 8 22 48 49 4A 4B 4C 4D 4E\r".to_vec(),
+                                Mode::TransmitOnly => b"|".to_vec(),
                                 Mode::Success => match ordinary_reads {
                                     1 => b"541 1 ".to_vec(),
                                     2 => b"01\r".to_vec(),
-                                    _ => b"NO DATA\r\r>".to_vec(),
+                                    _ => if batched { b"|".to_vec() } else { b"NO DATA\r\r>".to_vec() },
                                 },
                             }
                         } else {
-                            b"NO DATA\r\r>".to_vec()
+                            if batched { b"|".to_vec() } else { b"NO DATA\r\r>".to_vec() }
                         };
+                        if bytes.contains(&b'|') {
+                            ordinary = false;
+                            monitor = true;
+                            if matches!(mode, Mode::TransmitOnly) && requests==1 {
+                                replies.push_back(b"541 1 ".to_vec());
+                                replies.push_back(b"01\r".to_vec());
+                            }
+                        }
                         if bytes.contains(&b'>') {
                             ordinary = false;
                         }
@@ -202,7 +222,7 @@ fn tx(controller: usize, ticket: u64) -> CanTransmission {
 }
 
 #[test]
-fn two_queued_buses_finish_at_prompt_and_preserve_fragmented_receive() {
+fn two_queued_buses_finish_at_batch_boundary_and_preserve_fragmented_receive() {
     let (peer, link) = Peer::open(Mode::Success);
     let mut backend =
         crate::can_adapter::TranslationBackend::new(Box::new(Bridge::from_link(link)));
@@ -250,13 +270,13 @@ fn two_queued_buses_finish_at_prompt_and_preserve_fragmented_receive() {
     let commands = peer.close();
     let first = commands
         .iter()
-        .position(|c| c == "WRITE STPXH:101,D:FE013E0000000000,R:0")
+        .position(|c| c == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM")
         .unwrap();
     assert_eq!(&commands[first + 1..first + 4], ["READ", "READ", "READ"]);
     assert_eq!(
         commands
             .iter()
-            .filter(|c| *c == "WRITE STPXH:101,D:FE013E0000000000,R:0")
+            .filter(|c| *c == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM")
             .count(),
         2
     );
@@ -293,13 +313,13 @@ fn failure_case(mode: Mode, expected: &str) {
     assert_eq!(
         commands
             .iter()
-            .filter(|c| *c == "WRITE STPXH:101,D:FE013E0000000000,R:0")
+            .filter(|c| *c == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM")
             .count(),
         1
     );
     let first = commands
         .iter()
-        .position(|c| c == "WRITE STPXH:101,D:FE013E0000000000,R:0")
+        .position(|c| c == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM")
         .unwrap();
     assert!(!commands[first + 1..].iter().any(|c| c == "INTERRUPT"));
     assert_eq!(commands.iter().filter(|c| *c == "CLOSE").count(), 1);
@@ -338,7 +358,7 @@ fn captured_abort_control_reproduces_peer_error() {
 }
 
 #[test]
-fn transmit_only_completion_validates_prompt_then_returns_receive_to_monitor() {
+fn transmit_only_completion_validates_boundary_with_immediate_receive() {
     let (peer, link) = Peer::open(Mode::TransmitOnly);
     let mut backend = Bridge::from_link(link);
     backend.transmit(2, tx(2, 51)).unwrap();
@@ -364,9 +384,10 @@ fn transmit_only_completion_validates_prompt_then_returns_receive_to_monitor() {
     let commands = peer.close();
     let sent = commands
         .iter()
-        .position(|s| s == "WRITE STPXH:101,D:FE013E0000000000,R:0")
+        .position(|s| s == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM")
         .unwrap();
-    assert_eq!(&commands[sent + 1..sent + 3], ["READ", "WRITE STM"]);
+    assert_eq!(commands[sent+1],"READ");
+    assert!(!commands[sent+1..].iter().any(|s|s=="WRITE STM"));
 }
 
 #[test]
@@ -417,7 +438,7 @@ fn exact_native_key_status_query_is_bounded_and_other_controls_stay_rejected() {
     assert_eq!(
         commands
             .iter()
-            .filter(|s| *s == "WRITE STPXH:241,D:03AE030200000000,R:0")
+            .filter(|s| *s == "WRITE STPXH:241,D:03AE030200000000,R:0|STM")
             .count(),
         3
     );
@@ -425,3 +446,37 @@ fn exact_native_key_status_query_is_bounded_and_other_controls_stay_rejected() {
         || s.contains("D:03AE0303")
         || s.contains("D:022701")));
 }
+
+#[test]
+fn fast_vin_continuations_survive_the_transmit_boundary() {
+    let (peer, link)=Peer::open(Mode::VinBurst);
+    let mut backend=Bridge::from_link(link);
+    backend.transmit(2,tx(2,71)).unwrap();
+    let mut events=vec![];let deadline=Instant::now()+Duration::from_secs(5);
+    while Instant::now()<deadline {
+        events.extend(backend.poll().unwrap());
+        if events.iter().filter(|e|matches!(e,Event::Received(_, _))).count()==2 {break;}
+        thread::sleep(Duration::from_millis(2));
+    }
+    let frames:Vec<_>=events.iter().filter_map(|e|if let Event::Received(c,f)=e {Some((*c,f.clone()))}else{None}).collect();
+    assert_eq!(frames.len(),2);assert_eq!(frames[0].0,2);assert_eq!(frames[0].1.id,0x641);
+    assert_eq!(frames[0].1.data,[0x21,0x41,0x42,0x43,0x44,0x45,0x46,0x47]);
+    assert_eq!(frames[1].1.data,[0x22,0x48,0x49,0x4a,0x4b,0x4c,0x4d,0x4e]);
+    backend.close();let commands=peer.close();
+    assert_eq!(commands.iter().filter(|s|s.starts_with("WRITE STPXH:")).count(),1);
+    assert!(!commands.iter().any(|s|s=="WRITE STM"));
+}
+#[test]
+fn unsupported_batching_stops_before_the_queued_vehicle_request() {
+    let (peer,link)=Peer::open(Mode::NoBatchCapability);
+    let mut backend=Bridge::from_link(link);backend.transmit(2,tx(2,81)).unwrap();
+    let deadline=Instant::now()+Duration::from_secs(5);let mut stopped=false;
+    while Instant::now()<deadline {match backend.poll(){Ok(events)=>assert!(!events.iter().any(|e|matches!(e,Event::Completed{..}))),Err(e)=>{assert!(e.contains("STBC1"));stopped=true;break;}}thread::sleep(Duration::from_millis(2));}
+    assert!(stopped);backend.close();let commands=peer.close();
+    assert!(!commands.iter().any(|s|s.starts_with("WRITE STPXH:")));
+}
+
+#[test]
+fn early_prompt_is_not_a_transmit_completion() { failure_case(Mode::EarlyPrompt,"batch ended"); }
+#[test]
+fn duplicate_batch_boundary_is_not_a_transmit_completion() { failure_case(Mode::DuplicateBoundary,"Unexpected STN batch boundary"); }

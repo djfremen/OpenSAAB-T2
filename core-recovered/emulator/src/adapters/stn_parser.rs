@@ -8,12 +8,17 @@ pub(super) struct Parser {
 pub(super) enum Item {
     Line(String),
     Prompt,
+    BatchBoundary,
 }
 impl Parser {
     pub(super) fn feed(&mut self, bytes: &[u8]) -> Result<Vec<Item>, String> {
         let mut items = Vec::new();
         for &b in bytes {
             match b {
+                b'|' => {
+                    if !self.line.is_empty() { items.push(Item::Line(self.take()?)); }
+                    items.push(Item::BatchBoundary);
+                }
                 b'>' => {
                     if !self.line.is_empty() {
                         items.push(Item::Line(self.take()?));

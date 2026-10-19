@@ -56,6 +56,7 @@ struct Link {
     protocol_open: bool,
     monitoring: bool,
     active_tx: Option<FailureContext>,
+    batch_pending: bool,
 }
 impl Link {
     fn open(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
@@ -102,6 +103,7 @@ impl Link {
             protocol_open: false,
             monitoring: false,
             active_tx: None,
+            batch_pending: false,
         })
     }
     fn record(&mut self, event: serde_json::Value) -> Result<(), String> {
@@ -134,6 +136,7 @@ impl Link {
         }
         self.receiving = true;
         self.monitoring = cmd == "STM";
+        self.batch_pending = cmd.ends_with("|STM");
         Ok(())
     }
     fn packet(&mut self) -> Result<Vec<Item>, String> {
@@ -183,6 +186,7 @@ impl Link {
                 return Err(format!("STN command prompt timeout: {cmd}"));
             }
             for item in self.packet()? {
+                if matches!(item, Item::BatchBoundary) { return Err("Unexpected STN batch boundary during setup".into()); }
                 if let Item::Line(s) = item {
                     if s.trim() != cmd {
                         lines.push(s);
@@ -259,7 +263,7 @@ impl Link {
         self.record(serde_json::json!({"adapter_voltage":voltage,"source":"ATRV"}))?;
         for cmd in [
             "ATL0", "ATS1", "ATH1", "ATD1", "ATV1", "ATCAF0", "ATCFC0", "STCMM1", "STCSEGT0",
-            "STCSEGR0", "ATR1", "ATAT0", "ATST0A", "STP31",
+            "STCSEGR0", "STBC1", "STBCOF0", "ATR1", "ATAT0", "ATST0A", "STP31",
         ] {
             self.exact(cmd, "OK")?;
         }
@@ -305,6 +309,13 @@ impl Link {
     fn receive(&mut self, events: &SyncSender<Event>) -> Result<(), String> {
         let monitoring = self.monitoring;
         for item in self.packet()? {
+            if matches!(item, Item::BatchBoundary) {
+                if !self.batch_pending { self.synchronized=false; return Err("Unexpected STN batch boundary".into()); }
+                self.batch_pending = false;
+                self.monitoring = true;
+                self.record(serde_json::json!({"transmit_batch_boundary":true,"continuous_receive_started_in_same_batch":true,"electrical_ACK_verified":false}))?;
+                continue;
+            }
             if let Item::Line(line) = item {
                 if let Some(f) = frame(&line)? {
                     self.record(
@@ -336,6 +347,24 @@ impl Link {
                 return Err("STN ordinary request prompt timeout; no interrupt or replay".into());
             }
             self.receive(events)?;
+        }
+        Ok(())
+    }
+    fn finish_transmit_batch(&mut self, events: &SyncSender<Event>) -> Result<(), String> {
+        let end = Instant::now() + Duration::from_secs(3);
+        while self.batch_pending {
+            if Instant::now() > end {
+                self.synchronized = false;
+                return Err("STN batch boundary prompt timeout; no interrupt or replay".into());
+            }
+            self.receive(events)?;
+            if self.batch_pending && !self.receiving {
+                self.synchronized=false;
+                return Err("STN batch ended before continuous receive; no completion or replay".into());
+            }
+        }
+        if !self.receiving || !self.monitoring {
+            return Err("STN transmit batch did not retain continuous receive".into());
         }
         Ok(())
     }
@@ -476,15 +505,20 @@ impl Bridge {
                             link.record(serde_json::json!({"wake_settle_candidate_ms":500,"protocol_closed_after_wake":false,"guest_frame_altered":false}))?;
                             link.record(serde_json::json!({"native_zero_DLC_wake_command_accepted":true,"electrical_ACK_verified":false}))?;
                         } else {
-                            link.send(&command)?;
-                            link.finish_request(&events)?;
-                            link.record(serde_json::json!({"ordinary_request_terminal_prompt":{"controller":controller,"ticket":tx.ticket},"transmit_only_response_count":0,"original_CANdi_flow_control_owner":true,"electrical_ACK_verified":false}))?;
+                            // FRPM F 16.1: indefinite STM is permitted at the end
+                            // of a batch. Avoid the Bluetooth round trip during
+                            // which preview.12 lost the first VIN continuation.
+                            // The pipe validates STPX completion; it is neither
+                            // an electrical ACK nor an ECU operation result.
+                            link.send(&format!("{command}|STM"))?;
+                            link.finish_transmit_batch(&events)?;
+                            link.record(serde_json::json!({"ordinary_request_batch_boundary":{"controller":controller,"ticket":tx.ticket},"transmit_only_response_count":0,"original_CANdi_flow_control_owner":true,"electrical_ACK_verified":false}))?;
                         }
                         events
                             .try_send(Event::Completed {
                                 controller,
                                 ticket: tx.ticket,
-                                source: CompletionSource::StnRfcommWriteCompatibility,
+                                source: if route.mode == ElectricalMode::SingleWireWake { CompletionSource::StnRfcommWriteCompatibility } else { CompletionSource::StnBatchBoundaryWriteCompatibility },
                             })
                             .map_err(|_| "STN event queue full".to_string())?;
                         link.active_tx = None;

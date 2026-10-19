@@ -1239,5 +1239,14 @@
       "linux-x86_64": "Pending",
       "ios-arm64": "Pending"
     }
+  },
+  "android_mxplus_worker_preview13": {
+    "version": "0.1.1-preview.13",
+    "change": "Require STBC1/STBCOF0 capability and issue original non-wake STPX transmit plus STM receive in one batch. Validate exactly one batch boundary before driver-compatible completion; continuous monitor remains active. Original CANdi still generates all frames, flow control and interpretation.",
+    "reason": "Exact Fire preview.12 CIM VIN response received FF and CF22 but CF21 was absent from raw STN receive. Separate R:0 transmit and STM commands leave a Bluetooth round-trip receive gap.",
+    "provenance": "Non-wake completions identify stn-batch-boundary-write-compatibility; wake retains stn-rfcomm-write-compatibility. Neither proves an electrical ACK or ECU operation success.",
+    "failure_rules": "No batch support, early prompt, duplicate boundary, CAN ERROR, STOPPED or missing boundary prevents completion and stops queued work; no automatic replay.",
+    "qualification": "Owned helper confirmed batching and two read-only adapter queries on the actual MX+; no CAN request in the helper. Exact app physical tests still pending.",
+    "retained": "Preview.12 initialized controller model, bounded T8 reset policy and six original executable pins. Other architectures/platforms and shared primary workflow pending."
   }
 }
