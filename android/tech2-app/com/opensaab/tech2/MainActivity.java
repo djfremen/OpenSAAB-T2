@@ -260,7 +260,7 @@ public final class MainActivity extends Activity {
         if(com.opensaab.usb.SetupCleanup.available(this))menu.add("Remove installer",()->{if(idleTool())com.opensaab.usb.SetupCleanup.remove(this);});
         menu.add("AI control (MCP)",()->com.opensaab.usb.AndroidMcp.show(this));
         menu.add("MX+ firmware session",this::startMx);
-        menu.add("MX+ reset misfire and knock counters",()->new AlertDialog.Builder(this)
+        menu.add("MX+ reset misfire and knock counters",()->new android.app.AlertDialog.Builder(this)
             .setTitle("Reset misfire and knock counters?")
             .setMessage("Start a T8 counter-reset session with MX+. Read the existing values first and keep the engine stopped. Only the original Reset Misfire and Knock Counters request is added to the read profile. Follow the firmware confirmation.")
             .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->startMx(true)).show());
