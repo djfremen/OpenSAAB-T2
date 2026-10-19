@@ -519,7 +519,7 @@ public final class MainActivity extends Activity {
             String engine=mxDevice==null?"libtech2_recovered.so":"libtech2_mx.so";
             offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,engine),firmware,mxDevice==null?"offline_native":mxResetCounters?"mxp_reset_counters":mxClearDtc?"mxp_clear_dtc":"mxp_native_read");
             if(mxDevice!=null){
-                com.opensaab.usb.FirmwareStore.writeJson(new File(session,"mx-session-access.json"),new org.json.JSONObject().put("schema",1).put("code_clearing_enabled",mxClearDtc).put("counter_reset_enabled",mxResetCounters).put("consent_utc",mxConsentUtc==null?org.json.JSONObject.NULL:mxConsentUtc).put("automatic_request_replay",false));
+                publish(new File(session,"mx-session-access.json"),new org.json.JSONObject().put("schema",1).put("code_clearing_enabled",mxClearDtc).put("counter_reset_enabled",mxResetCounters).put("consent_utc",mxConsentUtc==null?org.json.JSONObject.NULL:mxConsentUtc).put("automatic_request_replay",false).toString()+"\n");
                 if(mxClearDtc)com.opensaab.usb.SessionDiagnostics.record(session,com.opensaab.usb.SessionDiagnostics.Event.WRITE_SESSION_STARTED);
             }
             sessionStarted=android.os.SystemClock.elapsedRealtime();beatStamp=beatObserved=0;
