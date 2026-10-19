@@ -632,7 +632,7 @@ dependencies = [
 
 [[package]]
 name = "tech2-emu"
-version = "0.1.0-preview.98"
+version = "0.1.1-preview.5"
 dependencies = [
  "base64",
  "libc",

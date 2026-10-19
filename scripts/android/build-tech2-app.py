@@ -28,6 +28,10 @@ if args.profile == 'arm64':
     identity = json.loads((Path(__file__).resolve().parents[2] / 'core-recovered/emulator/ui/recovered-core-identity.json').read_text())
     if identity['version'] != args.version_name:
         parser.error('Recovered-core packaged version must match the Android application version; rebuild it from the matching source.')
+    cargo = (Path(__file__).resolve().parents[2] / 'core-recovered/emulator/Cargo.toml').read_text().split('[package]',1)[1].split('\n[',1)[0]
+    cargo_version = re.search(r'^version\s*=\s*"([^"]+)"', cargo, re.M)
+    if not cargo_version or cargo_version[1] != identity['version']:
+        parser.error('Recovered-core Cargo version must match packaged identity; update Cargo.toml and Cargo.lock before building.')
 
 profile = PROFILES[args.profile]
 experimental = profile.abi == 'armeabi-v7a'

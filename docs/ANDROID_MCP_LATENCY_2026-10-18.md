@@ -1,6 +1,6 @@
 # Android MCP latency candidate
 
-Next candidate: **OpenSAAB 0.1.1-preview.4 ARM64**, version code 101004.
+Next candidate: **OpenSAAB 0.1.1-preview.5 ARM64**, version code 101005.
 This is unpublished work following the Fire 0.1.1-preview.1 adapter tests.
 Those tests and the installed Fire application retain their original identity.
 
@@ -51,7 +51,7 @@ Verification commands:
 ```sh
 python3 scripts/android/test-mcp-bridge.py -v
 python3 scripts/android/test-mcp-bridge.py --benchmark-baseline /private/baseline-bridge.py
-python3 scripts/android/test-lcd-on-device.py --serial emulator-5560 --suite mcp --expected-version 0.1.1-preview.4 --classes target/android-tech2-release/classes
+python3 scripts/android/test-lcd-on-device.py --serial emulator-5560 --suite mcp --expected-version 0.1.1-preview.5 --classes target/android-tech2-release/classes
 ```
 
 The host protocol tests use synthetic menus and TCP. The Android endpoint suite
@@ -62,5 +62,6 @@ concurrent health, cache invalidation and fresh command admission. Retain exact
 APK, source, signing and benchmark receipts separately. Offline firmware and
 physical Fire/adapter checks remain separate qualifications; the old Fire
 passes do not qualify this new executable. ARM32 shares source but has no new
-package/test claim. Other platform latency bindings remain pending in the
+package/test claim. Recovered-core Cargo and packaged versions agree; the Android builder rejects
+a mismatch before compilation/packaging. Other platform latency bindings remain pending in the
 canonical contract and conformance matrix.
