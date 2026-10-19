@@ -718,6 +718,40 @@ mod tests {
     }
 
     #[test]
+    fn counter_reset_is_exact_explicit_and_preserves_guest_payload() {
+        let data = [2, 0xae, 0x14, 0, 0, 0, 0, 0];
+        let request = tx(0, 1, 0x7e0, &data);
+        for profile in [Profile::Read, Profile::Seeds, Profile::ClearDtc] {
+            assert!(!allowed_for_profile(0, &request, profile));
+        }
+        let profile = Profile::ResetEngineCounters;
+        assert!(allowed_for_profile(0, &request, profile));
+        let encoded = encode_for_profile(0, &request, 1, profile).unwrap();
+        assert_eq!(&encoded.payload[10..], &data);
+        assert!(TxLedger::default().prepare_for_profile(0, &request, Instant::now(), profile).is_ok());
+        for position in 0..data.len() {
+            let mut changed = data; changed[position] ^= 1;
+            assert!(!allowed_for_profile(0, &tx(0, 1, 0x7e0, &changed), profile));
+        }
+        for id in [0x101, 0x241, 0x7df, 0x7e1] {
+            assert!(!allowed_for_profile(0, &tx(0, 1, id, &data), profile));
+        }
+        for controller in [1, 2] {
+            assert!(!allowed_for_profile(controller, &tx(controller, 1, 0x7e0, &data), profile));
+        }
+        for data in [vec![2,0xae,0x14], vec![1,4], vec![2,0x27,1],
+            vec![4,0x27,2,1,2], vec![3,0xae,3,2,0,0,0,0], vec![1,0x34]] {
+            assert!(!allowed_for_profile(0, &tx(0, 1, 0x7e0, &data), profile));
+        }
+        let mut malformed=request.clone(); malformed.frame.extended=true;
+        assert!(!allowed_for_profile(0, &malformed, profile));
+        malformed=request.clone(); malformed.frame.rtr=true;
+        assert!(!allowed_for_profile(0, &malformed, profile));
+        assert!(TxLedger::with_full_native().prepare_for_profile(0, &request, Instant::now(), profile).is_err());
+        assert!(TxLedger::with_key_status(true).prepare_for_profile(0, &request, Instant::now(), profile).is_err());
+    }
+
+    #[test]
     fn clear_is_explicit_and_preserves_original_wire_payload() {
         for (c, id, data) in [
             (0, 0x7e0, vec![1, 4, 0, 0, 0, 0, 0, 0]),

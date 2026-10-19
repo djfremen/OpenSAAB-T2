@@ -1148,5 +1148,17 @@
       "linux-x86_64": "Native binding/package metadata and installed verification pending",
       "ios-arm64": "Native binding/package metadata and installed verification pending"
     }
+  },
+  "counter_reset_maintenance": {
+    "id": "t8-counter-reset-1",
+    "recorded_date": "2026-10-18",
+    "action": "Reset misfire and knock counters",
+    "workflow": "Explicit maintenance choice; navigate original firmware Reset Misfire and Knock Counters. Preserve physical prompts, cancellation and response validation.",
+    "nano": "Separate ResetEngineCounters profile admits only captured standard HS-CAN 0x7E0 / 02 AE 14 00 00 00 00 00 in addition to diagnostic reads. Default Read, Seeds and ClearDtc remain unchanged. No host-generated reset.",
+    "chipsoft": "Original firmware full control; restricted mode cannot start reset.",
+    "mdi": "Original firmware menus; physical result qualified separately.",
+    "qualification": "A fresh ECU response, firmware completion and post-reset counter readings are required on each exact installed artifact/adapter; USB acceptance alone does not pass.",
+    "candidate": "0.1.0-preview.99 Android ARM64; physical tests pending",
+    "other_targets": "Android ARM32, macOS ARM64/x86_64, Windows x86_64, Linux x86_64 and iOS adoption and installed physical checks pending; no inherited pass."
   }
 }

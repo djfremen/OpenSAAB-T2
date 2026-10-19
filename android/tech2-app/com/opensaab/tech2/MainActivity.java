@@ -221,6 +221,7 @@ public final class MainActivity extends Activity {
             .add("Read DTC",()->selectAdapter("native_dtc",false))
             .add("Clear DTC",()->com.opensaab.usb.SessionSheet.confirmClear(this,()->selectAdapter("native_clear_dtc",false)))
             .add("Engine Data",()->selectAdapter("native_engine_data",false))
+            .add("Reset misfire and knock counters",()->com.opensaab.usb.SessionSheet.confirmResetCounters(this,()->selectAdapter("native_reset_counters",false)))
             .add("Saved DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this))
             .add(workspace.expanded()?"Show header":"Expand screen",workspace::toggleExpanded)
             .add("App menu",this::showAppMenu).show("Actions");
@@ -362,9 +363,9 @@ public final class MainActivity extends Activity {
             launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode.equals("native_seed")?"nano_security_collect":mode,true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){
             boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);
-            if(restricted && (mode.equals("native_seed") || mode.equals("native_clear_dtc"))){
-                status.setText("Turn off Chipsoft restricted mode to collect security data or clear DTCs");
-                android.widget.Toast.makeText(this,"Restricted mode is read-only. Turn it off to collect security data or clear DTCs.",android.widget.Toast.LENGTH_LONG).show();
+            if(restricted && (mode.equals("native_seed") || mode.equals("native_clear_dtc") || mode.equals("native_reset_counters"))){
+                status.setText("Turn off Chipsoft restricted mode to collect security data, clear DTCs or reset counters");
+                android.widget.Toast.makeText(this,"Restricted mode is read-only. Turn it off to collect security data, clear DTCs or reset counters.",android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class)

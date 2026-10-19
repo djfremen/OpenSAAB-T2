@@ -38,6 +38,7 @@ pub struct Options {
     pub candi_chipsoft_seeds: bool,
     pub candi_chipsoft_audible: bool,
     pub candi_nano_clear_dtc: bool,
+    pub candi_nano_reset_engine_counters: bool,
     pub candi_nano_key_status: bool,
     pub candi_nano_full_native: bool,
     pub candi_nano_seeds: bool,
@@ -126,6 +127,7 @@ impl Options {
             candi_chipsoft_seeds: false,
             candi_chipsoft_audible: false,
             candi_nano_clear_dtc: false,
+            candi_nano_reset_engine_counters: false,
             candi_nano_key_status: false,
             candi_nano_full_native: false,
             candi_nano_seeds: false,
@@ -175,6 +177,7 @@ impl Options {
                     "--candi-on-demand" => { out.candi_on_demand = true; continue; }
                     "--candi-native-link" => { out.candi_native_link = true; out.candi = true; continue; }
                     "--candi-nano-clear-dtc" => { out.candi_nano_clear_dtc = true; continue; }
+                    "--candi-nano-reset-engine-counters" => { out.candi_nano_reset_engine_counters = true; continue; }
                     "--candi-nano-key-status" => { out.candi_nano_key_status = true; continue; }
                     "--candi-nano-full-native" => { out.candi_nano_full_native = true; continue; }
                     "--candi-nano-seeds" => { out.candi_nano_seeds = true; continue; }
@@ -295,6 +298,21 @@ impl Options {
         }
         if out.candi_native_link && !out.research {
             return Err("--candi-native-link requires research mode".into());
+        }
+        if out.candi_nano_reset_engine_counters
+            && (out.candi_nano_usb_token.is_none()
+                || out.target != HarnessTarget::NativeManual
+                || out.candi_nano_clear_dtc
+                || out.candi_nano_key_status
+                || out.candi_nano_full_native
+                || out.candi_nano_seeds
+                || out.candi_chipsoft_usb_token.is_some()
+                || out.candi_chipsoft_seeds
+                || out.candi_chipsoft_symbol_only
+                || out.candi_chipsoft_audible
+                || out.candi_seatbelt_audible)
+        {
+            return Err("--candi-nano-reset-engine-counters requires exclusive direct Nano USB native-manual maintenance mode".into());
         }
         if out.candi_nano_clear_dtc
             && (out.candi_nano_usb_token.is_none() || out.target != HarnessTarget::DtcLink1367)
@@ -466,6 +484,7 @@ Usage: tech2-emu [OPTIONS] [CARD_IMAGE]
   --candi-j2534-adapter nano|chipsoft-pro Installed Windows driver profile; default nano
   --candi-nano-usb-token TOKEN Android app loopback transport for native live harness
   --candi-nano-clear-dtc   Explicitly permit original firmware DTC clearing in USB dtc-link-1367 sessions
+  --candi-nano-reset-engine-counters  Explicit captured T8 misfire/knock counter reset in USB native-manual sessions
   --candi-nano-key-status  Scoped original Service ignition-key check; direct Nano USB native-manual, at most three exact requests
   --candi-nano-full-native Explicit original firmware control; direct Nano USB native-manual, physical/frame validation retained
   --candi-nano-seeds      Manual original firmware seed collection; direct Nano USB native-manual, never submits keys
@@ -507,6 +526,26 @@ mod tests {
     fn parse(a: &[&str]) -> Result<Options, String> {
         Options::parse(a.iter().map(|s| s.to_string()), |_| None)
     }
+    #[test]
+    fn nano_counter_reset_requires_exclusive_direct_usb_manual_mode() {
+        let base=["--test-harness","--harness-target","native-manual","--candi-native-link",
+            "--candi-nano-usb-token","0123456789abcdef0123456789abcdef"];
+        assert!(!parse(&base).unwrap().candi_nano_reset_engine_counters);
+        let mut args=base.to_vec();args.push("--candi-nano-reset-engine-counters");
+        assert!(parse(&args).unwrap().candi_nano_reset_engine_counters);
+        assert!(parse(&["--candi-nano-reset-engine-counters"]).is_err());
+        for target in ["security-link-1367","dtc-link-1367","engine-data-1367","ecm-link-1367","menus"] {
+            let mut bad=args.clone();bad[2]=target;assert!(parse(&bad).is_err());
+        }
+        for conflict in ["--candi-nano-full-native","--candi-nano-key-status","--candi-nano-clear-dtc",
+            "--candi-nano-seeds","--candi-chipsoft-seeds","--candi-chipsoft-symbol-only",
+            "--candi-chipsoft-audible","--candi-seatbelt-audible"] {
+            let mut bad=args.clone();bad.push(conflict);assert!(parse(&bad).is_err());
+        }
+        let mut no_usb=args.clone();no_usb.drain(4..6);assert!(parse(&no_usb).is_err());
+        let mut chipsoft=args;chipsoft[4]="--candi-chipsoft-usb-token";assert!(parse(&chipsoft).is_err());
+    }
+
     #[test]
     fn nano_manual_seeds_require_exclusive_direct_usb_manual_collection() {
         let base=["--test-harness","--harness-target","native-manual","--candi-native-link",

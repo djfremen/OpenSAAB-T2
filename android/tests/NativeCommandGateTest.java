@@ -70,6 +70,27 @@ public class NativeCommandGateTest {
         for(int[] denied:new int[][]{{1,4},{3,0xa9,0x81,0x0a},{2,0x27,1},{4,0x27,2,1,2},{4,0x3b,1,0x99,0}})
             check(!NativeCommandGate.allowed(frame(0,0x7e1,denied),false));
         seed[5]^=1;check(!NativeCommandGate.allowed(seed,true));
+        byte[] reset=frame(0,0x7e0,2,0xae,0x14,0,0,0,0,0);
+        check(!NativeCommandGate.allowed(reset,false,false));
+        check(!NativeCommandGate.allowed(reset,true,false));
+        check(!NativeCommandGate.allowed(reset,false,true));
+        check(NativeCommandGate.allowed(reset,false,false,true));
+        check(new NativeCommandGate.Stream().allowed(reset,false,false,false,true,0));
+        check(!new NativeCommandGate.Stream().allowed(reset,true,false,false,true,0));
+        check(!new NativeCommandGate.Stream().allowed(reset,false,true,false,true,0));
+        check(!new NativeCommandGate.Stream().allowed(reset,false,false,true,true,0));
+        for(int position=0;position<8;position++){
+            int[] changed={2,0xae,0x14,0,0,0,0,0};changed[position]^=1;
+            check(!NativeCommandGate.allowed(frame(0,0x7e0,changed),false,false,true));
+        }
+        for(int id:new int[]{0x101,0x241,0x7df,0x7e1})check(!NativeCommandGate.allowed(frame(0,id,2,0xae,0x14,0,0,0,0,0),false,false,true));
+        check(!NativeCommandGate.allowed(frame(1,0x7e0,2,0xae,0x14,0,0,0,0,0),false,false,true));
+        check(!NativeCommandGate.allowed(frame(0,0x7e0,2,0xae,0x14),false,false,true));
+        for(int[] denied:new int[][]{{1,4},{2,0x27,1},{3,0xae,3,2,0,0,0,0},{1,0x34}})
+            check(!NativeCommandGate.allowed(frame(0,0x7e0,denied),false,false,true));
+        NativeCommandGate.Stream switched=new NativeCommandGate.Stream();
+        check(switched.allowed(frame(0,0x7e0,0x10,10,0x2c,0xf3,1,2,3,4),false,false,false,true,0));
+        check(!switched.allowed(frame(0,0x7e0,0x21,5,6,7,8,0,0,0),false,false,false,false,1));
         System.out.println("NATIVE_COMMAND_GATE PASS; hardware not opened");
     }
 }

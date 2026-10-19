@@ -44,7 +44,7 @@ public final class NativeCommandGate {
     /** Explain this exact local policy rejection; do not turn it into an ECU rejection or grant. */
     public static String collectionRejectedExplanation(String line,boolean readMode){
         if(!readMode || line==null || !line.contains("Native USB command rejected by collection profile"))return null;
-        return "This request is outside Read-only Nano mode. The blocked request was not sent to the vehicle. Use the matching operation in Actions. Choose Get security access only when you intend to collect security data.";
+        return "This request is outside Read-only Nano mode. The blocked request was not sent to the vehicle. Return to the main screen and choose a supported operation in Actions. Choose Get security access only when you intend to collect security data.";
     }
     /** Adapter-specific mapping into the existing verified VehicleIdentity contract. */
     public static boolean securityVinReady(String status,String origin,String requestOrigin,
@@ -56,16 +56,20 @@ public final class NativeCommandGate {
     }
     /** Per USB session, with a deadline and exact sequence for engine read packets. */
     public static final class Stream {
-        int remaining=0,sequence=0,keyStatusSent=0;long deadline;boolean packetSeeds,packetClear,packetRead;
+        int remaining=0,sequence=0,keyStatusSent=0;long deadline;boolean packetSeeds,packetClear,packetReset,packetRead;
         public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,long now){
             return allowed(wire,seeds,clearDtc,false,now);
         }
         /** Normal reads and explicit key-status mode share one bounded captured DeviceControl. */
         public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,boolean keyStatus,long now){
-            if((seeds && clearDtc) || (keyStatus && (seeds || clearDtc)))return false;
+            return allowed(wire,seeds,clearDtc,keyStatus,false,now);
+        }
+        /** Explicit captured T8 maintenance; no inherited seed, clear or key-status mode. */
+        public boolean allowed(byte[] wire,boolean seeds,boolean clearDtc,boolean keyStatus,boolean resetCounters,long now){
+            if((seeds?1:0)+(clearDtc?1:0)+(keyStatus?1:0)+(resetCounters?1:0)>1)return false;
             Decoded p=decode(wire);if(p==null)return false;
             byte[] b=p.b;int pci=b[14]&255;
-            if(!seeds && !clearDtc && p.channel==1 && p.id==0x241 && p.count==8
+            if(!seeds && !clearDtc && !resetCounters && p.channel==1 && p.id==0x241 && p.count==8
                 && b[4]==0 && b[5]==0 && b[6]==0 && b[7]==0
                 && b[14]==3 && b[15]==(byte)0xae && b[16]==3 && b[17]==2
                 && b[18]==0 && b[19]==0 && b[20]==0 && b[21]==0){
@@ -79,21 +83,24 @@ public final class NativeCommandGate {
                 for(int i=18;i<22 && read;i++){int d=b[i]&255;read=(d>=1 && d<=0x7f)||(d>=0x90 && d<=0xfe);}
                 boolean definition=(b[16]&255)==0x2c && (b[17]&255)>=0xf3 && (b[17]&255)<=0xfe && length>=8 && length<=16 && length%2==0;
                 if(remaining!=0 || !(read || definition))return false;
-                remaining=length-6;sequence=1;deadline=now+3000;packetSeeds=seeds;packetClear=clearDtc;packetRead=read;return true;
+                remaining=length-6;sequence=1;deadline=now+3000;packetSeeds=seeds;packetClear=clearDtc;packetReset=resetCounters;packetRead=read;return true;
             }
             if(p.count>0 && (pci&0xf0)==0x20){
-                if(!engine || p.count!=8 || remaining==0 || now>=deadline || seeds!=packetSeeds || clearDtc!=packetClear || pci!=(0x20|sequence))return false;
+                if(!engine || p.count!=8 || remaining==0 || now>=deadline || seeds!=packetSeeds || clearDtc!=packetClear || resetCounters!=packetReset || pci!=(0x20|sequence))return false;
                 if(packetRead)for(int i=15;i<15+Math.min(7,remaining);i++){int d=b[i]&255;if(!((d>=1 && d<=0x7f)||(d>=0x90 && d<=0xfe)))return false;}
                 remaining=Math.max(0,remaining-7);sequence=(sequence+1)&15;deadline=now+3000;return true;
             }
             if(engine && remaining!=0)return false;
-            return NativeCommandGate.allowed(wire,seeds,clearDtc);
+            return NativeCommandGate.allowed(wire,seeds,clearDtc,resetCounters);
         }
     }
 
     public static boolean allowed(byte[] wire, boolean seeds) { return allowed(wire,seeds,false); }
     public static boolean allowed(byte[] wire, boolean seeds, boolean clearDtc) {
-        if(seeds && clearDtc)return false;
+        return allowed(wire,seeds,clearDtc,false);
+    }
+    public static boolean allowed(byte[] wire, boolean seeds, boolean clearDtc, boolean resetCounters) {
+        if((seeds?1:0)+(clearDtc?1:0)+(resetCounters?1:0)>1)return false;
         Decoded decoded=decode(wire);if(decoded==null)return false;
         byte[] b=decoded.b;int count=decoded.count,channel=decoded.channel,id=decoded.id;
         if(b[4]==0 && b[5]==0 && b[6]==0x10 && b[7]==0)return channel==1 && id==0x100 && count==0;
@@ -104,7 +111,11 @@ public final class NativeCommandGate {
         if(pci<1 || pci>7 || offset+1+pci>count)return false;
         int p=15+offset,service=b[p]&255;
         if(service==0x04)return clearDtc && pci==1;
-        if(service==0xae)return seeds && channel==1 && id==0x241 && offset==0 && pci==2 && b[p+1]==0;
+        if(service==0xae){
+            if(resetCounters)return channel==0 && id==0x7e0 && count==8 && offset==0 && pci==2
+                && b[p+1]==0x14 && b[17]==0 && b[18]==0 && b[19]==0 && b[20]==0 && b[21]==0;
+            return seeds && channel==1 && id==0x241 && offset==0 && pci==2 && b[p+1]==0;
+        }
         if(service==0x27)return seeds && offset==0 && pci==2 &&
             ((b[p+1]==1 && ((channel==0 && (id==0x7e0 || id==0x7e1 || (id>=0x240 && id<=0x25f))) || (channel==1 && id>=0x240 && id<=0x25f))) ||
              (b[p+1]==0x0b && channel==1 && id==0x241));

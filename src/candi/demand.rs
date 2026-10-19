@@ -46,7 +46,9 @@ impl Pending {
         let adapter = if let Some(token) = &opts.candi_nano_usb_token {
             Adapter::Nano(
                 token.clone(),
-                if opts.candi_nano_clear_dtc {
+                if opts.candi_nano_reset_engine_counters {
+                    tech2_emu::nano_native::Profile::ResetEngineCounters
+                } else if opts.candi_nano_clear_dtc {
                     tech2_emu::nano_native::Profile::ClearDtc
                 } else {
                     tech2_emu::nano_native::Profile::collection(

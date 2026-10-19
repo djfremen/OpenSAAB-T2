@@ -43,5 +43,10 @@ public final class SessionSheet {
             .setMessage("This opens Clear DTC in the firmware. Save or read the fault codes first; clearing them can remove diagnostic information. Follow any confirmation shown by the firmware.")
             .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->proceed.run()).show();
     }
+    public static void confirmResetCounters(Activity a,Runnable proceed){
+        new AlertDialog.Builder(a).setTitle("Reset misfire and knock counters?")
+            .setMessage("Open the original Reset Misfire and Knock Counters operation. This changes the engine's counters; read or save the existing values first. Nano support currently covers T8 only. Follow the firmware's instructions and confirmation.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Continue",(d,w)->proceed.run()).show();
+    }
     private SessionSheet(){}
 }

@@ -63,6 +63,8 @@ public class NanoProbeActivity extends Activity {
     boolean nativeDtc=false;
     boolean nativeEngineData=false;
     boolean nativeClearDtc=false;
+    boolean nativeResetCounters=false;
+    boolean nativeResetRejected=false;
     boolean nativeKeyStatus=false;
     boolean nativeFullNative=false;
     boolean nativeFullNativeRejected=false;
@@ -117,9 +119,11 @@ public class NanoProbeActivity extends Activity {
         nativeSeeds=getIntent().getBooleanExtra("native_seed",false) || nativeSecurityCollect;
         nativeEngineData=getIntent().getBooleanExtra("native_engine_data",false);
         nativeClearDtc=getIntent().getBooleanExtra("native_clear_dtc",false);
-        nativeDtc=getIntent().getBooleanExtra("native_dtc",false) || nativeClearDtc || nativeEngineData;
+        nativeResetCounters=getIntent().getBooleanExtra("native_reset_counters",false);
+        nativeDtc=getIntent().getBooleanExtra("native_dtc",false) || nativeClearDtc || nativeEngineData || nativeResetCounters;
         boolean conflictingModes=(nativeSeeds && nativeDtc) || (nativeEngineData && nativeClearDtc) || (nativeKeyStatus && (nativeSeeds || nativeDtc)) || (nativeFullNative && (nativeSeeds || nativeDtc || nativeKeyStatus)) || (nativeSecurityCollect && getIntent().getBooleanExtra("native_seed",false));
-        if(conflictingModes){nativeSeeds=false;nativeDtc=false;nativeClearDtc=false;nativeEngineData=false;nativeKeyStatus=false;nativeFullNative=false;nativeSecurityCollect=false;}
+        conflictingModes |= nativeResetCounters && (getIntent().getBooleanExtra("native_dtc",false) || nativeEngineData || nativeClearDtc || nativeSeeds || nativeKeyStatus || nativeFullNative);
+        if(conflictingModes){nativeSeeds=false;nativeDtc=false;nativeClearDtc=false;nativeResetCounters=false;nativeEngineData=false;nativeKeyStatus=false;nativeFullNative=false;nativeSecurityCollect=false;}
         PERMISSION=getPackageName()+".USB_PERMISSION";
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         manager=(UsbManager)getSystemService(USB_SERVICE);
@@ -127,7 +131,7 @@ public class NanoProbeActivity extends Activity {
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(24,i.getSystemWindowInsetTop()+24,24,i.getSystemWindowInsetBottom()+24);return i;});
         title=new TextView(this); setTitle(AppBuildProfile.programName(this));title.setText(AppBuildProfile.programName(this)); title.setTextSize(23); root.addView(title);
         TextView architecture=new TextView(this);architecture.setTextSize(12);architecture.setText(EmulatorArchitecture.label(new File(getApplicationInfo().nativeLibraryDir,"libtech2_emu.so")));root.addView(architecture);
-        purpose=new TextView(this); purpose.setText(nativeFullNative?"Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus":nativeKeyStatus?"Original Tech2 + CANdi firmware · direct USB\nSelect Diagnostics / All / Service / Check Ignition Key Status":nativeEngineData?"Original Tech2 + CANdi firmware · direct USB\nSelect vehicle year and model, then Engine / Engine Control":nativeClearDtc?"Original Tech2 + CANdi firmware · direct USB\nClear mode enabled · follow original prompts":nativeDtc?"Original Tech2 + CANdi firmware · direct USB\nRead codes · follow original ignition prompts":nativeSeeds?"Original Tech2 + CANdi firmware · direct USB\nSeed collection only · follow original ignition prompts":"Direct Android USB · bounded channel tests\nOptional read-only VIN check · no security access"); root.addView(purpose);
+        purpose=new TextView(this); purpose.setText(nativeFullNative?"Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus":nativeKeyStatus?"Original Tech2 + CANdi firmware · direct USB\nSelect Diagnostics / All / Service / Check Ignition Key Status":nativeResetCounters?"Original Tech2 + CANdi firmware · direct USB\nReset T8 misfire and knock counters · follow original menus":nativeEngineData?"Original Tech2 + CANdi firmware · direct USB\nSelect vehicle year and model, then Engine / Engine Control":nativeClearDtc?"Original Tech2 + CANdi firmware · direct USB\nClear mode enabled · follow original prompts":nativeDtc?"Original Tech2 + CANdi firmware · direct USB\nRead codes · follow original ignition prompts":nativeSeeds?"Original Tech2 + CANdi firmware · direct USB\nSeed collection only · follow original ignition prompts":"Direct Android USB · bounded channel tests\nOptional read-only VIN check · no security access"); root.addView(purpose);
         summary=new TextView(this);summary.setMaxLines(2);summary.setEllipsize(android.text.TextUtils.TruncateAt.END);summary.setText("Ready · no active USB session");summary.setTextSize(15);root.addView(summary);
         // App navigation stays above the LCD and console, including on errors.
         // Back leaves this screen; the firmware EXIT key only navigates guest menus.
@@ -198,8 +202,10 @@ public class NanoProbeActivity extends Activity {
         skipInit=getIntent().getBooleanExtra("skip_init",false);
         boolean privateBuild=(getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
         conflictingModes |= (nativeKeyStatus && (channelTest || channelTestSw || getIntent().hasExtra("nano_probe_mode") || getIntent().getBooleanExtra("receive_test",false) || hsVin || dlcVoltage || rebootNano || initHandshake || skipInit)) || (rebootNano && initHandshake) || ((rebootNano || initHandshake) && (nativeFirmware() || channelTest || receiveTest || hsVin || dlcVoltage)) || ((initHandshake || skipInit || nativeKeyStatus) && !privateBuild) || (skipInit && (!channelTest || nativeFirmware() || receiveTest || hsVin || dlcVoltage || rebootNano || initHandshake));
-        boolean otherNativeProfile=getIntent().getBooleanExtra("native_seed",false) || getIntent().getBooleanExtra("native_dtc",false) || getIntent().getBooleanExtra("native_clear_dtc",false) || getIntent().getBooleanExtra("native_engine_data",false) || getIntent().getBooleanExtra("native_key_status",false);
+        boolean otherNativeProfile=getIntent().getBooleanExtra("native_seed",false) || getIntent().getBooleanExtra("native_dtc",false) || getIntent().getBooleanExtra("native_clear_dtc",false) || getIntent().getBooleanExtra("native_engine_data",false) || getIntent().getBooleanExtra("native_key_status",false) || getIntent().getBooleanExtra("native_reset_counters",false);
         boolean adapterTest=channelTest || channelTestSw || getIntent().hasExtra("nano_probe_mode") || getIntent().getBooleanExtra("receive_test",false) || hsVin || dlcVoltage || rebootNano || initHandshake || skipInit;
+        if(nativeResetCounters && adapterTest)conflictingModes=true;
+        nativeResetRejected=getIntent().getBooleanExtra("native_reset_counters",false) && conflictingModes;
         if(nativeFullNative && !NativeCommandGate.fullNativeModeAllowed(privateBuild,otherNativeProfile,adapterTest))conflictingModes=true;
         if(nativeSecurityCollect && !NativeCommandGate.securityCollectionModeAllowed(otherNativeProfile,adapterTest))conflictingModes=true;
         rebootRequestRejected=rebootNano && conflictingModes;
@@ -225,6 +231,7 @@ public class NanoProbeActivity extends Activity {
     }
     void showConnectionReport(){runOnUiThread(()->{if(!isFinishing() && reportConnection!=null)reportConnection.setVisibility(android.view.View.VISIBLE);});}
     void discover() {
+        if(nativeResetRejected){log("ERROR Counter reset requires an exclusive maintenance session.");return;}
         if(rebootNano&&!NanoRebootAction.idle()){log("Finish the current session before rebooting Nano");return;}
         if(rebootRequestRejected){log("Reboot Nano requires a separate adapter-only session");return;}
         if(nativeFullNativeRejected){log("ERROR Full native control requires an exclusive private Nano session.");return;}
@@ -394,7 +401,7 @@ public class NanoProbeActivity extends Activity {
             if(nativeFirmware()){
                 nativeDirectory=new File(getFilesDir(),"native-"+java.util.UUID.randomUUID().toString());
                 if(!nativeDirectory.mkdir())throw new IOException("Cannot create native session directory");
-                progress.bind(nativeDirectory,nativeFullNative?"full_native":nativeSeeds?"security_seeds":"read_only","original_menus");health.begin(nativeDirectory);
+                progress.bind(nativeDirectory,nativeFullNative?"full_native":nativeSeeds?"security_seeds":nativeResetCounters?"reset_engine_counters":"read_only","original_menus");health.begin(nativeDirectory);
                 nativeKeyPump=new InteractiveKeyPump(new File(nativeDirectory,"native-key.txt"),e->log("Key input stopped: "+e));
                 nativeLcdPump.setDirectory(nativeDirectory);
                 File firmware=new File(getFilesDir(),"firmware");
@@ -408,6 +415,7 @@ public class NanoProbeActivity extends Activity {
                     "--boot",new File(firmware,"eprom.bin").getPath(),"--opsys",new File(firmware,"opsys.dwn").getPath(),
                     "--max-insns","50000000000","--output-dir",nativeDirectory.getPath(),sessionCard.getPath());
                 if(nativeClearDtc)builder.command().add("--candi-nano-clear-dtc");
+                if(nativeResetCounters)builder.command().add("--candi-nano-reset-engine-counters");
                 if(nativeKeyStatus)builder.command().add("--candi-nano-key-status");
                 if(nativeFullNative)builder.command().add("--candi-nano-full-native");
                 if(nativeSecurityCollect)builder.command().add("--candi-nano-seeds");
@@ -429,7 +437,7 @@ public class NanoProbeActivity extends Activity {
                     String line;int count=0;long savedBytes=0;while((line=reader.readLine())!=null){
                         if(SupportReports.retainProcessLogLine(savedBytes,line)){savedOutput.write(line);savedOutput.newLine();savedOutput.flush();savedBytes+=line.length()+1;}
                         if(line.startsWith("ERROR:"))nativeFailure=line.substring(6).trim();
-                        String rejected=NativeCommandGate.collectionRejectedExplanation(line,nativeDtc && !nativeClearDtc && !nativeSeeds && !nativeKeyStatus && !nativeFullNative);
+                        String rejected=NativeCommandGate.collectionRejectedExplanation(line,nativeDtc && !nativeClearDtc && !nativeResetCounters && !nativeSeeds && !nativeKeyStatus && !nativeFullNative);
                         if(rejected!=null){nativeFailure=rejected;readModeRejected=true;}
                         if(line.startsWith("NATIVE_USB_CLOSED cleanup_ok=true "))nativeProtocolCleanupConfirmed=true;
                         if(nativeFirmware()){
@@ -440,7 +448,7 @@ public class NanoProbeActivity extends Activity {
             client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);
             InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
             if(!readLine(in,NanoStartupGate.MAX_COMMAND_CHARS).equals("HELLO "+token))throw new IOException("Session token mismatch");
-            out.println(fullNativeActive()?"READY nano-full-native":nativeSecurityCollect && !securityVinProbe?"READY nano-seeds":nativeKeyStatus?"READY native-key-status":nativeFirmware()?"READY native-firmware":"READY adapter-only");
+            out.println(fullNativeActive()?"READY nano-full-native":nativeSecurityCollect && !securityVinProbe?"READY nano-seeds":nativeKeyStatus?"READY native-key-status":nativeResetCounters?"READY native-reset-engine-counters":nativeFirmware()?"READY native-firmware":"READY adapter-only");
             runOnUiThread(()->{if(activeSessionId==sessionId)summary.setText(nativeFirmware()?"Original firmware active · direct Nano USB":"USB test active");});
             long until=fullNativeActive()?Long.MAX_VALUE:SystemClock.elapsedRealtime()+(nativeFirmware()?330000:(initHandshake || receiveTest || channelTest)?120000:20000);long txCount=0;long rxBytes=0;
             // Keep a queued one-packet receive alive across requestWait timeouts.
@@ -466,7 +474,7 @@ public class NanoProbeActivity extends Activity {
                     boolean vinRequest=(hsVin || securityVinProbe) && startup.channelReady() && wire.equals("BB8001000000000000000C000007E0021A90000000000020BB");
                     boolean vinFlow=(hsVin || securityVinProbe) && startup.channelReady() && wire.equals("BB8002000000000000000C000007E03000000000000000A5BB");
                     if((vinRequest && vinSent) || (vinFlow && (!vinSent || flowSent)))throw new IOException("VIN command order/count rejected");
-                    boolean nativeTx=!stopping && nativeFirmware() && startup.channelReady() && (nativeFullNative?NativeCommandGate.fullNative(bytes):nativeGate.allowed(bytes,nativeSeeds,nativeClearDtc,nativeKeyStatus,SystemClock.elapsedRealtime()));
+                    boolean nativeTx=!stopping && nativeFirmware() && startup.channelReady() && (nativeFullNative?NativeCommandGate.fullNative(bytes):nativeGate.allowed(bytes,nativeSeeds,nativeClearDtc,nativeKeyStatus,nativeResetCounters,SystemClock.elapsedRealtime()));
                     boolean permitted=nativeTx || vinRequest || vinFlow || startup.allowed(bytes) || (startup.channelReady() && channelTest && (channelTestSw ? (wire.equals("BB800040010000810143BB") || wire.equals("BB80004101C2BB")) : (wire.equals("BB800040000000810142BB") || wire.equals("BB80004100C1BB")))) || (startup.channelReady() && receiveTest && receiveControlAllowed(wire));
                     if(stopping)permitted=stopCleanup;
                     permitted |= !stopping && dlcVoltage && !nativeFirmware() && wire.equals("BB800086001016BB");

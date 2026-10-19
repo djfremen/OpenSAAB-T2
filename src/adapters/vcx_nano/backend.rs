@@ -137,6 +137,8 @@ impl Bridge {
                 "READY nano-full-native"
             } else if key_status {
                 "READY native-key-status"
+            } else if profile == Profile::ResetEngineCounters {
+                "READY native-reset-engine-counters"
             } else {
                 "READY native-firmware"
             }
@@ -640,6 +642,25 @@ mod tests {
             .err().unwrap().contains("App not in native"));
         server.join().unwrap();
     }
+    #[test]
+    fn counter_reset_rejects_wrong_ready_before_usb_initialization() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            let mut reader = BufReader::new(stream);
+            let mut line = String::new(); reader.read_line(&mut line).unwrap();
+            assert_eq!(line.trim(), "HELLO token");
+            writeln!(reader.get_mut(), "READY native-firmware").unwrap();
+            line.clear();
+            assert_eq!(reader.read_line(&mut line).unwrap(), 0, "No USB init in wrong reset profile");
+        });
+        assert!(Bridge::start_at_modes("token", Path::new("unused"), Profile::ResetEngineCounters,
+            false, false, address).err().unwrap().contains("App not in native"));
+        server.join().unwrap();
+    }
+
     #[test]
     fn explicit_manual_seeds_forward_only_original_seed_and_reject_keys() {
         scripted_worker(false, false, true, false);

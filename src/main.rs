@@ -1487,7 +1487,9 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
             .attach_nano_usb_with_permissions(
                 token,
                 &opts.output,
-                if opts.candi_nano_clear_dtc {
+                if opts.candi_nano_reset_engine_counters {
+                    tech2_emu::nano_native::Profile::ResetEngineCounters
+                } else if opts.candi_nano_clear_dtc {
                     tech2_emu::nano_native::Profile::ClearDtc
                 } else if opts.candi_nano_seeds {
                     tech2_emu::nano_native::Profile::Seeds
