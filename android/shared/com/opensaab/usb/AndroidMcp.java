@@ -22,6 +22,7 @@ public final class AndroidMcp {
     private static Activity activity;
     private static android.content.Context application;
     private static volatile LocalServerSocket server;
+    private static Thread listener;
     private static volatile String token="";
     private static ThreadPoolExecutor clients;
     private static final java.util.Set<LocalSocket> sockets=ConcurrentHashMap.newKeySet();
@@ -72,10 +73,22 @@ public final class AndroidMcp {
         // A private, unbacked credential keeps an already paired local bridge usable after resume/restart.
         String code=pairingCode();LocalServerSocket endpoint=new LocalServerSocket(a.getPackageName()+".mcp");token=code;server=endpoint;admittedSession="";admittedSequence=-1;ui.post(beat);
         ThreadPoolExecutor workers=new ThreadPoolExecutor(0,4,15,TimeUnit.SECONDS,new SynchronousQueue<>(),r->new Thread(r,"android-mcp-client"));clients=workers;
-        new Thread(()->serve(endpoint,workers),"android-mcp-endpoint").start();changed();
+        listener=new Thread(()->serve(endpoint,workers),"android-mcp-endpoint");listener.start();changed();
     }
     public static synchronized void disable(){if(application!=null)application.getSharedPreferences("mcp_control",0).edit().putBoolean("enabled",false).commit();closeEndpoint(true);}
-    private static void closeEndpoint(boolean revokePairing){LocalServerSocket s=server;server=null;token="";ui.removeCallbacks(beat);if(owner!=null)owner.close();changed();if(revokePairing&&application!=null)tokenFile().delete();if(s!=null)try{s.close();}catch(IOException ignored){}for(LocalSocket socket:sockets)try{socket.close();}catch(IOException ignored){}if(clients!=null){clients.shutdownNow();clients=null;}}
+    private static void closeEndpoint(boolean revokePairing){
+        LocalServerSocket s=server;Thread previous=listener;server=null;listener=null;token="";ui.removeCallbacks(beat);if(owner!=null)owner.close();changed();
+        if(revokePairing&&application!=null)tokenFile().delete();
+        if(s!=null){
+            // Closing an fd alone can leave blocking accept holding the abstract
+            // address. Shutdown wakes accept so immediate foreground rebind works.
+            try{android.system.Os.shutdown(s.getFileDescriptor(),android.system.OsConstants.SHUT_RDWR);}catch(android.system.ErrnoException ignored){}
+            try{s.close();}catch(IOException ignored){}
+        }
+        for(LocalSocket socket:sockets)try{socket.close();}catch(IOException ignored){}
+        if(clients!=null){clients.shutdownNow();clients=null;}
+        if(previous!=null&&previous!=Thread.currentThread())try{previous.join(250);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}
+    }
     private static byte[] read(InputStream source)throws IOException{InputStream in=new BufferedInputStream(source,4096);ByteArrayOutputStream b=new ByteArrayOutputStream();int n;while((n=in.read())!=-1&&n!=10){if(b.size()>=16384)throw new IOException("Request exceeds limit");b.write(n);}if(n<0)throw new EOFException();return b.toByteArray();}
     private static void serve(LocalServerSocket endpoint,ThreadPoolExecutor workers){
         while(server==endpoint){try{

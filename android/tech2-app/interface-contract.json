@@ -782,7 +782,7 @@
       },
       "android_candidate_wording_2026_10_19": {
         "owner_requirement_recorded": "2026-10-19",
-        "candidate": "0.1.1-preview.7 Android ARM64; unpublished",
+        "candidate": "0.1.1-preview.8 Android ARM64; unpublished",
         "entry_label": "Bluetooth adapters",
         "discovery": "List known-name matches as candidates. Names, pairing and discovery do not establish product identity or workflow compatibility. Validate model and firmware after explicit selection.",
         "retained_models": "Retain existing Carista EVO and vLinker model paths with their limited legacy scope; no capability removed by wording changes.",
@@ -1152,7 +1152,7 @@
     },
     "default_enablement_2026_10_19": {
       "owner_requirement_recorded": "2026-10-19",
-      "candidate": "0.1.1-preview.7 Android ARM64; unpublished",
+      "candidate": "0.1.1-preview.8 Android ARM64; unpublished",
       "default": "Start local MCP automatically when the foreground app binds its owner; do not start an adapter or diagnostic session.",
       "authentication": "Retain the private no-backup pairing credential across foreground changes and process restarts. Paired ADB and the credential remain required.",
       "disable": "Explicit Disable persists across foreground changes and process restarts, closes the endpoint and deletes the credential. Re-enable creates a new credential; revoked credentials remain invalid.",

@@ -1,6 +1,6 @@
 # Foreground MCP and Bluetooth candidate wording
 
-OpenSAAB **0.1.1-preview.7 ARM64**, version code 101007, changes Android's
+OpenSAAB **0.1.1-preview.8 ARM64**, version code 101008, changes Android's
 MCP default and Bluetooth selection wording. It retains preview.6's six pinned
 legacy, adapter and connection workers. It does not change vehicle commands or
 add adapter capabilities.
