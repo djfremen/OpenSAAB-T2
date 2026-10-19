@@ -36,6 +36,7 @@ pub struct Options {
     pub candi_chipsoft_usb_token: Option<String>,
     pub candi_obdlink_token: Option<String>,
     pub candi_obdlink_reset_engine_counters: bool,
+    pub candi_obdlink_clear_dtc: bool,
     pub candi_chipsoft_symbol_only: bool,
     pub candi_chipsoft_seeds: bool,
     pub candi_chipsoft_audible: bool,
@@ -127,6 +128,7 @@ impl Options {
             candi_chipsoft_usb_token: None,
             candi_obdlink_token: None,
             candi_obdlink_reset_engine_counters: false,
+            candi_obdlink_clear_dtc: false,
             candi_chipsoft_symbol_only: false,
             candi_chipsoft_seeds: false,
             candi_chipsoft_audible: false,
@@ -180,6 +182,7 @@ impl Options {
                     "--strict" => { out.strict = true; continue; }
                     "--candi-on-demand" => { out.candi_on_demand = true; continue; }
                     "--candi-native-link" => { out.candi_native_link = true; out.candi = true; continue; }
+                    "--candi-obdlink-clear-dtc" => { out.candi_obdlink_clear_dtc = true; continue; }
                     "--candi-obdlink-reset-engine-counters" => { out.candi_obdlink_reset_engine_counters = true; continue; }
                     "--candi-nano-clear-dtc" => { out.candi_nano_clear_dtc = true; continue; }
                     "--candi-nano-reset-engine-counters" => { out.candi_nano_reset_engine_counters = true; continue; }
@@ -307,6 +310,9 @@ impl Options {
         }
         if out.candi_obdlink_reset_engine_counters && out.candi_obdlink_token.is_none() {
             return Err("MX+ counter reset requires the owned MX+ native session".into());
+        }
+        if out.candi_obdlink_clear_dtc && (out.candi_obdlink_token.is_none() || out.candi_obdlink_reset_engine_counters) {
+            return Err("MX+ clearing requires its owned session and cannot combine with counter reset".into());
         }
         if let Some(token) = &out.candi_obdlink_token {
             if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -507,6 +513,7 @@ Usage: tech2-emu [OPTIONS] [CARD_IMAGE]
   --candi-chipsoft-audible         Scoped BCM audible operation for current 2004 vehicle
   --candi-chipsoft-symbol-only      Scoped BCM reversal with fresh per-run authority
   --candi-obdlink-token TOKEN  Owned Android MX+ original-firmware manual session
+  --candi-obdlink-clear-dtc  Explicit original-firmware DTC-clear profile; requires MX+ token
   --candi-obdlink-reset-engine-counters  Explicit T8 counter-reset profile; requires MX+ token
   --candi-chipsoft-usb-token TOKEN  Direct Android Chipsoft USB; original firmware read-only
   --candi-seatbelt-audible Explicit constrained BCM seatbelt operation; requires per-run authority
@@ -554,6 +561,17 @@ mod tests {
     use std::path::Path;
     fn parse(a: &[&str]) -> Result<Options, String> {
         Options::parse(a.iter().map(|s| s.to_string()), |_| None)
+    }
+    #[test]
+    fn mxplus_clear_is_explicit_owned_and_separate_from_reset() {
+        let base=["--test-harness","--harness-target","native-manual","--candi-native-link","--candi-obdlink-token","0123456789abcdef0123456789abcdef"];
+        assert!(!parse(&base).unwrap().candi_obdlink_clear_dtc);
+        assert!(parse(&["--candi-obdlink-clear-dtc"]).is_err());
+        let mut clear=base.to_vec();clear.push("--candi-obdlink-clear-dtc");
+        assert!(parse(&clear).unwrap().candi_obdlink_clear_dtc);
+        for flag in ["--candi-obdlink-reset-engine-counters","--candi-nano-clear-dtc","--interactive-headless","--candi-nano-full-native"] {
+            let mut bad=clear.clone();bad.push(flag);assert!(parse(&bad).is_err(),"{flag}");
+        }
     }
     #[test]
     fn mxplus_native_profile_is_owned_manual_and_exclusive() {

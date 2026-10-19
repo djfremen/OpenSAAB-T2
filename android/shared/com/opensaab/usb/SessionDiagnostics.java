@@ -5,7 +5,7 @@ import org.json.*;
 
 /** Bounded, fixed-vocabulary lifecycle evidence. No user text or transport payloads. */
 public final class SessionDiagnostics {
-    public enum Event { START, EXPECTED_STOP, UNSUPPORTED_OPERATION, UNEXPECTED_EXIT, PAUSED, RESUMED,
+    public enum Event { START, WRITE_ACCESS_REQUESTED, WRITE_ACCESS_DECLINED, WRITE_ACCESS_CONSENTED, WRITE_SESSION_STARTED, EXPECTED_STOP, UNSUPPORTED_OPERATION, UNEXPECTED_EXIT, PAUSED, RESUMED,
         SECURITY_COLLECTION_REQUESTED, SECURITY_PROCESS_REQUESTED, SECURITY_IMPORTED, RESTART_REQUESTED }
     static final String FILE="diagnostic-events.json";
     static JSONArray sanitize(JSONArray input){

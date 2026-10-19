@@ -743,3 +743,23 @@ fn ordinary_hs_uses_explicit_stpx_header_without_redundant_setup_roundtrips() {
     assert!(!commands.iter().any(|s| s.starts_with("WRITE ATSH")));
     assert_eq!(commands.iter().filter(|s| *s == "WRITE STPXH:7E0,D:021A900000000000,R:0|STM").count(), 1);
 }
+
+#[test]
+fn clearing_profile_requires_the_matching_authenticated_bridge_role() {
+    for (reply,profile,accepted) in [
+        ("READY obdlink-native-read",Profile::ClearDtc,false),
+        ("READY obdlink-native-clear-dtc",Profile::Read,false),
+        ("READY obdlink-native-reset-counters",Profile::ClearDtc,false),
+        ("READY obdlink-native-clear-dtc",Profile::ClearDtc,true),
+    ] {
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+        let worker=thread::spawn(move || {
+            let (socket,_)=listener.accept().unwrap();let mut reader=BufReader::new(socket);let mut hello=String::new();reader.read_line(&mut hello).unwrap();
+            assert_eq!(hello.trim(),"HELLO 0123456789abcdef0123456789abcdef");
+            use std::io::Write;reader.get_mut().write_all(format!("{reply}\n").as_bytes()).unwrap();
+        });
+        let dir=std::env::temp_dir().join(format!("opensaab-clear-role-{}-{}",std::process::id(),PEER_SEQUENCE.fetch_add(1,Ordering::Relaxed)));std::fs::create_dir(&dir).unwrap();
+        let link=Link::from_socket_profile("0123456789abcdef0123456789abcdef",&dir,TcpStream::connect(address).unwrap(),profile);
+        assert_eq!(link.is_ok(),accepted);drop(link);worker.join().unwrap();std::fs::remove_dir_all(dir).unwrap();
+    }
+}

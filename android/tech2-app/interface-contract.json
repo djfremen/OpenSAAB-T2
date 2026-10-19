@@ -185,13 +185,13 @@
     "setup": "Fresh install to ready screen; same product steps and selected language; show any OS permission dialogs.",
     "ready": "Header, status, Connect and start, offline entry and firmware selection use the reference labels and hierarchy.",
     "offline": "Start offline, reach real Main Menu, then Diagnostics/model year, move selection and return with EXIT. No live vehicle claim.",
-    "controls": "Show S1\u2013S4, full keypad, Actions, Console and app menu; demonstrate EXIT versus Stop emulation.",
+    "controls": "Show S1–S4, full keypad, Actions, Console and app menu; demonstrate EXIT versus Stop emulation.",
     "responsive": "Capture compact and wide layouts, expanded screen and restored header; preserve 4:3 framebuffer and accessible keys.",
     "language": "Switch English to a supported non-English diagnostic image and back; show app-language fallback, progress, cancellation and retained working selection.",
     "connected": "Using the same supported bench fixture, detect/name Chipsoft and read a fresh VIN and complete T8 HS-CAN DTC report through the installed interface.",
     "recovery": "Cancel work, disconnect/reconnect adapter, then stop and reopen; no stale success or held adapter handle.",
     "advanced_actions": "Compare every reference Actions/app-menu entry and its behavior; record unsupported functionality as a gap, never a parity pass.",
-    "branding": "Official logo and always-visible Donate \u00b7 Support OpenSAAB footer in compact, wide and expanded views; donation dialog requires explicit Continue and never interrupts an active session. No diagnostic data in URL. About / Support also offers an explicit Discord community action using the permanent invite; no automatic navigation, appended vehicle data or interruption of an active session.",
+    "branding": "Official logo and always-visible Donate · Support OpenSAAB footer in compact, wide and expanded views; donation dialog requires explicit Continue and never interrupts an active session. No diagnostic data in URL. About / Support also offers an explicit Discord community action using the permanent invite; no automatic navigation, appended vehicle data or interruption of an active session.",
     "security_status": "Display cleared, PRE-AUTH, POST-AUTH/Fresh, POST-AUTH/Stale, invalid and unavailable states using isolated synthetic data. Verify the three-hour boundary, changed card/vehicle, missing receipt, future timestamp and reopen without rejuvenating old data. Show details in expanded mode. Separately qualify real processing/import; no simulated ECU authorization claim. Collect seed data, verify PRE-AUTH refresh, stop/reopen and retain the state for the same firmware/vehicle; verify another vehicle or firmware cannot inherit it.",
     "session_modes": "Select Chipsoft full native control and complete the original Check Ignition Key Status test. In restricted mode verify the same command is blocked before USB, the ended session is clearly displayed, and reconnect works. Keep seed-only and offline modes isolated from inherited environment flags. Qualify separately on each installed target.",
     "security_processing": "Collect on the installed app, follow physical key prompts, consent, process, validate/import and resume. Separately test denial, outage with/without fallback consent, TLS/redirect/oversize/malformed response, cancel, changed context and reopen without rejuvenating the receipt. Hardware authorization requires observed ECU evidence. Reopen with valid PRE-AUTH at the splash screen or offline: offer Process existing data without another VIN read. POST-AUTH offers Continue firmware. Mismatched/partial/changed data must not be substituted from history. Process after a clean operator Stop, preserve idle handoff eligibility, reject obsolete refreshes after return/import, and offer Continue firmware from the matching imported card while retaining PRE evidence. Unconfirmed cleanup, explicit cancellation, changed USB target and background state cannot silently restart diagnostics.",
@@ -209,10 +209,10 @@
     "logo_content_description": "OpenSAAB logo",
     "header_logo_dp": 48,
     "support": {
-      "button": "Donate \u00b7 Support OpenSAAB",
+      "button": "Donate · Support OpenSAAB",
       "title": "Help keep OpenSAAB moving",
-      "message": "I\u2019ve put my own time into bringing OpenSAAB to life. If it helps you, consider buying me a beer or supporting development. Contributions help fund adapter testing, documentation and ongoing work.\n\nSupport is voluntary. It does not unlock features, purchase vehicle security access or guarantee compatibility. Testing, documentation and code contributions are welcome too.",
-      "external": "Continue opens the project\u2019s donation page in your browser. No vehicle data or diagnostic logs are added to the link.",
+      "message": "I’ve put my own time into bringing OpenSAAB to life. If it helps you, consider buying me a beer or supporting development. Contributions help fund adapter testing, documentation and ongoing work.\n\nSupport is voluntary. It does not unlock features, purchase vehicle security access or guarantee compatibility. Testing, documentation and code contributions are welcome too.",
+      "external": "Continue opens the project’s donation page in your browser. No vehicle data or diagnostic logs are added to the link.",
       "pending": "The donation page is not available yet. Thank you for supporting the project through testing and feedback.",
       "donate": "Continue to donation page",
       "close": "Close",
@@ -262,7 +262,7 @@
       "owner_recorded_date": "2026-10-13",
       "status": "planned_upcoming_feature_not_implemented",
       "owner_requirement": "Replace the headline Fresh/Stale presentation with last security-access timestamp and VIN last four beside Auth_Status.",
-      "primary_example": "Auth_Status: [POST-AUTH] \u00b7 VIN \u20262017",
+      "primary_example": "Auth_Status: [POST-AUTH] · VIN …2017",
       "timestamp_example": "Last SA data import: <saved date, time and timezone>",
       "timestamp_source": "Successful validated security-data import: matching receipt imported_utc. Do not label API start, response-only, seed collection or app startup as successful SA. This timestamp describes imported data, not a current ECU grant.",
       "binding": "Validate the complete VIN/vehicle_hash and current SSA/ssa_hash before presenting an import as belonging to this Auth_Status. Display only the VIN last four in this summary; never use last-four equality to associate receipts.",
@@ -336,7 +336,7 @@
       "Cancellation or changed session/vehicle/card leaves the previously active card intact. Credentials remain in the native protected credential store when the user chooses to remember them.",
       "Imported card data displays POST-AUTH with a bound, persistent receipt. It does not claim current vehicle authorization. Resume requires the same adapter connection; firmware retains responsibility for vehicle security exchanges.",
       "Before deliberately stopping for security processing, notify the crash monitor that this is an expected stop. Preserve the bounded cleanup timeout and processing error path; unrelated unexpected exits must remain reportable.",
-      "Get security access is reachable from Ready and Actions. Collect fresh data explicitly offers Manual collection (owner navigates Diagnostics \u2192 All \u2192 Get Security Access) and Guided collection (recognized original firmware menus only). Missing/unknown mode defaults to manual; a firmware control cancels guidance. Original firmware owns seed requests; never synthesize a host seed client or acknowledge physical ignition prompts.",
+      "Get security access is reachable from Ready and Actions. Collect fresh data explicitly offers Manual collection (owner navigates Diagnostics → All → Get Security Access) and Guided collection (recognized original firmware menus only). Missing/unknown mode defaults to manual; a firmware control cancels guidance. Original firmware owns seed requests; never synthesize a host seed client or acknowledge physical ignition prompts.",
       "An explicit fresh request takes precedence over an older imported receipt. Start collection from a disposable card with exactly the 714-byte SSA erased; preserve the selected source card, old receipt and every surrounding firmware byte. Retain source-before and guest-before evidence separately: fresh guest proof is checked against guest-before, while import checks the unchanged selected source baseline. Collection needs no internet or password; processing requires separate authorization and disclosure consent."
     ],
     "platform_status": "Shared worker and macOS binding under qualification; Windows/Linux bindings and Android shared-core cutover pending.",
@@ -345,7 +345,7 @@
       "reference_base": "OpenSAAB-T2@92c72fd5545efe008020e7f192aff7242c5976a8",
       "scope": "Urgent Android oracle fix; shared Rust migration and all installed physical tests pending",
       "receipt": "releases/consistent-baseline/SECURITY_COLLECTION_PATHS_2026-10-13.json",
-      "guided_scope": "Recognized English menus; operator confirms Saab 9-3 Sport (9440), MY2003\u20132012. Fresh VIN supplies the year without an external lookup. Unknown model/year/language falls back to manual.",
+      "guided_scope": "Recognized English menus; operator confirms Saab 9-3 Sport (9440), MY2003–2012. Fresh VIN supplies the year without an external lookup. Unknown model/year/language falls back to manual.",
       "context_arrival_rule": "A new session directory can precede fresh verified VIN metadata. Wait without constructing a cancelled navigator, then start assistance when matching same-run context arrives. Never substitute previous identity or override an operator manual takeover."
     },
     "operator_password_menu_retired": {
@@ -477,7 +477,7 @@
       },
       {
         "id": "engine_codes",
-        "label": "Read engine codes \u2014 HS-CAN"
+        "label": "Read engine codes — HS-CAN"
       },
       {
         "id": "read_dtc",
@@ -569,7 +569,7 @@
       },
       {
         "id": "reset",
-        "label": "Clear offset \u00b7 refresh access"
+        "label": "Clear offset · refresh access"
       }
     ],
     "rule": "Entries remain visible when a platform lacks a capability; show its specific reason. Visibility is not implementation or qualification. Android remains the behavior reference; no offline session invents a VIN or live diagnostic result.",
@@ -638,19 +638,19 @@
     "flow_control_owner": "adapter",
     "failure_rule": "Cancel, timeout or disconnect clears pending VIN and releases the transport. No automatic vehicle request replay. Publish success only after VTPC and transport release.",
     "simulator_rule": "Debug Xcode simulator uses an explicitly selected local Mac Bluetooth relay with an observed BLE or Classic SPP profile. Offline original-menu sessions never inherit its VIN. This does not qualify direct physical-iPhone Bluetooth or full firmware diagnostics.",
-    "read_ecm_info": "Read ECM information \u2014 HS-CAN",
-    "read_ecm_codes": "Read engine codes \u2014 HS-CAN",
+    "read_ecm_info": "Read ECM information — HS-CAN",
+    "read_ecm_codes": "Read engine codes — HS-CAN",
     "probe_rule": "Explicit ECM-only probe with fresh VIN; readIdentifier 1A fields retain raw bytes and documented names. A9/81 current/history mask 12 requires a real 5E8 end marker plus confirmed 10/20 session stop, VTPC and Bluetooth release. No clear/programming/security writes or automatic replay."
   },
   "adapter_startup": {
     "select_adapter": "Select adapter",
-    "vlinker_label": "Carista EVO / vLinker MC+ \u00b7 Bluetooth",
+    "vlinker_label": "Carista EVO / vLinker MC+ · Bluetooth",
     "cancel": "Cancel",
-    "identified": "Vehicle identified \u00b7 Adapter connection closed",
+    "identified": "Vehicle identified · Adapter connection closed",
     "reference": "ChipsoftUsbActivity, VehicleSession and VehicleIdentity: fresh VIN -> confirmed discovery release -> bounded vehicle lookup -> durable session identity -> adapter firmware handoff.",
     "history_rule": "Last vehicle is saved history only. Starting offline, cancellation, reconnect or backgrounding cannot inherit a current vehicle claim.",
     "firmware_gate": "Vehicle identification and running original firmware through an adapter are separate states. A missing firmware transport returns an explicit unavailable result; never start offline emulation as a connected substitute.",
-    "opening": "Adapter startup \u00b7 No firmware session",
+    "opening": "Adapter startup · No firmware session",
     "ready": "Choose Connect and start to identify the vehicle, or Run without an adapter to explore the menus.",
     "android_bluetooth": {
       "transport": "Classic Bluetooth RFCOMM SPP UUID 00001101-0000-1000-8000-00805f9b34fb",
@@ -659,8 +659,8 @@
         "vLinker MC-Android",
         "Carista EVO"
       ],
-      "selection": "Select adapter \u2192 Carista EVO / vLinker MC+ \u00b7 Bluetooth \u2192 Select Bluetooth adapter. Refresh paired adapters or explicitly Find nearby adapters; connect only after Use selected adapter.",
-      "permissions": "API31+: Nearby devices CONNECT/SCAN at runtime. API26\u201330: legacy Bluetooth plus fine location for discovery. A denied permission or unavailable radio never starts a vehicle read.",
+      "selection": "Select adapter → Carista EVO / vLinker MC+ · Bluetooth → Select Bluetooth adapter. Refresh paired adapters or explicitly Find nearby adapters; connect only after Use selected adapter.",
+      "permissions": "API31+: Nearby devices CONNECT/SCAN at runtime. API26–30: legacy Bluetooth plus fine location for discovery. A denied permission or unavailable radio never starts a vehicle read.",
       "pairing": "Authenticated SPP by default; connecting without saved pairing is an explicit unchecked option, never an automatic fallback.",
       "bounds": "Discovery 15 seconds, socket connect 8 seconds, native write 2 seconds, bounded RX queue; shared protocol owns command deadlines and decoding.",
       "failure_rule": "Single native owner for startup and probes; Stop/backgrounding closes pending native I/O. No automatic reconnect, fallback to M4, or vehicle-command replay. Complete observations require protocol cleanup and confirmed socket close.",
@@ -698,7 +698,7 @@
     "windows_bluetooth": {
       "implementation": "Windows.Devices.Bluetooth GATT and paired RFCOMM serial through thin .NET Framework bindings; the exact shared Rust 0.1.3 worker owns startup, model/firmware validation, commands, decoding and reports.",
       "profiles": "EVO and vLinker MC-IOS BLE: service18F0/write2AF1/notify2AF0 withResponse. Paired EVO/vLinker MC or MC-Android: Serial Port UUID00001101-0000-1000-8000-00805f9b34fb; observe its service instead of fixing a channel.",
-      "selection": "Connect and start -> Carista EVO / vLinker MC+ \u00b7 Bluetooth -> select exact endpoint and transport -> Use this adapter. Discovery sends no adapter command.",
+      "selection": "Connect and start -> Carista EVO / vLinker MC+ · Bluetooth -> select exact endpoint and transport -> Use this adapter. Discovery sends no adapter command.",
       "cleanup": "Stop/cancel closes only owned native handles, awaits pending I/O and checks endpoint disconnection metadata. Unconfirmed closure retains ownership. Reject an already connected endpoint without disconnecting other applications.",
       "result": "Fresh VIN and confirmed Bluetooth release precede bounded lookup and current identification. Offline/reopen cannot inherit current identity from history. The original-firmware wireless handoff remains unavailable.",
       "scope": "Explicit VIN, seven Trionic 8 ECM identifiers and complete current/history mask12 engine codes; shared durable reports reopen without reconnect. No automatic fallback/reconnect/command replay, SW-CAN/I-bus, ECM add/remove, clearing, programming or security.",
@@ -745,7 +745,7 @@
       "predecessor_label_fields_retained": "Existing adapter_startup select_adapter/vlinker_label and platform selection strings describe retained historical qualified implementations. This deliberate new section defines future label adoption; no prior artifact is requalified.",
       "per_platform_capabilities": {
         "android-arm64": {
-          "label_adoption": "Implemented generic Bluetooth adapters entry and candidate wording in preview.7 source; exact installed UI checks pending.",
+          "label_adoption": "Generic Bluetooth entry/candidate wording installed and verified on exact preview.8 Fire and API31; other connection-type adoption scope retained.",
           "usb": "Existing Chipsoft Pro, GM VCX Nano and Classic MDI paths retain their separately scoped receipts; no new adapter qualification from this label change.",
           "bluetooth": "Legacy model-specific VIN/Trionic8 engine profiles; OBDLink MX+ and original-firmware native I-bus Bluetooth not implemented by this checkpoint."
         },
@@ -787,7 +787,8 @@
         "discovery": "List known-name matches as candidates. Names, pairing and discovery do not establish product identity or workflow compatibility. Validate model and firmware after explicit selection.",
         "retained_models": "Retain existing Carista EVO and vLinker model paths with their limited legacy scope; no capability removed by wording changes.",
         "owner_test_scope": "Only OBDLink MX+ will be tested for Bluetooth in the current Fire campaign. Owner reports other Android confirmations; those do not qualify the current Fire/APK or every workflow.",
-        "qualification": "Source adoption, installed UI and exact-adapter/vehicle evidence remain separate."
+        "qualification": "Source adoption, installed UI and exact-adapter/vehicle evidence remain separate.",
+        "installed_verification": "Exact preview.8 Fire and API31 emulator generic chooser/candidate UI verified; no new physical Bluetooth adapter/vehicle pass."
       }
     },
     "macos_usb": {
@@ -941,12 +942,12 @@
   },
   "experimental_adapter_tests": {
     "mongoose": {
-      "scope": "Separate personal Android ARM64 Developer Preview 0.1.1-preview.6. Preserves startup, HS-CAN channel and one HS-CAN VIN; adds bounded I-Bus CIM ignition/VIN control and one captured high-voltage-wake comparison. DTCs, security processing/import and full original-firmware backend are unavailable.",
-      "entry": "Fresh-launch Developer Preview welcome > Continue > Mongoose connection test; no diagnostic-card download. Installed name and main-window title read OpenSAAB 0.1.1-preview.6 ARM64 from packaged metadata.",
+      "scope": "Separate personal Android ARM64 Developer Preview 0.1.1-preview.3. Preserves startup, HS-CAN channel and one HS-CAN VIN; adds bounded I-Bus CIM ignition/VIN control and one captured high-voltage-wake comparison. DTCs, security processing/import and full original-firmware backend are unavailable.",
+      "entry": "Fresh-launch Developer Preview welcome > Continue > Mongoose connection test; no diagnostic-card download. Installed name and main-window title read OpenSAAB 0.1.1-preview.3 ARM64 from packaged metadata.",
       "workflow": "Explicit USB permission and selected power/ignition context; Read I-Bus CIM without HV wake or Wake I-Bus and read CIM; finite fresh session with four/five vehicle transmit attempts respectively. Contributor sleep/ignition context is reported, never automatically proven. Stop, unplug and deadline trigger captured stop/channel/device/control/USB cleanup. Unique saved ZIPs are reviewed before the user chooses a share recipient.",
       "identity": "GM II descriptor candidate 18e1:0107; captured envelope/replies and firmware1.2.8.0/bootloader1.1.8.0 verified before channel test. USB readiness is distinct from a live ECU.",
       "targets": {
-        "android-arm64": "Personal 0.1.1-preview.6 candidate. Beta.1 four reviewed contributor startup/channel passes retained; beta.2 VIN and new I-Bus/wake physical qualification remain pending. Installed emulator evidence is scoped to simulated USB.",
+        "android-arm64": "Personal 0.1.1-preview.3 candidate. Beta.1 four reviewed contributor startup/channel passes retained; beta.2 VIN and new I-Bus/wake physical qualification remain pending. Installed emulator evidence is scoped to simulated USB.",
         "android-arm32": "No packaged Mongoose connection test; no inherited hardware or interface qualification",
         "windows-x64": "No packaged Mongoose connection test; no inherited hardware or interface qualification",
         "macos-arm64": "No packaged Mongoose connection test; no inherited hardware or interface qualification",
@@ -969,7 +970,7 @@
       },
       "single_wire_test": {
         "capture_receipt": "releases/consistent-baseline/MONGOOSE_NATIVE_BODY_SLEEP_2026-10-14.json",
-        "version": "0.1.1-preview.6",
+        "version": "0.1.1-preview.3",
         "channels": "Captured paired ISO1801/raw1701, pin1,33333bit/s; exact CIM641/241 flow filter and raw541 filter; successful captured firmware/bootloader profile remains required.",
         "requests": "Optional one raw1701/100 empty-data TX flag0x400; then one functional tester-present101/FE013E, AA0101 status, CIM1A90 VIN and20 stop. No retries, keys, seeds, erase, programming or arbitrary transmit.",
         "success": "Accepted and route/sequence-correlated0x106 completion for each requested exchange; fresh raw1701/541 DPID01 status; complete ordered ISO1801/641 VIN; confirmed stop/channel/device/vendor-control and real USB release. A valid CIM reply can pass with ignition state unknown.",
@@ -1045,7 +1046,7 @@
   "nano_reboot_action": {
     "date": "2026-10-13",
     "label": "Reboot Nano",
-    "entry": "Ready \u2192 Actions when Nano attached; selected Nano session \u2192 Actions",
+    "entry": "Ready → Actions when Nano attached; selected Nano session → Actions",
     "rules": [
       "Explicit user action only; selecting/attaching Nano never reboots it. Multiple candidates require explicit selection.",
       "Active diagnostics offer Keep session or Stop and reboot; wait for confirmed native and USB cleanup before a separate adapter-only reboot. Cancel on background/unplug, deadline, failed cleanup or changed selected USB identity. Block while security processing is busy.",
@@ -1159,7 +1160,7 @@
       "background": "Revoke the endpoint, close sockets/waiters and observers while the owner is not foreground. Resume automatically when allowed; no background remote keys.",
       "guards": "Preserve current-session, menu-revision, consumed-input and manual-takeover checks, physical actions, cancellation and security consent.",
       "targets": {
-        "android-arm64": "Shared source implemented; exact artifact and installed lifecycle tests pending.",
+        "android-arm64": "Exact preview.8 API31 software and Fire default-on/cold-pairing/chooser UI verified; full adapters/vehicle qualification pending.",
         "android-arm32": "Shared Java source; packaging/installed qualification pending.",
         "macos-arm64": "Default-on policy adoption and installed qualification pending.",
         "macos-x86_64": "Default-on policy adoption and installed qualification pending.",
@@ -1216,14 +1217,15 @@
     "qualification": "Host firmware/menu and policy checks only until an exact Fire install and physical session are recorded. No inherited USB-adapter pass.",
     "interface_gap": "MX+ firmware and counter-reset entries remain secondary App menu development paths; primary Connect and start currently performs discovery only. Shared cross-platform workflow integration remains pending.",
     "targets": {
-      "android-arm64": "Source candidate; exact install/vehicle qualification pending",
+      "android-arm64": "Exact Fire install reached menus; failed at middle-controller initialization. Historical receipt retained.",
       "android-arm32": "No MX+ worker in this package; source/installed qualification pending",
       "macos-arm64": "Pending",
       "macos-x86_64": "Pending",
       "windows-x64": "Pending",
       "linux-x86_64": "Pending",
       "ios-arm64": "Pending"
-    }
+    },
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW11_2026-10-19.json"
   },
   "android_mxplus_worker_preview12": {
     "version": "0.1.1-preview.12",
@@ -1231,14 +1233,15 @@
     "reason": "Exact Fire preview.11 reached menus and sent the original zero-DLC SW wake; guest then stopped at unsupported middle-controller register write 0x00201001. No diagnostic payload/counter reset was transmitted.",
     "retained": "Preview.11 shared STN backend and explicit exact T8 reset policy; six original workers remain byte-pinned.",
     "targets": {
-      "android-arm64": "Source candidate; exact installed/live retest pending",
+      "android-arm64": "Exact Fire install passed key-position check; CIM VIN exchange incomplete. Historical receipt retained.",
       "android-arm32": "Pending",
       "macos-arm64": "Pending",
       "macos-x86_64": "Pending",
       "windows-x64": "Pending",
       "linux-x86_64": "Pending",
       "ios-arm64": "Pending"
-    }
+    },
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW12_2026-10-19.json"
   },
   "android_mxplus_worker_preview13": {
     "version": "0.1.1-preview.13",
@@ -1246,8 +1249,18 @@
     "reason": "Exact Fire preview.12 CIM VIN response received FF and CF22 but CF21 was absent from raw STN receive. Separate R:0 transmit and STM commands leave a Bluetooth round-trip receive gap.",
     "provenance": "Non-wake completions identify stn-batch-boundary-write-compatibility; wake retains stn-rfcomm-write-compatibility. Neither proves an electrical ACK or ECU operation success.",
     "failure_rules": "No batch support, early prompt, duplicate boundary, CAN ERROR, STOPPED or missing boundary prevents completion and stops queued work; no automatic replay.",
-    "qualification": "Owned helper confirmed batching and two read-only adapter queries on the actual MX+; no CAN request in the helper. Exact app physical tests still pending.",
-    "retained": "Preview.12 initialized controller model, bounded T8 reset policy and six original executable pins. Other architectures/platforms and shared primary workflow pending."
+    "qualification": "Exact Fire / MX+ preview.13: one reset received positive EE14 and all eight counters were zero before/after. Loss of Communications began before the reset; the final reset screen was Negative Response, service 0 / code 0, with a D5 result preceding the positive reply. DTC EXIT route returned 16 positions / 15 distinct entries and key status was Working (Added), four keys, 433 MHz. Bus scheduling/latency is supported by the source and captures; FIFO overruns, warning coverage, reporting context and MCP read errors remain open. Original evidence is preserved; preview.14 is a separate software-tested candidate, not installed or physically qualified.",
+    "retained": "Preview.12 initialized controller model, bounded T8 reset policy and six original executable pins. Other architectures/platforms and shared primary workflow pending.",
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW13_REVIEW_2026-10-19.json",
+    "targets": {
+      "android-arm64": "Exact preview.13 installed on Fire; scoped physical results recorded, reset UI/control/coverage/workflow gaps open.",
+      "android-arm32": "Preview.13 source adoption, native binding and exact installed/physical qualification pending.",
+      "macos-arm64": "Preview.13 source adoption, native binding and exact installed/physical qualification pending.",
+      "macos-x86_64": "Preview.13 source adoption, native binding and exact installed/physical qualification pending.",
+      "windows-x64": "Preview.13 source adoption, native binding and exact installed/physical qualification pending.",
+      "linux-x86_64": "Preview.13 source adoption, native binding and exact installed/physical qualification pending.",
+      "ios-arm64": "Preview.13 source adoption, native binding and exact installed/physical qualification pending."
+    }
   },
   "android_mxplus_receive_scheduler_preview14": {
     "version": "0.1.1-preview.14",
@@ -1255,16 +1268,49 @@
     "receive_scheduling": "After exact functional SW ID101 FE013E0000000000, return idle receive to HS only if the last non-tester guest frame was HS. Pending guest frames take priority; addressed SW/CIM work retains SW reception. No simultaneous-bus claim.",
     "configuration": "Batch prior bus-switch commands with exact per-command protocol/bitrate/OK validation and boundary/prompt count. Failure stops further writes without replay; no vehicle frame is in a setup batch.",
     "unchanged": "Original guest bytes and flow control, explicit exact maintenance profile, no operator password, native consent, pairing, cancellation and manual-input guards.",
-    "qualification": "Owned synthetic periodic-stream/byte-peer and host policy tests only; Fire installation and all physical workflows pending. No sub-100 ms or lossless physical reception claim. Virtual CANdi FIFO drops and native report context remain open.",
+    "qualification": "Exact Fire / OBDLink MX+ preview.14 reached Reset Done after a 65.145-second idle hold with no observed communications-loss screen or FIFO-overrun record during the hold. One reset received EE14: 37 ms from adapter write to raw reply, 118 ms from original firmware UART request to forwarded reply; under 100 ms target not met. All eight counters were already zero before and after. Key status: Working (Added), four keys, 433 MHz. Two scans using EXIT before CIM returned the same 12 distinct entries, missing three prior EHU entries. A direct EHU query replied; subsequent Entertainment ReadValues stopped on an existing CIM request restriction before that request was sent. Both sessions confirmed protocol cleanup; logs downloaded and original tablet settings restored. Android qualification remains partial; iOS implementation has not started.",
     "targets": {
-      "android-arm64": "Source candidate; exact installed and physical qualification pending",
-      "android-arm32": "Native binding/source adoption and exact installed/physical qualification pending",
-      "macos-arm64": "Native binding/source adoption and exact installed/physical qualification pending",
-      "macos-x86_64": "Native binding/source adoption and exact installed/physical qualification pending",
-      "windows-x64": "Native binding/source adoption and exact installed/physical qualification pending",
-      "linux-x86_64": "Native binding/source adoption and exact installed/physical qualification pending",
-      "ios-arm64": "Native binding/source adoption and exact installed/physical qualification pending"
-    }
+      "android-arm64": "Exact Fire/MX+ preview.14:reset completion and key checks observed; latency, full DTC coverage, profile/reporting/workflow and FIFO gaps remain.",
+      "android-arm32": "Exact preview.14 source/binding and installed/physical qualification pending",
+      "macos-arm64": "Exact preview.14 source/binding and installed/physical qualification pending",
+      "macos-x86_64": "Exact preview.14 source/binding and installed/physical qualification pending",
+      "windows-x64": "Exact preview.14 source/binding and installed/physical qualification pending",
+      "linux-x86_64": "Exact preview.14 source/binding and installed/physical qualification pending",
+      "ios-arm64": "Implementation has not started; owner requires Android validation first."
+    },
+    "candidate_receipt": "releases/consistent-baseline/ANDROID_MXPLUS_PREVIEW14_PHYSICAL_2026-10-19.json",
+    "hardware_control_check": {
+      "receipt": "releases/consistent-baseline/MXPLUS_PREVIEW14_CONTROL_BATCHES_2026-10-19.json",
+      "scope": "Exact batches accepted using separate helper; no preview.14 app/vehicle qualification"
+    },
+    "source_preparation_receipt": "releases/consistent-baseline/ANDROID_MXPLUS_RECEIVE_SCHEDULER_PREVIEW14_2026-10-19.json",
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW14_2026-10-19.json"
+  },
+  "mxplus_connection_flow_design_review": {
+    "document": "docs/OBDLINK_MXPLUS_CONNECT_FLOW_2026-10-19.md",
+    "scope": "Android/shared source map and proposed iOS External Accessory binding; current iOS source not inspected",
+    "native_bindings": "Android authenticated RFCOMM SPP; iOS MX+ iAP2/External Accessory integration needs manufacturer protocol and app authorization confirmation",
+    "source_adoption": "Design documentation only; no new runtime binding or capability",
+    "qualification": "Per-artifact/per-platform physical checks remain required"
+  },
+  "android_mxplus_discovery_latency_preview15": {
+    "version": "0.1.1-preview.15",
+    "source_revision": "ec32a58751bce33e9d354fa4c83cb3e9c9307f01",
+    "discovery": "Keep policy-approved functional HS receive for100ms after transmit boundary before queued cross-bus work; no request reordering or byte changes. Tester-present, physical requests and flow control do not create a window.",
+    "latency": "MX+ Java idle receive10ms; ordinary STPX supplies H and opens HS protocol. Separately checked SW open/mode and original wake sequence retained.",
+    "permissions": "No policy change; bounded read/reset/key permissions retained. Entertainment CIM packet allowance deferred.",
+    "qualification": "Exact Fire / MX+ preview.15 completed two code scans, key status and one counter reset. EHU identification was caught in all eight functional HS attempts and its three codes returned in both scans. The first scan returned16positions/15distinct entries; the repeat returned13positions/12distinct entries after an ACC-missing warning. ACC identity replies reached the adapter and original UART in all eight attempts, so its remaining coverage gap is unresolved. After a65.573-second clean hold, one reset reached Reset Done with positive EE14,81ms on the original UART round trip and47ms from adapter write to raw reply; no D5 or communications-error screen. Counters were zero before and after. Key:Working(Added), four keys,433MHz. Both sessions were operator-stopped with native cleanup confirmed. Logs downloaded, temporary exporters removed and settings restored. Android validation remains partial; iOS implementation has not started.",
+    "candidate_receipt": "releases/consistent-baseline/ANDROID_MXPLUS_DISCOVERY_LATENCY_PREVIEW15_2026-10-19.json",
+    "targets": {
+      "android-arm64": "Exact Fire/MX+ reset81ms and key checks passed; EHU coverage recovered in both scans. ACC coverage/FIFO/reporting/workflow gaps remain; Android qualification partial.",
+      "android-arm32": "Preview.15 source/binding and exact installed/physical qualification pending",
+      "macos-arm64": "Preview.15 source/binding and exact installed/physical qualification pending",
+      "macos-x86_64": "Preview.15 source/binding and exact installed/physical qualification pending",
+      "windows-x64": "Preview.15 source/binding and exact installed/physical qualification pending",
+      "linux-x86_64": "Preview.15 source/binding and exact installed/physical qualification pending",
+      "ios-arm64": "No implementation started; owner requires Android validation first."
+    },
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW15_2026-10-19.json"
   },
   "android_mxplus_primary_route_preview16": {
     "version": "0.1.1-preview.16",
@@ -1286,21 +1332,52 @@
     "version": "0.1.1-preview.17",
     "predecessor": "Preview.16 normal handoff reached firmware, but touch Enter wrote offline-only enter and native parser exited4. Preview.16 remains retained with failed startup evidence.",
     "workflow": "Same selected verified MX+ primary-route handoff with foreground, once-only and cleanup guards. Touch Enter uses native encoder0x10; offline logical Enter unchanged.",
-    "qualification": "Exact physical touch Enter and main connection route pending; no new USB, packet policy, maintenance or iOS adoption."
+    "qualification": "Preview.17 exact Fire/MX+ primary Connect and start route completed fresh verified VIN discovery, confirmed socket/owner release, and original-firmware read startup without a second picker. An actual touch Enter reached native encoder0x10 and continued. The read scan returned13positions/12distinct displayed entries including all three EHU codes, with ACC missing. EXIT at Key Not in LOCK led to the read-only key-block reason; ignition-key status was Working (Added), four keys,433MHz. Operator Stop completed in194.859s with native cleanup confirmed and no forced kill. Seven FIFO-overrun records remain, plus two associated drop-detail lines. Reset was not repeated; preview.15 reset evidence remains separate. Generic native/stop reporting remains imprecise. No iOS or other-platform/adapter qualification.",
+    "source_revision": "96c0b4f9e26af9388a42dba074f1715e65ac9e01",
+    "artifact_sha256": "48d799f338989314b6eed74ea20ae52782b31ca9306ba3c8f2ccd3ab14f999a9",
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW17_2026-10-19.json",
+    "targets": {
+      "android-arm32": "No new adoption or exact installed/physical qualification from Android ARM64",
+      "macos-arm64": "No new adoption or exact installed/physical qualification from Android ARM64",
+      "macos-x86_64": "No new adoption or exact installed/physical qualification from Android ARM64",
+      "windows-x64": "No new adoption or exact installed/physical qualification from Android ARM64",
+      "linux-x86_64": "No new adoption or exact installed/physical qualification from Android ARM64",
+      "android-arm64": "Exact preview.17 primary-route/touch Enter/read scan/key/cleanup pass, ACC/FIFO/reporting gaps retained",
+      "ios-arm64": "No implementation; Android validation first"
+    }
   },
   "android_mxplus_unavailable_operation_preview18": {
     "version": "0.1.1-preview.18",
     "scope": "Classify the exact existing MX+ policy rejection as unsupported_operation with blocked_request_sent=false and UNSUPPORTED_OPERATION lifecycle event. Read-only capability wording is explicit. No code-clear capability, packet-policy or native transport behavior change.",
     "evidence": "Two owner preview.17 Clear Vehicle DTC attempts requested HS0x245 service04; gate rejected before transport; both native cleanups confirmed. Not the earlier operator-stop warning.",
-    "qualification": "Source implementation; exact installed negative-operation verification pending.",
+    "qualification": "Exact installed preview.18 completed normal MX+ discovery and native read startup, including touch Enter. One confirmed Clear Vehicle DTC attempt was rejected before the adapter queue. The app displayed Operation unavailable / Code clearing not supported, recorded unsupported_operation with blocked_request_sent=false and UNSUPPORTED_OPERATION lifecycle evidence, and showed no generic crash prompt. Native cleanup was confirmed, no forced kill occurred, and the prior health/crash record was unchanged. Code clearing is still unavailable; no erase success is claimed.",
     "targets": {
-      "android-arm64": "Source adopted; exact install/negative operation test pending",
-      "android-arm32": "Shared source only; installed/physical scope pending",
-      "macos-arm64": "Pending adoption and verification",
-      "macos-x86_64": "Pending adoption and verification",
-      "windows-x64": "Pending adoption and verification",
-      "linux-x86_64": "Pending adoption and verification",
+      "android-arm32": "Source/installed/hardware adoption and qualification pending; no inherited Android ARM64 pass",
+      "macos-arm64": "Source/installed/hardware adoption and qualification pending; no inherited Android ARM64 pass",
+      "macos-x86_64": "Source/installed/hardware adoption and qualification pending; no inherited Android ARM64 pass",
+      "windows-x64": "Source/installed/hardware adoption and qualification pending; no inherited Android ARM64 pass",
+      "linux-x86_64": "Source/installed/hardware adoption and qualification pending; no inherited Android ARM64 pass",
+      "android-arm64": "Exact preview.18 normal startup/touch Enter and negative clear-request handling verified; no clear capability",
       "ios-arm64": "No implementation; Android validation first"
+    },
+    "source_revision": "f981f3ac4b38340c4d277f74f578b7df41560ea4",
+    "artifact_sha256": "34688aad43a8f71654432bd9dc303c6d4864944971d8c417996c1ea89ed7edb3",
+    "physical_receipt": "releases/consistent-baseline/FIRE_MXPLUS_PREVIEW18_2026-10-19.json"
+  },
+  "android_mxplus_confirmed_clear_preview19": {
+    "version": "0.1.1-preview.19",
+    "workflow": "Normal MX+ startup remains read-only. Selecting original Clear Codes intercepts the key before enqueue and asks Enable code clearing? Stay read-only preserves the same session. Proceed stops it, requires confirmed native protocol cleanup and Bluetooth socket release, then starts a separately authenticated code-clearing session and restarts menus. The operator chooses Clear again and confirms the original firmware erase. No automatic command replay. App menu also exposes Enable code clearing… during a read session.",
+    "capability": "Existing common Profile::ClearDtc only: exact service04 and A9/81/0A in supported routes, plus existing reads. Counter reset remains separate. No security, programming or unrelated writes. Internal service authentication and no-operator-password policy retained.",
+    "guards": "Current session and foreground consent, once-only cleanup handoff; cancel, stop, background, stale callback or unconfirmed release cannot enable writes. Fresh menu preflight applies to touch, hardware keys and MCP; backend policy still rejects unknown operations.",
+    "qualification": "Software-tested source; exact packaged and physical confirmation/cancel/erase results pending. ECU positive replies and before/after code inventory required; adapter acceptance alone is not success. Active faults may remain or return.",
+    "targets": {
+      "android-arm32": "Source/binding, installed and physical qualification pending; no inherited Android ARM64 pass",
+      "macos-arm64": "Source/binding, installed and physical qualification pending; no inherited Android ARM64 pass",
+      "macos-x86_64": "Source/binding, installed and physical qualification pending; no inherited Android ARM64 pass",
+      "windows-x64": "Source/binding, installed and physical qualification pending; no inherited Android ARM64 pass",
+      "linux-x86_64": "Source/binding, installed and physical qualification pending; no inherited Android ARM64 pass",
+      "android-arm64": "Preview.19 source adopts bounded MX+ clear profile and pre-command consent; build/install/physical checks pending",
+      "ios-arm64": "No implementation; owner requires Android validation first"
     }
   }
 }

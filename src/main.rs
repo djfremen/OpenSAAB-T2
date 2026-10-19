@@ -1471,7 +1471,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         bus.candi_link
             .as_mut()
             .ok_or_else(|| (2, "Missing native CANdi".into()))?
-            .attach_obdlink(token, &opts.output, opts.candi_obdlink_reset_engine_counters)
+            .attach_obdlink(token, &opts.output, opts.candi_obdlink_reset_engine_counters, opts.candi_obdlink_clear_dtc)
             .map_err(|e| (2, e))?;
     }
     if let Some(token) = &opts.candi_chipsoft_usb_token {

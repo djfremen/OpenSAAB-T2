@@ -207,8 +207,10 @@ impl NativeLink {
         self.events.push("Direct Android Chipsoft USB; original firmware requests; completion=device-reply-compatibility electrical_ack=unverified".into());
         Ok(())
     }
-    pub fn attach_obdlink(&mut self, token: &str, directory: &Path, reset_counters: bool) -> Result<(), String> {
-        let bridge = tech2_emu::adapters::obdlink_guest::Bridge::start_with_reset(token, directory, reset_counters)?;
+    pub fn attach_obdlink(&mut self, token: &str, directory: &Path, reset_counters: bool, clear_dtc: bool) -> Result<(), String> {
+        if reset_counters && clear_dtc {return Err("MX+ write profiles cannot combine".into());}
+        let profile=if clear_dtc {tech2_emu::nano_native::Profile::ClearDtc} else if reset_counters {tech2_emu::nano_native::Profile::ResetEngineCounters} else {tech2_emu::nano_native::Profile::Read};
+        let bridge = tech2_emu::adapters::obdlink_guest::Bridge::start_with_profile(token, directory, profile)?;
         // The guest initializes all three controllers. Controller 1 remains
         // physically disconnected in poll_bridge: retain TX pending, never ACK/remap.
         for controller in 0..3 {

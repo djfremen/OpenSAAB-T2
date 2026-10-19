@@ -28,7 +28,7 @@ public final class OfflineSessionEvidence {
         begin(run,executable,firmware,"offline_research");
     }
     public void begin(File run,File executable,File firmware,String profile){
-        if(!Arrays.asList("offline_research","offline_native","mxp_research","mxp_native_read","mxp_reset_counters").contains(profile))throw new IllegalArgumentException("Unknown emulation profile");
+        if(!Arrays.asList("offline_research","offline_native","mxp_research","mxp_native_read","mxp_clear_dtc","mxp_reset_counters").contains(profile))throw new IllegalArgumentException("Unknown emulation profile");
         synchronized(this){directory=run;started=SystemClock.elapsedRealtime();inputs=frames=0;lastInput=lastFrame=-1;stopIntent="none";}
         try{
             JSONObject hashes=new JSONObject();
@@ -77,9 +77,9 @@ public final class OfflineSessionEvidence {
         }return safe;
     }
     static JSONObject context(JSONObject raw)throws JSONException{
-        JSONObject safe=new JSONObject();if(raw.optInt("schema")!=1||(!raw.optBoolean("unavailable")&&!Arrays.asList("offline_research","offline_native","mxp_research","mxp_native_read","mxp_reset_counters").contains(raw.optString("profile"))))return safe.put("unavailable",true);
+        JSONObject safe=new JSONObject();if(raw.optInt("schema")!=1||(!raw.optBoolean("unavailable")&&!Arrays.asList("offline_research","offline_native","mxp_research","mxp_native_read","mxp_clear_dtc","mxp_reset_counters").contains(raw.optString("profile"))))return safe.put("unavailable",true);
         safe.put("schema",1);String id=raw.optString("session_id");if(id.matches("offline-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"))safe.put("session_id",id);
-        label(raw,safe,"profile","offline_research","offline_native","mxp_research","mxp_native_read","mxp_reset_counters");numbers(raw,safe,"instruction_limit","deadline_ms");
+        label(raw,safe,"profile","offline_research","offline_native","mxp_research","mxp_native_read","mxp_clear_dtc","mxp_reset_counters");numbers(raw,safe,"instruction_limit","deadline_ms");
         String hash=raw.optString("engine_sha256");if(hash.matches("[a-f0-9]{64}"))safe.put("engine_sha256",hash);
         try{safe.put("started_utc",java.time.Instant.parse(raw.getString("started_utc")).toString());}catch(Exception ignored){}
         JSONObject hashes=raw.optJSONObject("firmware_sha256"),h=new JSONObject();if(hashes!=null)for(String name:new String[]{"eprom.bin","opsys.dwn","candi.bin","card.bin"}){

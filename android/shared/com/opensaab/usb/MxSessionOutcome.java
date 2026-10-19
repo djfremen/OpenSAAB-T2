@@ -10,6 +10,6 @@ public final class MxSessionOutcome {
     public static boolean unsupported(boolean mxSession,boolean rejected,boolean forced,boolean launchFailed){
         return mxSession&&rejected&&!forced&&!launchFailed;
     }
-    public static String readSummary(){return "MX+ read-only session · Read codes and key status · Code clearing unavailable";}
-    public static String unavailableMessage(){return "Operation unavailable in this MX+ session. The blocked request was not sent to the vehicle. Code clearing is not supported in this build.";}
+    public static String readSummary(){return "MX+ read-only session · Clear Codes asks for write access";}
+    public static String unavailableMessage(){return "Operation unavailable in this MX+ session. The blocked request was not sent to the vehicle. This operation is outside the selected session mode.";}
 }

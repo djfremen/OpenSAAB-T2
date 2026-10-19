@@ -94,16 +94,16 @@ struct Link {
     hs_reply_until: Option<Instant>,
 }
 impl Link {
-    fn open(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
+    fn open(token: &str, directory: &Path, profile: Profile) -> Result<Self, String> {
         let socket =
             TcpStream::connect_timeout(&"127.0.0.1:35676".parse().unwrap(), Duration::from_secs(2))
                 .map_err(|e| e.to_string())?;
-        Self::from_socket_profile(token, directory, socket, reset_counters)
+        Self::from_socket_profile(token, directory, socket, profile)
     }
     fn from_socket(token: &str, directory: &Path, socket: TcpStream) -> Result<Self, String> {
-        Self::from_socket_profile(token, directory, socket, false)
+        Self::from_socket_profile(token, directory, socket, Profile::Read)
     }
-    fn from_socket_profile(token: &str, directory: &Path, socket: TcpStream, reset_counters: bool) -> Result<Self, String> {
+    fn from_socket_profile(token: &str, directory: &Path, socket: TcpStream, profile: Profile) -> Result<Self, String> {
         socket.set_nodelay(true).map_err(|e| e.to_string())?;
         socket
             .set_read_timeout(Some(Duration::from_secs(3)))
@@ -112,7 +112,7 @@ impl Link {
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
         let mut socket = SocketUsb(BufReader::new(socket));
-        let expected = if reset_counters { "READY obdlink-native-reset-counters" } else { "READY obdlink-native-read" };
+        let expected = match profile {Profile::Read=>"READY obdlink-native-read",Profile::ClearDtc=>"READY obdlink-native-clear-dtc",Profile::ResetEngineCounters=>"READY obdlink-native-reset-counters",Profile::Seeds=>return Err("MX+ seed profile unavailable".into())};
         if socket.command(&format!("HELLO {token}"))? != expected {
             return Err("Native MX+ ownership unavailable".into());
         }
@@ -528,11 +528,14 @@ impl Bridge {
         Self::start_with_reset(token, directory, false)
     }
     pub fn start_with_reset(token: &str, directory: &Path, reset_counters: bool) -> Result<Self, String> {
+        Self::start_with_profile(token, directory, if reset_counters {Profile::ResetEngineCounters} else {Profile::Read})
+    }
+    pub fn start_with_profile(token: &str, directory: &Path, profile: Profile) -> Result<Self, String> {
+        if profile==Profile::Seeds {return Err("MX+ seed profile unavailable".into());}
         if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("Invalid MX+ owner token".into());
         }
-        Ok(Self::from_link_profile(Link::open(token, directory, reset_counters)?,
-            if reset_counters { Profile::ResetEngineCounters } else { Profile::Read }))
+        Ok(Self::from_link_profile(Link::open(token, directory, profile)?, profile))
     }
     fn from_link(link: Link) -> Self {
         Self::from_link_profile(link, Profile::Read)
@@ -787,6 +790,21 @@ mod profile_tests {
     fn request(data: [u8;8]) -> CanTransmission {
         CanTransmission {ticket:1,frame:CanFrame {id:0x7e0,extended:false,rtr:false,dlc:8,data:data.to_vec()},
             btr0:0xc1,btr1:0x36,electrical:CanElectricalState::StandardCan}
+    }
+    #[test]
+    fn dtc_clear_uses_shared_profile_and_preserves_frames_on_both_buses() {
+        for controller in [0,2] {
+            let mut tx=request([1,4,0,0,0,0,0,0]);tx.frame.id=0x245;
+            if controller==2 {tx.btr0=0xdd;tx.electrical=CanElectricalState::SingleWireGpio {latch:3,assignment:0,direction:3};}
+            let (mut read,read_queue)=guarded(Profile::Read);assert!(read.transmit(controller,tx.clone()).is_err());assert!(read_queue.try_recv().is_err());
+            let (mut clear,queue)=guarded(Profile::ClearDtc);clear.transmit(controller,tx.clone()).unwrap();
+            let sent=queue.try_recv().unwrap();assert_eq!(sent.0,controller);assert_eq!(sent.1.frame.data,tx.frame.data);assert_eq!(sent.1.frame.id,tx.frame.id);
+            tx.frame.data=vec![3,0xa9,0x81,0x0a,0,0,0,0];clear.transmit(controller,tx.clone()).unwrap();assert_eq!(queue.try_recv().unwrap().1.frame.data,tx.frame.data);
+        }
+        let (mut clear,queue)=guarded(Profile::ClearDtc);
+        for d in [[2,0xae,0x14,0,0,0,0,0],[2,0x27,1,0,0,0,0,0],[2,0x27,2,0,0,0,0,0],[3,0x2e,0,1,0,0,0,0],[1,0x34,0,0,0,0,0,0],[2,4,1,0,0,0,0,0]] {
+            assert!(clear.transmit(0,request(d)).is_err());assert!(queue.try_recv().is_err());
+        }
     }
     #[test]
     fn counter_reset_is_explicit_exact_and_does_not_open_other_writes() {
