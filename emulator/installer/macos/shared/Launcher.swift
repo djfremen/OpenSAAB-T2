@@ -718,11 +718,10 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       sessionBegan = Date()
       lcd.caption = nil
       menuNavigating = false; menuNavigationGeneration += 1
-      if endpoint != nil { connectionAttempt?.bind(session!.run, mode: mode.rawValue); connectionAttempt?.advance("SESSION") } else { connectionAttempt = nil }
+      if endpoint != nil || mx != nil { connectionAttempt?.bind(session!.run, mode: mx != nil ? "read_only" : mode.rawValue); connectionAttempt?.advance("SESSION") } else { connectionAttempt = nil }
       lcd.image = nil
       dtcReportButton.isHidden = true
       if mx != nil {
-        connectionAttempt = nil
         status.stringValue = MxSessionOutcome.readSummary + " · Starting original firmware"
       } else if endpoint == nil {
         bluetoothVehicle = [:]
@@ -752,21 +751,28 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
         "child_exit_code":code.map { Int($0) } ?? -1, "bluetooth_closed":released, "operator_stop":userStop]
       try? JSONSerialization.data(withJSONObject:outcome, options:[.sortedKeys]).write(to:ended.run.appendingPathComponent("mx-session-outcome.json"), options:.atomic)
       recordSessionEnd(ended.run, reason: "unsupported_operation", exitCode: code, began: sessionBegan)
+      // A refused request is a capability limit, not a connection failure.
+      if clean { connectionAttempt?.finish("COMPLETED") } else { connectionAttempt?.finish("FAILED", "CLEANUP_FAILED") }
+      connectionAttempt = nil
       lcd.caption = "MX+ session ended\nOperation unavailable"
-      status.stringValue = MxSessionOutcome.unavailableMessage + (released ? "" : " · Bluetooth release not confirmed")
+      status.stringValue = MxSessionOutcome.unavailableMessage + (clean ? "" : " · Adapter protocol or Bluetooth release not confirmed")
       refresh(); return
     }
     if userStop {
       recordSessionEnd(ended.run, reason: ended.stopOutcome?.sessionEndReason ?? "unconfirmed_stop", exitCode: code, began: sessionBegan)
-      status.stringValue = clean ? "MX+ session stopped · Bluetooth released" :
-        forced ? "MX+ session stopped forcibly. See Console." : "MX+ session stopped · Bluetooth release not confirmed. See Console."
+      connectionAttempt?.finish(clean ? "COMPLETED" : "FAILED", clean ? "USER_STOP" : "CLEANUP_FAILED"); connectionAttempt = nil
+      status.stringValue = clean ? "MX+ session stopped · Adapter and Bluetooth released" :
+        forced ? "MX+ session stopped forcibly. See Console." : "MX+ session stopped · Adapter protocol or Bluetooth release not confirmed. See Console."
       lcd.caption = clean ? nil : status.stringValue
       refresh(); return
     }
     let failure = AdapterFailure.read(run: ended.run)
     status.stringValue = (failure.map { $0.title + " · See Console." } ?? "MX+ session ended · exit \(code ?? -1) · See Console")
-      + (released ? "" : " · Bluetooth release not confirmed")
+      + (clean ? "" : " · Adapter protocol or Bluetooth release not confirmed")
     recordSessionEnd(ended.run, reason: failure?.sessionEndReason ?? "exited", exitCode: code, began: sessionBegan)
+    if code == 0 && failure == nil && clean { connectionAttempt?.finish("COMPLETED") }
+    else { connectionAttempt?.finish("FAILED", !clean && failure == nil && code == 0 ? "CLEANUP_FAILED" : failure?.connectionReason ?? "PROTOCOL_OR_PROCESS_ERROR") }
+    connectionAttempt = nil
     lcd.caption = failure.map { "Communication stopped\n" + $0.title }
     refresh()
     if let failure { sessionFailure(failure.message) }

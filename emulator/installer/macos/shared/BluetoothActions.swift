@@ -100,9 +100,14 @@ extension Shell {
         }
     }
     private func openMXFirmware(device: IOBluetoothDevice, vehicle: [String:Any]) {
+        // Support-report connection attempt for the firmware session (USB parity).
+        let attempt = ConnectionAttempt(state: state); attempt.selectAdapter("OBDLINK"); attempt.advance("FIRMWARE_START")
         let bridge: MacMXFirmwareBridge
         do { bridge = try MacMXFirmwareBridge(device:device) }
-        catch { status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription; refresh(); return }
+        catch {
+            attempt.finish("FAILED", "IO_ERROR")
+            status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription; refresh(); return
+        }
         bridge.vehicle = vehicle
         busy = true; status.stringValue = MxSessionOutcome.readSummary + " · Opening adapter"; refresh()
         bridge.open { [weak self] result in
@@ -110,9 +115,15 @@ extension Shell {
             self.busy = false
             switch result {
             case .success:
+                self.connectionAttempt = attempt
                 self.start(mx:bridge)
-                if self.session?.mx !== bridge { bridge.close() }
+                if self.session?.mx !== bridge {
+                    bridge.close()
+                    if attempt.open { attempt.finish("FAILED", "PROTOCOL_OR_PROCESS_ERROR") }
+                    if self.connectionAttempt === attempt { self.connectionAttempt = nil }
+                }
             case .failure(let error):
+                attempt.finish("FAILED", "IO_ERROR")
                 bridge.close()
                 self.status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription + " · No offline fallback was started"
                 self.refresh()

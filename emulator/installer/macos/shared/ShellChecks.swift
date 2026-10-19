@@ -170,6 +170,21 @@ enum ShellChecks {
       try need(!NanoCleanup.confirmed(bad),"Nano blocks continuation without " + field)
     }
     try need(!NanoCleanup.confirmed([:]),"missing Nano teardown receipt blocks processing")
+    // OBDLink MX+ sessions: truthful binding that never binds security processing,
+    // and a clean stop requires the engine's own STN protocol cleanup record.
+    let mxRun = fm.temporaryDirectory.appendingPathComponent("mx-binding-" + UUID().uuidString)
+    try fm.createDirectory(at:mxRun,withIntermediateDirectories:true)
+    defer {try? fm.removeItem(at:mxRun)}
+    try RunAdapterBinding.writeMX(address:"00-00-00-00-00-00",name:"OBDLink MX+ fixture",to:mxRun)
+    let mxBinding = try JSONSerialization.jsonObject(with:Data(contentsOf:mxRun.appendingPathComponent("adapter-binding.json"))) as? [String:Any]
+    try need(mxBinding?["kind"] as? String == "obdlink_mxp" && mxBinding?["security_collection"] as? Bool == false,"MX+ run records its own adapter binding")
+    try need(try RunAdapterBinding.read(run:mxRun) == nil,"MX+ binding never becomes a security collection adapter")
+    try need(!EmulatorSession.mxProtocolCleanupConfirmed(run:mxRun),"missing MX+ transcript is not a clean stop")
+    let transcript = mxRun.appendingPathComponent("obdlink-native-transcript-private.jsonl")
+    try Data((#"{"elapsed_ms":1,"event":{"tx_ascii":"STPC"}}"# + "\n" + #"{"elapsed_ms":2,"event":{"cleanup":"unconfirmed: Native Bluetooth close unconfirmed"}}"# + "\n").utf8).write(to:transcript)
+    try need(!EmulatorSession.mxProtocolCleanupConfirmed(run:mxRun),"unconfirmed MX+ protocol cleanup blocks a clean stop")
+    try Data((#"{"elapsed_ms":2,"event":{"cleanup":"confirmed"}}"# + "\n").utf8).write(to:transcript)
+    try need(EmulatorSession.mxProtocolCleanupConfirmed(run:mxRun),"confirmed MX+ protocol cleanup is recognized")
     let run = fm.temporaryDirectory.appendingPathComponent("nano-binding-" + UUID().uuidString)
     try fm.createDirectory(at:run,withIntermediateDirectories:true)
     defer {try? fm.removeItem(at:run)}

@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 SOURCES = HERE / "shared"
 EMULATOR = HERE.parents[1]
 ROOT = EMULATOR.parent
-VERSION = "0.2.28-mxplus.2"
+VERSION = "0.2.28-mxplus.3"
 TARGETS = {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}
 
 def run(*args, **kwargs):

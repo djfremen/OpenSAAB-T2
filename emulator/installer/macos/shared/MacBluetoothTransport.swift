@@ -18,14 +18,17 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     let device: IOBluetoothDevice
     private let allowed: (String)->Bool
     private var packet: (([String:Any])->Void)?
-    private var channel: IOBluetoothRFCOMMChannel?, timer: Timer?
+    private var channel: IOBluetoothRFCOMMChannel?, timer: Timer?, abandonTimer: Timer?
     private var closing = false, finished = false, writing = false, opening = false, ownsDevice = false
     private var closeError = ""
     private var deferred: [[UInt8]] = []
     init(device: IOBluetoothDevice, allowed: @escaping (String)->Bool) { self.device = device; self.allowed = allowed }
     func open(_ packet: @escaping ([String:Any])->Void) {
         self.packet = packet
-        guard device.isPaired(), !device.isConnected(), Self.supported(device.name ?? ""),
+        guard !device.isConnected() else {
+            fail("This adapter is already connected (another app, phone or tablet, or an earlier session). Disconnect it or unplug and reconnect it, then start a fresh connection."); return
+        }
+        guard device.isPaired(), Self.supported(device.name ?? ""),
               device.getLastServicesUpdate() != nil,
               let service = device.getServiceRecord(for:IOBluetoothSDPUUID(uuid16:0x1101)) else {
             fail("Pair this adapter with the Mac and confirm its Serial Port service first."); return
@@ -83,15 +86,29 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
             _ = channel?.close()
             if ownsDevice && device.isConnected() {_ = device.closeConnection()}
             if opening {
-                timer = Timer.scheduledTimer(withTimeInterval:5,repeats:false) { [weak self] _ in self?.packet?(["type":"discovery_status", "message":"Waiting for native Bluetooth connection cancellation confirmation…"]) }
+                timer = Timer.scheduledTimer(withTimeInterval:3,repeats:false) { [weak self] _ in self?.packet?(["type":"discovery_status", "message":"Waiting for native Bluetooth connection cancellation confirmation…"]) }
+                // Bounded (intel.10 blocker): macOS may never deliver the open completion.
+                abandonTimer = Timer.scheduledTimer(withTimeInterval:8,repeats:false) { [weak self] _ in self?.abandonOpen() }
                 return
             }
         }
         finishClose()
     }
+    /// The open never completed or cancelled. Hand the pending channel to a reaper
+    /// that closes it if macOS opens it later, then report this attempt closed.
+    private func abandonOpen() {
+        guard closing, opening, !finished else { return }
+        opening = false
+        if let pending = channel { RFCOMMReaper.adopt(pending, device: device); channel = nil }
+        let hint = "Bluetooth did not finish opening or cancelling. Unplug and reconnect the adapter, then start a fresh connection."
+        closeError = closeError.isEmpty ? hint : closeError + " · " + hint
+        finishClose()
+    }
     private func finishClose() {
-        guard closing, !opening, !finished else {return}; finished = true; timer?.invalidate(); timer = nil
+        guard closing, !opening, !finished else {return}; finished = true; timer?.invalidate(); timer = nil; abandonTimer?.invalidate(); abandonTimer = nil
         let channelResult = channel?.isOpen() == true ? channel!.close() : kIOReturnSuccess
+        // Channel-level close first (Android socket-close parity); baseband release follows.
+        packet?(["type":"channel_closed", "ok":channelResult == kIOReturnSuccess && channel?.isOpen() != true, "channel_close_result":channelResult])
         let deviceResult = ownsDevice && device.isConnected() ? device.closeConnection() : kIOReturnSuccess
         let deadline = Date().addingTimeInterval(3)
         while ownsDevice && device.isConnected() && Date() < deadline { RunLoop.current.run(until:Date().addingTimeInterval(0.05)) }
@@ -100,7 +117,38 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
                  "channel_close_result":channelResult, "device_close_result":deviceResult]
         packet?(result)
     }
-    func shutdown() { packet = nil; if !finished { close() }; channel?.setDelegate(nil); channel = nil }
+    func shutdown() {
+        packet = nil; if !finished { close() }
+        if opening, let pending = channel { opening = false; RFCOMMReaper.adopt(pending, device: device) }
+        else { channel?.setDelegate(nil) }
+        channel = nil; timer?.invalidate(); abandonTimer?.invalidate()
+    }
+}
+
+/// Owns RFCOMM channels whose open was abandoned. If macOS completes the open after
+/// the transport gave up, close the channel and its baseband link immediately.
+private final class RFCOMMReaper: NSObject, IOBluetoothRFCOMMChannelDelegate {
+    private static var live: [RFCOMMReaper] = []
+    private let device: IOBluetoothDevice
+    private init(device: IOBluetoothDevice) { self.device = device }
+    static func adopt(_ channel: IOBluetoothRFCOMMChannel, device: IOBluetoothDevice) {
+        let reaper = RFCOMMReaper(device: device)
+        live.append(reaper)
+        channel.setDelegate(reaper)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak channel] in
+            if let channel, channel.isOpen() { _ = channel.close() }
+            channel?.setDelegate(nil)
+            live.removeAll { $0 === reaper }
+        }
+    }
+    func rfcommChannelOpenComplete(_ channel: IOBluetoothRFCOMMChannel!, status: IOReturn) {
+        if channel.isOpen() { _ = channel.close() }
+        if device.isConnected() { _ = device.closeConnection() }
+    }
+    func rfcommChannelClosed(_ channel: IOBluetoothRFCOMMChannel!) {
+        channel.setDelegate(nil)
+        RFCOMMReaper.live.removeAll { $0 === self }
+    }
 }
 
 // A BLE UUID and a Classic address identify different transport endpoints, not models.

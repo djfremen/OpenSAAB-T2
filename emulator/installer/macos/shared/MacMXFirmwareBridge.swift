@@ -22,6 +22,8 @@ final class MacMXFirmwareBridge {
   var vehicle: [String: Any] = [:]
   /// Called on the main thread once the adapter's native close is known.
   var onReleased: ((Bool) -> Void)?
+  /// Run directory for the bridge receipt (intel.10 parity: mx-bridge-result-private.json).
+  var evidenceDirectory: URL?
 
   private let transport: MacSPPTransport
   private let cond = NSCondition()
@@ -32,6 +34,9 @@ final class MacMXFirmwareBridge {
   private var client: Int32 = -1
   private var wake: [Int32] = [-1, -1]
   private var ready = false, closing = false, closeRequested = false, serving = false
+  private var channelClosed: Bool?, workerRequestedClose = false
+  private var bytesWritten = 0, bytesReceived = 0, writes = 0
+  private let opened = Date()
   private var readyCallback: ((Result<Void, Error>) -> Void)?
 
   var bluetoothClosed: Bool {
@@ -97,8 +102,11 @@ final class MacMXFirmwareBridge {
     switch type {
     case "ready":
       if !ready && !closing { ready = true }
+    case "channel_closed":
+      if channelClosed == nil { channelClosed = packet["ok"] as? Bool == true }
     case "closed":
       closedPacket = packet
+      if channelClosed == nil { channelClosed = packet["channel_close_result"] as? Int32 == kIOReturnSuccess }
     case "error":
       if transportError == nil { transportError = packet["message"] as? String ?? "Bluetooth transport failed" }
       queue.append(packet)
@@ -121,6 +129,7 @@ final class MacMXFirmwareBridge {
     }
     if type == "closed" {
       transport.shutdown()
+      writeReceipt(packet)
       onReleased?(packet["bluetooth_closed"] as? Bool == true)
     }
   }
@@ -148,9 +157,12 @@ final class MacMXFirmwareBridge {
       while true {
         let request = try line(accepted)
         if request == "CLOSE" {
+          cond.lock(); workerRequestedClose = true; cond.unlock()
           requestNativeClose()
-          // The worker reads this reply with a 3 s timeout (SocketUsb); answer within it.
-          guard waitForRelease(seconds: 2.5) && bluetoothClosed else { throw ShellError.message("Bluetooth release unconfirmed") }
+          // The worker reads this reply with a 3 s timeout (SocketUsb). Like Android's
+          // socket close, confirm the RFCOMM channel close here; the baseband release
+          // is confirmed separately by the app before a stop counts as clean.
+          guard waitForChannelClose(seconds: 2.5) else { throw ShellError.message("RFCOMM channel close unconfirmed") }
           try reply(accepted, "CLOSED")
           return
         } else if request == "READ" {
@@ -186,6 +198,7 @@ final class MacMXFirmwareBridge {
           queue.insert(["type": "rx", "bytes": Array(bytes[1024...])], at: 0)
           bytes = Array(bytes[..<1024])
         }
+        bytesReceived += bytes.count
         let json = try JSONSerialization.data(withJSONObject: ["type": "rx", "bytes": bytes.map { Int($0) }])
         return String(decoding: json, as: UTF8.self)
       }
@@ -204,7 +217,9 @@ final class MacMXFirmwareBridge {
       requestNativeClose()
       throw ShellError.message("Bluetooth write timed out")
     }
-    cond.lock(); let error = transportError; cond.unlock()
+    cond.lock(); let error = transportError
+    if error == nil { writes += 1; bytesWritten += ((request["command"] as? String)?.utf8.count ?? 0) + 1 }
+    cond.unlock()
     if let error { throw ShellError.message(error) }
   }
 
@@ -232,6 +247,32 @@ final class MacMXFirmwareBridge {
     cond.lock(); defer { cond.unlock() }
     while closedPacket == nil && cond.wait(until: deadline) {}
     return closedPacket != nil
+  }
+
+  /// True once the RFCOMM channel close succeeded (or the full release confirmed it).
+  private func waitForChannelClose(seconds: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(seconds)
+    cond.lock(); defer { cond.unlock() }
+    while channelClosed == nil && cond.wait(until: deadline) {}
+    return channelClosed == true
+  }
+
+  private func writeReceipt(_ packet: [String: Any]) {
+    guard let directory = evidenceDirectory else { return }
+    cond.lock()
+    let receipt: [String: Any] = ["schema": 1, "adapter": "OBDLink MX+", "native_api": "IOBluetoothRFCOMMChannel",
+      "status": packet["bluetooth_closed"] as? Bool == true && (packet["error"] as? String ?? "").isEmpty ? "closed" : "failed",
+      "bluetooth_closed": packet["bluetooth_closed"] as? Bool ?? false, "error": packet["error"] as? String ?? "",
+      "channel_close_result": packet["channel_close_result"] as? Int32 ?? -1, "device_close_result": packet["device_close_result"] as? Int32 ?? -1,
+      "channel_closed": channelClosed ?? false, "worker_requested_close": workerRequestedClose,
+      "transport_error": transportError ?? "", "writes": writes, "bytes_written": bytesWritten, "bytes_received": bytesReceived,
+      "owned_seconds": Int(Date().timeIntervalSince(opened)), "CAN_acknowledgement_inferred": false, "automatic_replay": false]
+    cond.unlock()
+    let file = directory.appendingPathComponent("mx-bridge-result-private.json")
+    if let data = try? JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys]),
+       fm.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600]) == false {
+      NSLog("OpenSAAB MX+ bridge receipt could not be written")
+    }
   }
 
   /// Ends ownership from the app side (stop, launch failure, process exit). Safe to repeat.

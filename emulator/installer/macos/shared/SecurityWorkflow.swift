@@ -80,6 +80,10 @@ extension Shell {
   func securityAction() {
     if let job=securityJob {if job.cancel(){status.stringValue="Cancelling security processing…"}else{status.stringValue="Finishing verified import…"};return}
     guard !busy else{return}
+    if session?.mx != nil {
+      textDialog("Security access","Security collection and processing are not available in an OBDLink MX+ read-only session. Stop the session to process data collected earlier with a USB adapter.")
+      return
+    }
     updateSecurity()
     guard let firmware=store.selected?.id,
       let run=session?.run ?? SecurityWorkspace.previousRun(state:state,firmware:firmware) else {
@@ -93,7 +97,7 @@ extension Shell {
       let a=NSAlert();a.messageText="Security data already processed"
       a.informativeText="Keep using the processed security data in the original firmware, or choose a new collection. Reprocessing is not needed for POST-AUTH data. Vehicle authorization is checked by the firmware."
       a.addButton(withTitle:current != nil ? "Continue firmware":"Keep existing data")
-      if current?.connected == true {a.addButton(withTitle:"Collect fresh data")}
+      if current?.adapter != nil {a.addButton(withTitle:"Collect fresh data")}
       a.addButton(withTitle:"Cancel")
       let choice=a.runModal()
       if choice == .alertFirstButtonReturn {window.makeFirstResponder(lcd)}
@@ -119,7 +123,7 @@ extension Shell {
           self.status.stringValue="Security data needs attention · See the available choices."
           a.informativeText=reason+"\n\nConnect an adapter to collect fresh data. Earlier sessions and downloaded firmware are preserved."
         }
-        if current?.connected == true {a.addButton(withTitle:"Collect fresh data")}
+        if current?.adapter != nil {a.addButton(withTitle:"Collect fresh data")}
         a.addButton(withTitle:"Cancel")
         let choice=a.runModal()
         if let hash=selectedHash,choice == .alertFirstButtonReturn {
@@ -145,7 +149,7 @@ extension Shell {
   }
 
   func securityWorkflowTick(_ current:EmulatorSession) {
-    guard !securityChecking,Date().timeIntervalSince(securityWorkflowPoll)>=0.6,current.connected else{return}
+    guard !securityChecking,Date().timeIntervalSince(securityWorkflowPoll)>=0.6,current.adapter != nil else{return}
     securityWorkflowPoll=Date();securityChecking=true
     let run=current.run,worker=securityWorker,nav=securityNavigation,vin=securityObservation()["vin"] ?? "",navigate=securityNavigating && current.canAcceptMenuKey,generation=securityNavigationGeneration
     DispatchQueue.global().async {

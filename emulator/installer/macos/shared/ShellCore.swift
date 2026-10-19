@@ -320,7 +320,8 @@ final class EmulatorSession {
   let process = Process(), run: URL
   private(set) var adapter: USBAdapterEndpoint?
   var chipsoftPort: String? { adapter?.kind == .chipsoft ? adapter?.port : nil }
-  var connected: Bool { adapter != nil }
+  /// A live vehicle session: a USB adapter or the owned OBDLink MX+ bridge (intel.10 rule).
+  var connected: Bool { adapter != nil || mx != nil }
   let mode: ChipsoftSessionMode
   private(set) var stopOutcome: SessionStopOutcome?
   /// Owned OBDLink MX+ native bridge; nil for offline and USB sessions.
@@ -379,23 +380,25 @@ final class EmulatorSession {
       dtcIdentity["vehicle_description"]=value["description"]
     }
     if let mx = mxBridge {
+      mx.evidenceDirectory = run
       // Bind only this connection's fresh discovery; never a saved USB-era VIN.
       dtcIdentity = ["adapter":"OBDLink MX+"]
       if let vin = mx.vehicle["vin"] as? String { dtcIdentity["vin"] = vin }
     }
     try JSONSerialization.data(withJSONObject:dtcIdentity).write(to:run.appendingPathComponent("dtc-context.json"),options:.atomic)
     // Required, per-run provenance survives app relaunch and binds security cleanup.
-    try RunAdapterBinding.write(self.adapter, to: run)
+    if let mx = mxBridge { try RunAdapterBinding.writeMX(address: mx.deviceAddress, name: mx.deviceName, to: run) }
+    else { try RunAdapterBinding.write(self.adapter, to: run) }
     let info=Bundle.main.infoDictionary ?? [:]
     var diagnosticBinding:[String:Any] = ["app_version":info["CFBundleShortVersionString"] as? String ?? "development",
       "architecture":shellArchitecture,"build":info["OpenSAABBuild"] as? String ?? "unavailable",
       "family":self.adapter?.kind == .chipsoft ? "chipsoft" : self.adapter?.kind == .nano ? "nano" : self.adapter?.kind == .mdi ? "mdi" : "offline",
       "transport":self.adapter == nil ? "offline" : self.adapter?.kind == .mdi ? "usb_rndis" : "usb_cdc",
-      "session_mode":self.adapter == nil ? "offline" : mode == .fullNative ? "full_native" : mode == .seeds ? "security_seeds" : "read_only",
-      "last_operation":self.adapter == nil ? "original_menus" : "connection"]
+      "session_mode":mxBridge != nil ? "read_only" : self.adapter == nil ? "offline" : mode == .fullNative ? "full_native" : mode == .seeds ? "security_seeds" : "read_only",
+      "last_operation":self.adapter == nil && mxBridge == nil ? "original_menus" : "connection"]
     if mxBridge != nil {
       diagnosticBinding["family"] = "obdlink_mxp"; diagnosticBinding["transport"] = "bluetooth_rfcomm"
-      diagnosticBinding["native_api"] = "IOBluetoothRFCOMMChannel"; diagnosticBinding["session_mode"] = "mxp_native_read"
+      diagnosticBinding["native_api"] = "IOBluetoothRFCOMMChannel"; diagnosticBinding["mx_profile"] = "mxp_native_read"
       diagnosticBinding["engine"] = "tech2-mx"
     }
     try JSONSerialization.data(withJSONObject:diagnosticBinding).write(to:run.appendingPathComponent("connection-evidence.json"),options:.atomic)
@@ -469,7 +472,7 @@ final class EmulatorSession {
       throw error
     }
     let metadata: [String: Any] = [
-      "pid": process.processIdentifier, "mode": self.adapter == nil ? "offline" : mode.rawValue, "architecture": shellArchitecture, "run": run.path,
+      "pid": process.processIdentifier, "mode": mxBridge != nil ? "obdlink-original-firmware-read" : self.adapter == nil ? "offline" : mode.rawValue, "architecture": shellArchitecture, "run": run.path,
       "adapter": mxBridge != nil ? "obdlink_mxp" : self.adapter?.kind.rawValue ?? "offline",
       "firmware": selected.id,
       "seed_collection": self.adapter != nil && mode == .seeds,
@@ -522,6 +525,22 @@ final class EmulatorSession {
     if mx != nil { releaseMX() }
     return finishStop(forced: !clean)
   }
+  /// The MX+ engine logs `{"event":{"cleanup":"confirmed"}}` only after its STN
+  /// monitor interrupt, ATCS and STPC succeed and the bridge answered CLOSED.
+  /// Read the transcript tail; the newest cleanup record decides (intel.10 rule).
+  static func mxProtocolCleanupConfirmed(run: URL) -> Bool {
+    guard let handle = try? FileHandle(forReadingFrom: run.appendingPathComponent("obdlink-native-transcript-private.jsonl")) else { return false }
+    defer { try? handle.close() }
+    guard let size = try? handle.seekToEnd() else { return false }
+    let window: UInt64 = 262_144
+    guard (try? handle.seek(toOffset: size > window ? size - window : 0)) != nil, let data = try? handle.readToEnd() else { return false }
+    for line in data.split(separator: 10).reversed() {
+      guard let row = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+            let event = row["event"] as? [String: Any], let cleanup = event["cleanup"] as? String else { continue }
+      return cleanup == "confirmed"
+    }
+    return false
+  }
   /// MX+ end of session: release the native owner, then let the console reach EOF so
   /// outcome classification sees the final line. Call off the main thread.
   private func releaseMX() {
@@ -538,11 +557,15 @@ final class EmulatorSession {
   }
   private func finishStop(forced: Bool) -> Bool {
     let outcome = SessionStopOutcome(forcedProcessExit: forced,
-      protocolCleanupConfirmed: mx != nil ? mx!.bluetoothClosed : adapter?.kind == .mdi ? MdiCleanup.confirmed(run:run) : adapter?.kind != .nano || NanoCleanup.confirmed(run: run))
+      protocolCleanupConfirmed: mx != nil ? (mx!.bluetoothClosed && Self.mxProtocolCleanupConfirmed(run: run)) : adapter?.kind == .mdi ? MdiCleanup.confirmed(run:run) : adapter?.kind != .nano || NanoCleanup.confirmed(run: run))
     let detail:[String:Any] = ["child_exit_code":Int(process.terminationStatus),"forced_termination":forced,
       "usb_release":adapter?.kind == .mdi ? (MdiCleanup.confirmed(run:run) ? "succeeded":"failed") : "unknown","protocol_cleanup":adapter?.kind == .mdi ? (MdiCleanup.confirmed(run:run) ? "succeeded":"failed") : adapter?.kind == .nano ? (NanoCleanup.confirmed(run:run) ? "succeeded":"failed") : "unknown"]
     var evidence = detail
-    if let mx { evidence["bluetooth_release"] = mx.released ? (mx.bluetoothClosed ? "succeeded" : "failed") : "unconfirmed"; evidence["usb_release"] = "not_applicable" }
+    if let mx {
+      evidence["bluetooth_release"] = mx.released ? (mx.bluetoothClosed ? "succeeded" : "failed") : "unconfirmed"
+      evidence["protocol_cleanup"] = Self.mxProtocolCleanupConfirmed(run: run) ? "succeeded" : "failed"
+      evidence["usb_release"] = "not_attempted"
+    }
     try? JSONSerialization.data(withJSONObject:evidence).write(to:run.appendingPathComponent("cleanup-evidence.json"),options:.atomic)
     stopOutcome = outcome
     return outcome.continuationSafe

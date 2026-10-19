@@ -11,6 +11,10 @@ extension Shell {
       textDialog(title, "Shortcuts need a connected, identified vehicle. Offline, use the original firmware menus directly: Diagnostics → model year → vehicle type → \(title).")
       return
     }
+    if target == "clear_dtc", current.mx != nil {
+      textDialog(title, "Code clearing is not supported in this OBDLink MX+ build. The session stays read-only; read codes, ECU information and key status remain available.")
+      return
+    }
     if securityJob != nil || securityNavigating {
       textDialog(title, "Finish security collection first; the firmware controls remain available."); return
     }

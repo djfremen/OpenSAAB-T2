@@ -78,6 +78,15 @@ enum RunAdapterBinding {
       "port": adapter?.port ?? "", "identity": adapter?.identity ?? ""]
     try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]).write(to: run.appendingPathComponent("adapter-binding.json"), options: .atomic)
   }
+  /// OBDLink MX+ original-firmware read session. Not a security-collection adapter:
+  /// `read` returns nil for it, so security processing never binds to an MX+ run.
+  static func writeMX(address: String, name: String, to run: URL) throws {
+    let value: [String: Any] = ["schema": 1, "kind": "obdlink_mxp", "port": "", "identity": "",
+      "adapter": "OBDLink MX+", "device_name": name, "bluetooth_address": address,
+      "transport": "macos-classic-spp", "profile": "stn2255-5.12.4-original-firmware-read",
+      "security_collection": false, "simultaneous_buses": false]
+    try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]).write(to: run.appendingPathComponent("adapter-binding.json"), options: .atomic)
+  }
   static func read(run: URL) throws -> USBAdapterEndpoint? {
     let file = run.appendingPathComponent("adapter-binding.json")
     // Older Chipsoft-only Mac runs predate this required per-run binding.
@@ -87,7 +96,7 @@ enum RunAdapterBinding {
       value["schema"] as? Int == 1, let name = value["kind"] as? String else {
       throw ShellError.message("Invalid collection adapter provenance; security processing is blocked.")
     }
-    if name == "offline" { return nil }
+    if name == "offline" || name == "obdlink_mxp" { return nil }
     guard let kind = USBAdapterKind(rawValue: name), let port = value["port"] as? String,
       (kind == .mdi ? MdiWorkflow.validTarget(port) : port.hasPrefix("/dev/cu.usbmodem") && URL(fileURLWithPath: port).deletingLastPathComponent().path == "/dev"),
       let identity = value["identity"] as? String else {
