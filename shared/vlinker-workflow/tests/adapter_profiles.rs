@@ -32,7 +32,7 @@ fn each_model_keeps_the_reviewed_startup_and_distinct_firmware_qualification() {
         "Carista EVO+",
         "Carista EVOLUTION",
         "vLinker MCX",
-        "OBDLink MX+",
+        "OBDLink LX",
     ] {
         assert!(Model::from_product(product).is_err());
     }

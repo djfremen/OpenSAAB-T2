@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import AppKit
 import Foundation
+import IOBluetooth
 
 extension Shell {
     func detectAdapter(bluetoothMode: String = "startup") {
@@ -20,7 +21,7 @@ extension Shell {
         guard !busy, session == nil, securityJob == nil else { return }
         bluetoothVehicle = [:]; vehicle.stringValue = "Select a Bluetooth adapter"
         let alert = NSAlert(); alert.messageText = "Bluetooth adapters — limited engine reads"
-        alert.informativeText = "OBDLink MX+ is not available in this preview.\n\nLegacy Carista EVO / vLinker MC+ support is limited to VIN and Trionic 8 engine reads. Native I-bus diagnostics and SW-CAN wake are unavailable.\n\nBLE connects inside OpenSAAB. Pair Classic devices in macOS Bluetooth settings first."
+        alert.informativeText = "OBDLink MX+ (STN2255 v5.12.4 · r3.1.3): Connect and start reads a fresh VIN, releases the adapter, then opens the original Tech2 firmware over the same MX+. Read-only: codes and key status; code clearing is unavailable. Pair the MX+ in macOS Bluetooth settings first.\n\nLegacy Carista EVO / vLinker MC+ support is limited to VIN and Trionic 8 engine reads. Native I-bus diagnostics and SW-CAN wake are unavailable.\n\nBLE connects inside OpenSAAB. Pair Classic devices in macOS Bluetooth settings first."
         alert.addButton(withTitle:"Use selected adapter").isEnabled = false
         alert.addButton(withTitle:"Cancel")
         let list = NSPopUpButton(frame:NSRect(x:0,y:0,width:520,height:30))
@@ -62,6 +63,10 @@ extension Shell {
                 self.textDialog(mode == "ecm_info" ? "ECM information — HS-CAN" : "Read engine codes — HS-CAN",display)
             }
             self.refresh()
+            if mode == "startup", report["status"] as? String == "identified",
+               let handoff = report["mx_handoff"] as? [String:String], handoff["model"] == "obdlink_mxp", let address = handoff["address"] {
+                self.startMXFirmware(address:address, vehicle:report["vehicle"] as? [String:Any] ?? [:])
+            }
         }
         do { try workflow.start() }
         catch { bluetoothWorkflow = nil; bluetoothPicker = nil; busy = false; showError(error.localizedDescription); refresh(); return }
@@ -69,6 +74,36 @@ extension Shell {
             guard let self, self.bluetoothWorkflow === workflow else { return }; self.bluetoothPicker = nil
             if choice == .alertFirstButtonReturn, list.indexOfSelectedItem >= 0, list.indexOfSelectedItem < candidates.count, let id = candidates[list.indexOfSelectedItem]["id"] { workflow?.select(id) }
             else { workflow?.stop() }
+        }
+    }
+    /// Primary MX+ route: hand the verified, released discovery endpoint to the
+    /// original-firmware worker over a fresh native RFCOMM owner. A failed handoff
+    /// reports unavailable; it never starts offline emulation as a substitute.
+    func startMXFirmware(address: String, vehicle: [String:Any]) {
+        guard !busy, session == nil else { return }
+        guard fm.isExecutableFile(atPath:binaries.appendingPathComponent("tech2-mx").path) else {
+            status.stringValue = "MX+ identified · Original-firmware MX+ binding is not included in this build"; return
+        }
+        guard let device = IOBluetoothDevice(addressString:address), (device.name ?? "").hasPrefix("OBDLink MX+") else {
+            status.stringValue = "MX+ firmware session unavailable · Adapter no longer selectable · No offline fallback"; return
+        }
+        let bridge: MacMXFirmwareBridge
+        do { bridge = try MacMXFirmwareBridge(device:device) }
+        catch { status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription; return }
+        bridge.vehicle = vehicle
+        busy = true; status.stringValue = MxSessionOutcome.readSummary + " · Opening adapter"; refresh()
+        bridge.open { [weak self] result in
+            guard let self else { bridge.close(); return }
+            self.busy = false
+            switch result {
+            case .success:
+                self.start(mx:bridge)
+                if self.session?.mx !== bridge { bridge.close() }
+            case .failure(let error):
+                bridge.close()
+                self.status.stringValue = "MX+ firmware session unavailable: " + error.localizedDescription + " · No offline fallback was started"
+                self.refresh()
+            }
         }
     }
     func bluetoothTools() {

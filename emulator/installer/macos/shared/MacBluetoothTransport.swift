@@ -11,7 +11,9 @@ protocol MacBluetoothLink: AnyObject {
 final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     static let uuid = "00001101-0000-1000-8000-00805f9b34fb"
     static func supported(_ name: String) -> Bool {
-        ["carista evo", "vlinker mc", "vlinker mc-android"].contains(name.lowercased())
+        let lower = name.lowercased()
+        return ["carista evo", "vlinker mc", "vlinker mc-android"].contains(lower)
+            || lower == "obdlink mx+" || lower.hasPrefix("obdlink mx+ ")
     }
     let device: IOBluetoothDevice
     private let allowed: (String)->Bool
@@ -45,8 +47,11 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
     func send(_ request: [String:Any]) {
         if request["op"] as? String == "close" { close(); return }
-        guard !closing, !writing, request["op"] as? String == "write",
-              let command = request["command"] as? String, allowed(command),
+        // INTERRUPT writes a bare CR (Android VlinkerSppTransport parity): it ends STN
+        // monitoring; it is not a command and carries no vehicle payload.
+        let interrupt = request["op"] as? String == "interrupt"
+        guard !closing, !writing, interrupt || request["op"] as? String == "write",
+              let command = interrupt ? "" : request["command"] as? String, interrupt || allowed(command),
               !command.contains("\r"), !command.contains("\n"), let channel, channel.isOpen() else { fail("Unsupported native Bluetooth write"); return }
         var bytes = Array((command + "\r").utf8)
         guard bytes.count <= Int(channel.getMTU()) else { fail("Native write exceeds RFCOMM MTU"); return }
@@ -54,7 +59,7 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let result = bytes.withUnsafeMutableBytes { channel.writeSync($0.baseAddress, length:UInt16($0.count)) }
         writing = false
         guard result == kIOReturnSuccess else { fail("Native RFCOMM write failed: \(result)"); return }
-        packet?(["type":"write_completed", "command":command, "native_result":result])
+        packet?(["type":"write_completed", "command":command, "interrupt":interrupt, "native_result":result])
         let received = deferred; deferred = []
         for bytes in received { guard !closing else { break }; packet?(["type":"rx", "bytes":bytes]) }
     }
@@ -91,8 +96,13 @@ final class MacSPPTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let deadline = Date().addingTimeInterval(3)
         while ownsDevice && device.isConnected() && Date() < deadline { RunLoop.current.run(until:Date().addingTimeInterval(0.05)) }
         let released = (!ownsDevice || !device.isConnected()) && channel?.isOpen() != true && channelResult == kIOReturnSuccess && deviceResult == kIOReturnSuccess
-        packet?(["type":"closed", "bluetooth_closed":released, "error":closeError.isEmpty && !released ? "Native Bluetooth release was not confirmed" : closeError,
-                 "channel_close_result":channelResult, "device_close_result":deviceResult])
+        let result: [String:Any] = ["type":"closed", "bluetooth_closed":released, "error":closeError.isEmpty && !released ? "Native Bluetooth release was not confirmed" : closeError,
+                 "channel_close_result":channelResult, "device_close_result":deviceResult]
+        // The MX+ needs a settle period after RFCOMM release before the same endpoint
+        // can be reopened (discovery -> original-firmware handoff), as on Android.
+        if (device.name ?? "").hasPrefix("OBDLink MX+") {
+            DispatchQueue.main.asyncAfter(deadline:.now()+3) { [self] in packet?(result) }
+        } else {packet?(result)}
     }
     func shutdown() { packet = nil; if !finished { close() }; channel?.setDelegate(nil); channel = nil }
 }

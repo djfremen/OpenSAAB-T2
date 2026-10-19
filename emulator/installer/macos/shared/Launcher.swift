@@ -662,6 +662,23 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     if !current.running {
       lastConsole = current.consoleText
       let code = current.process.terminationStatus
+      if let mx = current.mx {
+        mx.close()
+        // Preview.18: a request the read gate refused before transmit is an
+        // unsupported operation, not a crash. No retry, replay or offline fallback.
+        if MxSessionOutcome.unsupported(mxSession: true, rejected: MxSessionOutcome.rejected(lastConsole), forced: false, launchFailed: false) {
+          let outcome: [String:Any] = ["result":"unsupported_operation", "blocked_request_sent":false, "lifecycle":"UNSUPPORTED_OPERATION", "child_exit_code":Int(code)]
+          try? JSONSerialization.data(withJSONObject:outcome, options:[.sortedKeys]).write(to:current.run.appendingPathComponent("mx-session-outcome.json"), options:.atomic)
+          recordSessionEnd(current.run, reason: "unsupported_operation", exitCode: code, began: sessionBegan)
+          session = nil
+          lcd.image = nil
+          lcd.caption = "MX+ session ended\nOperation unavailable"
+          status.stringValue = MxSessionOutcome.unavailableMessage
+          vehicle.stringValue = "Session ended · Connect again for a fresh VIN"
+          refresh()
+          return
+        }
+      }
       // The emulator classifies adapter stops in shared Rust (adapter_failure.rs) and writes
       // the result to report.json; this shell only presents it.
       let failure = AdapterFailure.read(run: current.run)
@@ -688,7 +705,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     try? current.pump()
     if let frame = try? current.frame() { lcd.image = frame }
   }
-  func start(chipsoftPort: String? = nil, adapter: USBAdapterEndpoint? = nil, mode: ChipsoftSessionMode = .readOnly, freshSecurity: Bool = false) {
+  func start(chipsoftPort: String? = nil, adapter: USBAdapterEndpoint? = nil, mode: ChipsoftSessionMode = .readOnly, freshSecurity: Bool = false, mx: MacMXFirmwareBridge? = nil) {
     guard !busy, session == nil else { return }
     if (try? store.validateCore()) == nil {
       do { try BundledRuntime.ensure(resources: Bundle.main.resourceURL!, store: store) }
@@ -703,14 +720,17 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       guard chipsoftPort == nil || adapter == nil else { throw ShellError.message("Choose one adapter connection.") }
       let endpoint = adapter ?? chipsoftPort.map { USBAdapterEndpoint(kind: .chipsoft, port: $0, identity: securityAdapterIdentity) }
       session = try EmulatorSession(
-        binary: binaries.appendingPathComponent("tech2-emu"), store: store, adapter: endpoint, mode: mode, freshSecurity: freshSecurity)
+        binary: binaries.appendingPathComponent("tech2-emu"), store: store, adapter: endpoint, mode: mode, freshSecurity: freshSecurity, mxBridge: mx)
       sessionBegan = Date()
       lcd.caption = nil
       menuNavigating = false; menuNavigationGeneration += 1
       if endpoint != nil { connectionAttempt?.bind(session!.run, mode: mode.rawValue); connectionAttempt?.advance("SESSION") } else { connectionAttempt = nil }
       lcd.image = nil
       dtcReportButton.isHidden = true
-      if endpoint == nil {
+      if mx != nil {
+        connectionAttempt = nil
+        status.stringValue = MxSessionOutcome.readSummary + " · Starting original firmware"
+      } else if endpoint == nil {
         bluetoothVehicle = [:]
         vehicle.stringValue = "Offline exploration · No vehicle connected"
         status.stringValue = "Emulation mode · Offline"
@@ -767,7 +787,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.connectionAttempt = nil
         self.lastConsole = text
         self.busy = false
-        self.status.stringValue = clean ? "Stopped · Ready" :
+        self.status.stringValue = clean ? (stopping.mx != nil ? "MX+ session stopped · Bluetooth released" : "Stopped · Ready") :
           stopping.stopOutcome?.forcedProcessExit == true ? "Session stopped forcibly. See Console." :
           "Stopped · Adapter cleanup not confirmed. See Console."
         self.lcd.caption = clean ? nil : self.status.stringValue
@@ -846,7 +866,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
   @objc func about() {
     textDialog(
       "OpenSAAB T2 · macOS \(shellVersion)",
-      "Native \(shellArchitectureLabel) · Android-reference interface\n\nOriginal firmware menus, keypad, offline mode and diagnostic-language selection. Application controls currently remain English.\n\nUSB adapters: Chipsoft Pro and the VCX Nano preview verify identity and a fresh VIN before opening the diagnostic menus. The native MDI preview uses the Android-reference shared USB transport and original guest menus; exact-build hardware checks are required. Bluetooth adapters: OBDLink MX+ is not available in this preview. Legacy Carista EVO / vLinker MC+ support is limited to VIN and Trionic 8 engine reads; native I-bus diagnostics and SW-CAN wake are unavailable. Exact-build live workflows require separate hardware validation. Session modes follow Android: Full native control, Read-only diagnostics, and Collect security seeds. Security processing/import and passive saved DTC reports use the shared Rust workers."
+      "Native \(shellArchitectureLabel) · Android-reference interface\n\nOriginal firmware menus, keypad, offline mode and diagnostic-language selection. Application controls currently remain English.\n\nUSB adapters: Chipsoft Pro and the VCX Nano preview verify identity and a fresh VIN before opening the diagnostic menus. The native MDI preview uses the Android-reference shared USB transport and original guest menus; exact-build hardware checks are required. Bluetooth adapters: OBDLink MX+ (owner unit STN2255 v5.12.4) uses Connect and start: fresh VIN discovery, adapter release, then the original firmware read-only over the same MX+ on the Android preview.18 MX+ engine; Mac hardware validation is pending. Legacy Carista EVO / vLinker MC+ support is limited to VIN and Trionic 8 engine reads; native I-bus diagnostics and SW-CAN wake are unavailable. Exact-build live workflows require separate hardware validation. Session modes follow Android: Full native control, Read-only diagnostics, and Collect security seeds. Security processing/import and passive saved DTC reports use the shared Rust workers."
     )
   }
   func popup(_ entries: [(String, () -> Void)], anchor: NSView? = nil) {

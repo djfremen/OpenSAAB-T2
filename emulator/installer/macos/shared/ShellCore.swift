@@ -323,7 +323,11 @@ final class EmulatorSession {
   var connected: Bool { adapter != nil }
   let mode: ChipsoftSessionMode
   private(set) var stopOutcome: SessionStopOutcome?
-  var canAcceptMenuKey: Bool {running && queue.isEmpty && !fm.fileExists(atPath:run.appendingPathComponent("interactive-key.txt").path)}
+  /// Owned OBDLink MX+ native bridge; nil for offline and USB sessions.
+  private(set) var mx: MacMXFirmwareBridge?
+  /// The MX+ worker (Android libtech2_mx parity) reads encoder bytes from native-key.txt.
+  var mailbox: URL { run.appendingPathComponent(mx == nil ? "interactive-key.txt" : "native-key.txt") }
+  var canAcceptMenuKey: Bool {running && queue.isEmpty && !fm.fileExists(atPath:mailbox.path)}
   private let pipe = Pipe(), log: FileHandle, lock = NSLock()
   private var bytes = 0, console = Data(), queue: [String] = [], frameDate: Date?
   var running: Bool { process.isRunning }
@@ -332,13 +336,18 @@ final class EmulatorSession {
     if adapter?.kind == .mdi,let updated=try? RunAdapterBinding.read(run:run),updated.port==adapter?.port {adapter=updated}
   }
   static func gracefulStopBudget(for kind: USBAdapterKind?) -> TimeInterval { kind == .mdi ? 60 : kind == .nano ? 45 : 12 }
+  static let mxInstructionLimit = "50000000000"
   var consoleText: String {
     lock.lock()
     defer { lock.unlock() }
     return String(decoding: console, as: UTF8.self)
   }
-  init(binary: URL, store: FirmwareStore, chipsoftPort: String? = nil, adapter: USBAdapterEndpoint? = nil, mode: ChipsoftSessionMode = .readOnly, freshSecurity: Bool = false) throws {
+  init(binary: URL, store: FirmwareStore, chipsoftPort: String? = nil, adapter: USBAdapterEndpoint? = nil, mode: ChipsoftSessionMode = .readOnly, freshSecurity: Bool = false, mxBridge: MacMXFirmwareBridge? = nil) throws {
     guard chipsoftPort == nil || adapter == nil else { throw ShellError.message("Choose one adapter connection.") }
+    guard mxBridge == nil || (chipsoftPort == nil && adapter == nil && mode == .readOnly && !freshSecurity) else {
+      throw ShellError.message("MX+ sessions are exclusive, read-only original-firmware sessions.")
+    }
+    self.mx = mxBridge
     self.adapter = adapter ?? chipsoftPort.map { USBAdapterEndpoint(kind: .chipsoft, port: $0) }
     self.mode=mode
     try store.validateCore()
@@ -365,16 +374,26 @@ final class EmulatorSession {
       dtcIdentity["vin"]=value["vin"];dtcIdentity["observed_utc"]=value["observed_utc"]
       dtcIdentity["vehicle_description"]=value["description"]
     }
+    if let mx = mxBridge {
+      // Bind only this connection's fresh discovery; never a saved USB-era VIN.
+      dtcIdentity = ["adapter":"OBDLink MX+"]
+      if let vin = mx.vehicle["vin"] as? String { dtcIdentity["vin"] = vin }
+    }
     try JSONSerialization.data(withJSONObject:dtcIdentity).write(to:run.appendingPathComponent("dtc-context.json"),options:.atomic)
     // Required, per-run provenance survives app relaunch and binds security cleanup.
     try RunAdapterBinding.write(self.adapter, to: run)
     let info=Bundle.main.infoDictionary ?? [:]
-    let diagnosticBinding:[String:Any] = ["app_version":info["CFBundleShortVersionString"] as? String ?? "development",
+    var diagnosticBinding:[String:Any] = ["app_version":info["CFBundleShortVersionString"] as? String ?? "development",
       "architecture":shellArchitecture,"build":info["OpenSAABBuild"] as? String ?? "unavailable",
       "family":self.adapter?.kind == .chipsoft ? "chipsoft" : self.adapter?.kind == .nano ? "nano" : self.adapter?.kind == .mdi ? "mdi" : "offline",
       "transport":self.adapter == nil ? "offline" : self.adapter?.kind == .mdi ? "usb_rndis" : "usb_cdc",
       "session_mode":self.adapter == nil ? "offline" : mode == .fullNative ? "full_native" : mode == .seeds ? "security_seeds" : "read_only",
       "last_operation":self.adapter == nil ? "original_menus" : "connection"]
+    if mxBridge != nil {
+      diagnosticBinding["family"] = "obdlink_mxp"; diagnosticBinding["transport"] = "bluetooth_rfcomm"
+      diagnosticBinding["native_api"] = "IOBluetoothRFCOMMChannel"; diagnosticBinding["session_mode"] = "mxp_native_read"
+      diagnosticBinding["engine"] = "tech2-mx"
+    }
     try JSONSerialization.data(withJSONObject:diagnosticBinding).write(to:run.appendingPathComponent("connection-evidence.json"),options:.atomic)
 
     let logURL = run.appendingPathComponent("console.log")
@@ -395,6 +414,18 @@ final class EmulatorSession {
     if let endpoint=self.adapter,endpoint.kind == .mdi {
       process.executableURL=binary.deletingLastPathComponent().appendingPathComponent("opensaab-mdi")
       process.arguments=["--target",endpoint.port,"--directory",run.path,"--runtime",store.runtime.path,"--card",card.path,"--mode",mode == .fullNative ? "full" : mode == .seeds ? "seeds" : "read"]
+    }
+    if let mx = mxBridge {
+      // Android preview.18 MX+ launch (MainActivity.runSession) on the same engine
+      // source: eager CANdi, native manual input, no automatic replay.
+      process.executableURL = binary.deletingLastPathComponent().appendingPathComponent("tech2-mx")
+      process.arguments = [
+        "--test-harness", "--boot", store.runtime.appendingPathComponent("eprom.bin").path,
+        "--max-insns", Self.mxInstructionLimit, "--output-dir", run.path,
+        "--candi-native-link", "--candi-firmware", store.runtime.appendingPathComponent("candi.bin").path,
+        "--opsys", store.runtime.appendingPathComponent("opsys.dwn").path,
+        "--candi-obdlink-token", mx.token, "--harness-target", "native-manual", card.path,
+      ]
     }
     process.currentDirectoryURL = run
     process.environment = mode.environment(ProcessInfo.processInfo.environment, connected: self.adapter?.kind == .chipsoft)
@@ -424,7 +455,7 @@ final class EmulatorSession {
     }
     let metadata: [String: Any] = [
       "pid": process.processIdentifier, "mode": self.adapter == nil ? "offline" : mode.rawValue, "architecture": shellArchitecture, "run": run.path,
-      "adapter": self.adapter?.kind.rawValue ?? "offline",
+      "adapter": mxBridge != nil ? "obdlink_mxp" : self.adapter?.kind.rawValue ?? "offline",
       "firmware": selected.id,
       "seed_collection": self.adapter != nil && mode == .seeds,
     ]
@@ -434,11 +465,12 @@ final class EmulatorSession {
   }
   func key(_ code: Int) {
     if running && queue.count < 16 {
-      queue.append(code == 16 ? "enter" : String(format: "0x%02x", code))
+      // MX+ worker accepts encoder bytes only: Enter is 0x10 (Android preview.17 fix).
+      queue.append(code == 16 && mx == nil ? "enter" : String(format: "0x%02x", code))
     }
   }
   func pump() throws {
-    let mailbox = run.appendingPathComponent("interactive-key.txt")
+    let mailbox = self.mailbox
     if running && !queue.isEmpty && !fm.fileExists(atPath: mailbox.path) {
       try Data((queue.removeFirst() + "\n").utf8).write(to: mailbox, options: .atomic)
     }
@@ -457,8 +489,7 @@ final class EmulatorSession {
     if let outcome = stopOutcome { return outcome.continuationSafe }
     if !running { return finishStop(forced: false) }
     if adapter?.kind == .mdi { try? Data("stop\n".utf8).write(to:run.appendingPathComponent("mdi-stop"),options:.atomic) }
-    try? Data("stop\n".utf8).write(
-      to: run.appendingPathComponent("interactive-key.txt"), options: .atomic)
+    try? Data("stop\n".utf8).write(to: mailbox, options: .atomic)
     // Nano can finish its bounded startup and six 3s shutdown exchanges on stop.
     let deadline = Date().addingTimeInterval(Self.gracefulStopBudget(for: adapter?.kind))
     while running && Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
@@ -470,19 +501,26 @@ final class EmulatorSession {
       if running { kill(process.processIdentifier, SIGKILL) }
     }
     process.waitUntilExit()
+    if let mx {
+      mx.close()
+      if !Thread.isMainThread { mx.waitForRelease(seconds: 8) }
+    }
     return finishStop(forced: !clean)
   }
   private func finishStop(forced: Bool) -> Bool {
     let outcome = SessionStopOutcome(forcedProcessExit: forced,
-      protocolCleanupConfirmed: adapter?.kind == .mdi ? MdiCleanup.confirmed(run:run) : adapter?.kind != .nano || NanoCleanup.confirmed(run: run))
+      protocolCleanupConfirmed: mx != nil ? mx!.bluetoothClosed : adapter?.kind == .mdi ? MdiCleanup.confirmed(run:run) : adapter?.kind != .nano || NanoCleanup.confirmed(run: run))
     let detail:[String:Any] = ["child_exit_code":Int(process.terminationStatus),"forced_termination":forced,
       "usb_release":adapter?.kind == .mdi ? (MdiCleanup.confirmed(run:run) ? "succeeded":"failed") : "unknown","protocol_cleanup":adapter?.kind == .mdi ? (MdiCleanup.confirmed(run:run) ? "succeeded":"failed") : adapter?.kind == .nano ? (NanoCleanup.confirmed(run:run) ? "succeeded":"failed") : "unknown"]
-    try? JSONSerialization.data(withJSONObject:detail).write(to:run.appendingPathComponent("cleanup-evidence.json"),options:.atomic)
+    var evidence = detail
+    if let mx { evidence["bluetooth_release"] = mx.released ? (mx.bluetoothClosed ? "succeeded" : "failed") : "unconfirmed"; evidence["usb_release"] = "not_applicable" }
+    try? JSONSerialization.data(withJSONObject:evidence).write(to:run.appendingPathComponent("cleanup-evidence.json"),options:.atomic)
     stopOutcome = outcome
     return outcome.continuationSafe
   }
   deinit {
     if running { kill(process.processIdentifier, SIGKILL) }
+    mx?.close()
     pipe.fileHandleForReading.readabilityHandler = nil
     try? log.close()
   }

@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 SOURCES = HERE / "shared"
 EMULATOR = HERE.parents[1]
 ROOT = EMULATOR.parent
-VERSION = "0.2.27-preview.3"
+VERSION = "0.2.28-mxplus.1"
 TARGETS = {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}
 
 def run(*args, **kwargs):
@@ -53,6 +53,8 @@ def main():
                         help="Root containing the approved Android support files (or three flat files)")
     parser.add_argument("--without-support", action="store_true", help="Explicit import-only package; not the standard setup profile")
     parser.add_argument("--source-commit", help="Pinned predecessor revision for the private non-Git source snapshot")
+    parser.add_argument("--mx-engine", type=Path, help="Prebuilt OBDLink MX+ original-firmware worker (Android libtech2_mx source, built for this architecture)")
+    parser.add_argument("--mx-engine-revision", help="40-hex OpenSAAB-T2 source revision the --mx-engine binary was built from")
     options = parser.parse_args()
     VERSION = options.version
     bundle_version = options.bundle_version or numeric_bundle_version(VERSION)
@@ -97,8 +99,17 @@ def main():
         resources.mkdir()
         for binary in ("tech2-emu", "chipsoft-probe", "chipsoft-vin", "nano-usb-probe", "opensaab-security", "opensaab-reports", "opensaab-connection", "opensaab-mdi"):
             shutil.copy2(rust_target_dir / target_triple / "release" / binary, binaries / binary)
+        mx_engine = None
+        if options.mx_engine:
+            if not options.mx_engine_revision or not re.fullmatch(r"[0-9a-f]{40}", options.mx_engine_revision):
+                raise SystemExit("--mx-engine requires --mx-engine-revision with the exact 40-hex source revision")
+            shutil.copy2(options.mx_engine, binaries / "tech2-mx")
+            mx_engine = {"binary": "tech2-mx", "source_repository": "OpenSAAB-T2", "source_revision": options.mx_engine_revision,
+                "android_reference": "0.1.1-preview.18 libtech2_mx.so", "sha256": digest(binaries / "tech2-mx"),
+                "transport": "IOBluetoothRFCOMMChannel via authenticated 127.0.0.1:35676 byte bridge",
+                "qualification": "host build only; Mac MX+ hardware/vehicle validation pending"}
         run("xcrun", "swiftc", "-O", "-target", f"{architecture}-apple-macos12.0", "-framework", "AppKit", "-framework", "Security", "-framework", "CoreBluetooth", "-framework", "IOBluetooth", "-framework", "IOKit",
-            SOURCES / "Launcher.swift", SOURCES / "ShellCore.swift", SOURCES / "NanoAdapterWorkflow.swift", SOURCES / "MdiAdapterWorkflow.swift", SOURCES / "PrivateAutomation.swift", SOURCES / "BundledRuntime.swift", SOURCES / "ShellChecks.swift", SOURCES / "DesignChecks.swift", SOURCES / "SecurityStatus.swift", SOURCES / "VehicleStatusView.swift", SOURCES / "UIParityChecks.swift", SOURCES / "USBAdapterDiscovery.swift", SOURCES / "USBAdapterChooser.swift", SOURCES / "USBChooserChecks.swift", SOURCES / "SecurityWorkflow.swift", SOURCES / "DtcReports.swift", SOURCES / "SupportReports.swift", SOURCES / "MenuShortcuts.swift", SOURCES / "EngineStartup.swift", SOURCES / "MacBluetoothTransport.swift", SOURCES / "MacBluetoothWorkflow.swift", SOURCES / "BluetoothActions.swift", SOURCES / "MacBluetoothChecks.swift", ROOT / "shared/apple-bluetooth/AppleBLETransport.swift", "-o", binaries / "OpenSAAB")
+            SOURCES / "Launcher.swift", SOURCES / "ShellCore.swift", SOURCES / "NanoAdapterWorkflow.swift", SOURCES / "MdiAdapterWorkflow.swift", SOURCES / "PrivateAutomation.swift", SOURCES / "BundledRuntime.swift", SOURCES / "ShellChecks.swift", SOURCES / "DesignChecks.swift", SOURCES / "SecurityStatus.swift", SOURCES / "VehicleStatusView.swift", SOURCES / "UIParityChecks.swift", SOURCES / "USBAdapterDiscovery.swift", SOURCES / "USBAdapterChooser.swift", SOURCES / "USBChooserChecks.swift", SOURCES / "SecurityWorkflow.swift", SOURCES / "DtcReports.swift", SOURCES / "SupportReports.swift", SOURCES / "MenuShortcuts.swift", SOURCES / "EngineStartup.swift", SOURCES / "MacBluetoothTransport.swift", SOURCES / "MacBluetoothWorkflow.swift", SOURCES / "BluetoothActions.swift", SOURCES / "MacBluetoothChecks.swift", SOURCES / "MacMXFirmwareBridge.swift", ROOT / "shared/apple-bluetooth/AppleBLETransport.swift", "-o", binaries / "OpenSAAB")
         shutil.copy2(EMULATOR / "ui/firmware-catalog.json", resources / "firmware-catalog.json")
         support_dir = resources / "system"
         support_dir.mkdir()
@@ -127,7 +138,7 @@ def main():
             CFBundleVersion=bundle_version, OpenSAABFullVersion=VERSION, CFBundleIconFile="OpenSAAB.icns",
             LSMinimumSystemVersion="12.0", NSHighResolutionCapable=True, OpenSAABBuild=build_id(options.source_commit),
             OpenSAABReleaseChannel=options.release_channel, OpenSAABSecurityAccessMode="no_operator_password",
-            NSBluetoothAlwaysUsageDescription="Read VIN and engine information using an explicitly selected, compatible Bluetooth adapter.")
+            NSBluetoothAlwaysUsageDescription="Read VIN and engine information, and run original-firmware OBDLink MX+ sessions, using an explicitly selected, compatible Bluetooth adapter.")
         (contents / "Info.plist").write_bytes(plistlib.dumps(info))
         for file in ("LICENSE", "LICENSING.md", "THIRD_PARTY_NOTICES.md"):
             shutil.copy2(EMULATOR / file, resources / file)
@@ -190,7 +201,8 @@ def main():
             mdi_workflow={"Android_reference":"0.1.0-preview.70","shared_package":"opensaab-mdi-workflow","USB_binding":"native-IOKit","installed_guest_qualification":"pending","reference_manifest_sha256":digest(ROOT / "shared/mdi-workflow/ANDROID_REFERENCE.json")},
             interface_contract_sha256=digest(resources / "interface-contract.json"),
             bluetooth_workflow={"package":"opensaab-vlinker-workflow", "version":"0.1.3", "source_pin_sha256":digest(ROOT / "shared/vlinker-workflow/SOURCE_SHA256")},
-            apple_ble_source_sha256=digest(ROOT / "shared/apple-bluetooth/AppleBLETransport.swift"))
+            apple_ble_source_sha256=digest(ROOT / "shared/apple-bluetooth/AppleBLETransport.swift"),
+            mxplus_firmware_engine=mx_engine or "not included")
         (resources / "build.json").write_text(json.dumps(provenance, indent=2) + "\n")
         for binary in binaries.iterdir():
             run("codesign", "--force", "--sign", "-", binary)

@@ -80,6 +80,9 @@ final class MacBluetoothWorkflow {
     private var pending: [String:Any]?, profile: [String:Any] = [:], closing = false, finished = false
     private var commandAttempts: [String:Int] = [:], commandWrites: [String:Int] = [:]
     private var trace = "", expectedCommand: String?, connectionStopping = false
+    // Explicit MX+ endpoint whose verified, released discovery may hand off to the
+    // original-firmware session (Android preview.16 BluetoothFirmwareHandoff parity).
+    private var mxEndpoint: [String:String]?, releaseConfirmed = false
     private let runID = UUID().uuidString, linkFactory: ((@escaping (String)->Bool)->MacBluetoothLink)?
     private let lookupEffect: ((URL,Int,Double,@escaping (Data?,Int)->Void)->Void)?
     var onDevices: (([[String:String]])->Void)?, onStatus: ((String)->Void)?
@@ -144,7 +147,15 @@ final class MacBluetoothWorkflow {
             guard !closing else { return }
             let spp = value["transport"] as? String == "macos-classic-spp" && value["uuid"] as? String == MacSPPTransport.uuid && MacSPPTransport.supported(value["device_name"] as? String ?? "")
             guard AppleBLEProfile.accepts(value) || spp else { pending = ["state":"failed", "error":"Unsupported Bluetooth transport profile"]; close(); return }
-            profile = value; core(["op":"start"])
+            profile = value
+            if spp && (value["device_name"] as? String ?? "").lowercased().hasPrefix("obdlink mx+") {
+                do {
+                    let selected = try call("vlinker",["op":"select_profile", "model":"obdlink_mxp"])
+                    guard selected["state"] as? String == "idle" else {throw ShellError.message(selected["error"] as? String ?? "MX+ profile unavailable")}
+                    mxEndpoint = ["address":value["device_id"] as? String ?? "", "name":value["device_name"] as? String ?? ""]
+                } catch {pending = ["state":"failed", "error":error.localizedDescription]; close(); return}
+            }
+            core(["op":"start"])
         case "write_completed": if let command = value["command"] as? String { commandWrites[command,default:0] += 1; if expectedCommand == command { expectedCommand = nil } }
         case "rx": if !closing { core(["op":"rx", "bytes":value["bytes"] ?? []]) }
         case "error": if !closing { core(["op":"error", "message":value["message"] ?? "Bluetooth transport failed"]) }
@@ -176,6 +187,7 @@ final class MacBluetoothWorkflow {
         guard !finished else { return }
         closing = true; timer?.invalidate(); timer = nil; expectedCommand = nil
         let confirmed = value["bluetooth_closed"] as? Bool == true
+        releaseConfirmed = confirmed
         let error = value["error"] as? String ?? ""
         let success = confirmed && error.isEmpty && pending?["state"] as? String == "complete"
         let result = success ? pending?["result"] as? [String:Any] ?? [:] : [:]
@@ -235,7 +247,14 @@ final class MacBluetoothWorkflow {
             else {let request=MacBluetoothHTTPS();http=request;request.run(url:url,limit:limit,timeout:timeout,callback:completion)}
         } else {
             onVehicle?(value)
-            complete(["status":value["state"] ?? "failed", "message":value["message"] ?? "", "vehicle":value["vehicle"] ?? [:], "bluetooth_closed":true])
+            var report: [String:Any] = ["status":value["state"] ?? "failed", "message":value["message"] ?? "", "vehicle":value["vehicle"] ?? [:], "bluetooth_closed":true]
+            // Only a verified, identified, released MX+ discovery in this foreground
+            // startup may start original firmware; anything else stays discovery-only.
+            if mode == "startup", !connectionStopping, releaseConfirmed, value["state"] as? String == "identified",
+               let endpoint = mxEndpoint, !(endpoint["address"] ?? "").isEmpty {
+                report["mx_handoff"] = ["address":endpoint["address"]!, "name":endpoint["name"] ?? "", "model":"obdlink_mxp"]
+            }
+            complete(report)
         }
     }
     private func complete(_ report: [String:Any]) {

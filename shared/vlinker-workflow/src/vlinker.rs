@@ -9,9 +9,9 @@ use std::{
 
 pub use crate::adapters::mic::VIN_REQUEST;
 // Compatibility export; identified models select their own startup profile below.
-pub const COMMANDS: [&str; 13] = *crate::adapters::vlinker_mc_plus::PROFILE.startup;
+pub const COMMANDS: [&str; 13] = crate::adapters::mic::STARTUP;
 pub fn allowed(command: &str) -> bool {
-    [crate::adapter_identity::Model::VlinkerMcPlus, crate::adapter_identity::Model::CaristaEvo]
+    [crate::adapter_identity::Model::VlinkerMcPlus, crate::adapter_identity::Model::CaristaEvo, crate::adapter_identity::Model::ObdlinkMxp]
         .iter().any(|model| model.profile().startup.contains(&command))
         || PROBE_COMMANDS.contains(&command)
 }
@@ -285,6 +285,18 @@ impl Session {
         session.commands.push("VTPC");
         session
     }
+    fn close_command(&self) -> &'static str {
+        if self.commands.contains(&"STDI") { "STPC" } else { "VTPC" }
+    }
+    fn select_obdlink(&mut self) -> Result<(), String> {
+        if self.started { return Err("Cannot change an active adapter profile".into()); }
+        self.commands = crate::adapters::obdlink_mxp::STARTUP[..if self.read_vin {22} else {5}].to_vec();
+        if self.mode == "ecm_dtc" {
+            self.commands.extend(["ATCFC0", "ATCF5E8", "ATCM5FF", "ATSTFF", SESSION_START, DTC_READ, SESSION_STOP]);
+        } else if self.mode == "ecm_info" { self.commands.extend(INFO_READS.iter().map(|r|r.0)); }
+        if self.read_vin { self.commands.push("STPC"); }
+        Ok(())
+    }
     fn fail(&mut self, reason: impl Into<String>) -> Value {
         let reason = reason.into();
         // When a report fails while the diagnostic operation is active, stop once,
@@ -295,9 +307,9 @@ impl Session {
             self.dtc = None;
             self.commands = if self.commands[self.index] == SESSION_STOP {
                 self.diagnostic_active = false;
-                vec!["VTPC"]
+                vec![self.close_command()]
             } else {
-                vec![SESSION_STOP, "VTPC"]
+                vec![SESSION_STOP, self.close_command()]
             };
             self.index = 0;
             return self.emit();
@@ -326,6 +338,7 @@ impl Session {
             "ATZ" => {}
             "VTI" => {
                 let model = crate::adapter_identity::Model::from_product(reply)?;
+                if model == crate::adapter_identity::Model::ObdlinkMxp { return Err("MX+ requires its explicit STN profile".into()); }
                 // Adopt the identified model's startup, preserving pending probe
                 // reads and cleanup. Identity-only sessions retain their five steps.
                 let count = if self.mode == "vin" { self.commands.len() } else { 12 };
@@ -333,7 +346,12 @@ impl Session {
                 self.model = Some(model);
                 self.product = reply.into();
             }
-            "VTVERS" => {
+            "STDI" => {
+                let model = crate::adapter_identity::Model::from_product(reply)?;
+                if model != crate::adapter_identity::Model::ObdlinkMxp { return Err("Selected MX+ returned a different product".into()); }
+                self.model = Some(model); self.product = reply.into();
+            }
+            "STI" | "VTVERS" => {
                 let model = self.model.ok_or("Missing adapter model")?;
                 let qualified = if self.mode == "vin" { model.vin_firmware(reply) } else { model.probe_firmware(reply) };
                 if self.read_vin && !qualified {
@@ -357,7 +375,7 @@ impl Session {
                 }
                 self.voltage = reply.into();
             }
-            "VTPRON" => {
+            "STPR" | "VTPRON" => {
                 if reply != "6"
                     && reply
                         .chars()
@@ -368,7 +386,7 @@ impl Session {
                     return Err("Adapter did not select 11-bit HS-CAN protocol 6".into());
                 }
             }
-            "VTPBRD" => {
+            "STPBRR" | "VTPBRD" => {
                 if reply != "500000" {
                     return Err("Adapter CAN baud rate is not 500000".into());
                 }
@@ -413,6 +431,11 @@ impl Session {
             return terminal.clone();
         }
         let op = event["op"].as_str().unwrap_or("");
+        if op == "select_profile" {
+            return if event["model"] == "obdlink_mxp" {
+                match self.select_obdlink() {Ok(()) => json!({"state":"idle"}), Err(e) => self.fail(e)}
+            } else {self.fail("Unknown explicit adapter profile")};
+        }
         if op == "claim" {
             return if self.claim(event) { json!({"state":"idle"}) }
                 else { self.fail("Finish the active workflow before connecting") };
@@ -504,7 +527,7 @@ impl Session {
                         self.firmware, self.voltage
                     );
                     let result = json!({"state":"complete", "completed":completed,
-                        "result":{"mode":self.mode,"ecm_identifiers":self.ecm,"dtc_report":self.dtc,"display":display,"diagnostic_session_stopped":!self.diagnostic_active,"adapter_model":self.model.unwrap().id(),"adapter_label":self.model.unwrap().label(),"command_family":"MIC","profile_id":if self.mode == "vin" { self.model.unwrap().vin_profile_id() } else { self.model.unwrap().probe_profile_id(self.mode == "ecm_dtc") },"product":self.product,"chip_firmware":self.firmware,"voltage":self.voltage,
+                        "result":{"mode":self.mode,"ecm_identifiers":self.ecm,"dtc_report":self.dtc,"display":display,"diagnostic_session_stopped":!self.diagnostic_active,"adapter_model":self.model.unwrap().id(),"adapter_label":self.model.unwrap().label(),"command_family":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {"STN"} else {"MIC"},"profile_id":if self.mode == "vin" { self.model.unwrap().vin_profile_id() } else { self.model.unwrap().probe_profile_id(self.mode == "ecm_dtc") },"product":self.product,"chip_firmware":self.firmware,"voltage":self.voltage,
                             "vin":if self.read_vin {Some(&self.vin)} else {None},
                             "request_origin":self.origin, "firmware_emulation":false,
                             "flow_control_owner":if self.read_vin {"adapter"} else {"none"}}});

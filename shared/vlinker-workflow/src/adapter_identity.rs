@@ -4,6 +4,7 @@
 pub enum Model {
     VlinkerMcPlus,
     CaristaEvo,
+    ObdlinkMxp,
 }
 
 impl Model {
@@ -11,10 +12,11 @@ impl Model {
         match self {
             Self::VlinkerMcPlus => &crate::adapters::vlinker_mc_plus::PROFILE,
             Self::CaristaEvo => &crate::adapters::carista_evo::PROFILE,
+            Self::ObdlinkMxp => &crate::adapters::obdlink_mxp::PROFILE,
         }
     }
     pub fn from_product(product: &str) -> Result<Self, String> {
-        [Self::VlinkerMcPlus, Self::CaristaEvo]
+        [Self::VlinkerMcPlus, Self::CaristaEvo, Self::ObdlinkMxp]
             .into_iter()
             .find(|model| (model.profile().matches_product)(product))
             .ok_or_else(|| format!("Unsupported Bluetooth adapter identity: {product}"))
