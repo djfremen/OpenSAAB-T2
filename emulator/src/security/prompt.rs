@@ -4,8 +4,8 @@
 //! The original firmware shows the transfer instructions from its own message
 //! database. Each localized Tech 2 card stores that message as NUL-terminated
 //! lines: a record line carrying a 3-byte index prefix and the title, a dashed
-//! separator, then numbered steps. The title always names `TIS2000` and the
-//! step list always names the `RS232` cable, so the block is located by those
+//! or blank separator, then numbered steps. The title always names `TIS2000`
+//! and the step list always names the `RS232` cable, so the block is located by those
 //! untranslated anchors and matched with the card's own bytes. No translated
 //! literals are compiled in.
 //!
@@ -25,13 +25,13 @@ const MAX_LINE: usize = 64;
 const MAX_TITLE: usize = 3;
 const MAX_PROMPTS: usize = 4;
 const CACHE: &str = "security-prompt.json";
-const CACHE_SCHEMA: u64 = 2;
+const CACHE_SCHEMA: u64 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferPrompt {
     /// Title line(s), record prefix removed and outer spaces trimmed.
     pub title: Vec<Vec<u8>>,
-    /// Dashed separator below the title.
+    /// Separator below the title; empty for the Dutch card's blank row.
     pub separator: Vec<u8>,
     /// Step 1 line, outer spaces trimmed.
     pub step: Vec<u8>,
@@ -114,7 +114,8 @@ fn starts_record(line: &[u8]) -> bool {
 
 fn block(card: &[u8], hit: usize) -> Option<TransferPrompt> {
     // Title: the record-prefixed line containing or preceding the anchor, plus
-    // continuation lines up to the dashed separator; at most MAX_TITLE lines.
+    // continuation lines up to the dashed or blank separator; at most
+    // MAX_TITLE lines.
     let (s, e) = line_at(card, hit)?;
     let mut title = vec![(s, e)];
     while !starts_record(&card[title[0].0..title[0].1]) {
@@ -132,7 +133,7 @@ fn block(card: &[u8], hit: usize) -> Option<TransferPrompt> {
     while separator.is_none() {
         let (ns, ne) = next_line(card, cursor)?;
         cursor = ne;
-        if dashes(&card[ns..ne]) {
+        if ns == ne || dashes(&card[ns..ne]) {
             separator = Some(card[ns..ne].to_vec());
         } else if title.len() >= MAX_TITLE {
             return None;
@@ -219,10 +220,17 @@ impl TransferPrompt {
     pub fn matches(&self, screen: &[u8]) -> bool {
         let rows: Vec<&[u8]> = screen.split(|b| *b == b'\n').collect();
         let mut next = 0;
-        for needle in self.needles() {
+        for (index, needle) in self.needles().enumerate() {
+            let blank_separator = index == self.title.len() && self.separator.is_empty();
             match rows[next.min(rows.len())..]
                 .iter()
-                .position(|r| row_contains(r, needle))
+                .position(|r| {
+                    if blank_separator {
+                        trim(r).is_empty()
+                    } else {
+                        row_contains(r, needle)
+                    }
+                })
             {
                 Some(p) => next += p + 1,
                 None => return false,
@@ -245,9 +253,9 @@ impl TransferPrompt {
 
     /// Cached prompts obey the same shape as extracted ones, or are ignored.
     fn from_json(v: &Value) -> Option<Self> {
-        let unhex = |v: &Value| -> Option<Vec<u8>> {
+        let unhex = |v: &Value, allow_empty: bool| -> Option<Vec<u8>> {
             let s = v.as_str()?;
-            if s.is_empty() || s.len() % 2 != 0 || s.len() > MAX_LINE * 2 {
+            if (!allow_empty && s.is_empty()) || s.len() % 2 != 0 || s.len() > MAX_LINE * 2 {
                 return None;
             }
             let bytes = (0..s.len())
@@ -259,18 +267,19 @@ impl TransferPrompt {
         let title = v["title"]
             .as_array()?
             .iter()
-            .map(unhex)
+            .map(|v| unhex(v, false))
             .collect::<Option<Vec<_>>>()?;
         let p = Self {
-            separator: unhex(&v["separator"])?,
-            step: unhex(&v["step"])?,
-            cable: unhex(&v["cable"])?,
+            separator: unhex(&v["separator"], true)?,
+            step: unhex(&v["step"], false)?,
+            cable: unhex(&v["cable"], false)?,
             title,
         };
         (!p.title.is_empty()
             && p.title.len() <= MAX_TITLE
             && p.title.iter().any(|l| find(l, ANCHOR, 0).is_some())
-            && dashes(&p.separator)
+            && (p.separator.is_empty() || dashes(&p.separator))
+            && p.step.len() >= 4
             && p.step.starts_with(b"1.")
             && find(&p.cable, CABLE, 0).is_some())
         .then_some(p)
@@ -488,6 +497,32 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn dutch_transfer_requires_its_blank_separator_and_both_steps() {
+        // Exact message shape from the catalog-verified Dutch 148.000 card.
+        let card = card_with(&[b"\0\x02\x54\x1aU heeft een veiligheidstoegang van\0TIS2000 nodig\0\0\
+            1. Tech2 van de auto ontkoppelen.\0\
+            2. Tech2 aan de PC van TIS2000\0koppelen via kabel RS232.\0\xff\0".to_vec()]);
+        let prompts = extract(&card);
+        assert_eq!(prompts.len(), 1);
+        let prompt = &prompts[0];
+        assert!(prompt.separator.is_empty());
+        assert_eq!(TransferPrompt::from_json(&prompt.to_json()), Some(prompt.clone()));
+        let lines: [&[u8]; 6] = [
+            b"U heeft een veiligheidstoegang van", b"TIS2000 nodig", b"",
+            b"1. Tech2 van de auto ontkoppelen.", b"2. Tech2 aan de PC van TIS2000",
+            b"koppelen via kabel RS232.",
+        ];
+        assert!(prompt.matches(&screen(&lines, same)));
+        assert!(!prompt.matches(&screen(&lines[..5], same)));
+        let no_blank: Vec<&[u8]> = lines.iter().enumerate()
+            .filter_map(|(i, line)| (i != 2).then_some(*line)).collect();
+        assert!(!prompt.matches(&screen(&no_blank, same)));
+        let mut wrong = lines;
+        wrong[3] = b"1. A different task.";
+        assert!(!prompt.matches(&screen(&wrong, same)));
+    }
+
+    #[test]
     fn bounded_lines_keep_extraction_linear_and_titles_short() {
         // No NUL separators at all: every anchor is rejected in bounded time.
         let flood = b"TIS2000 ".repeat(32 * 1024);
@@ -528,6 +563,15 @@ pub(super) mod tests {
         assert!(!run.join(CACHE).exists());
         assert_eq!(for_run(&run, Cache::ReadWrite), expected);
         assert!(run.join(CACHE).exists());
+        assert_eq!(for_run(&run, Cache::Read), expected);
+        // Preview.4 may have cached no prompt for an unchanged Dutch card.
+        // Re-extract an old schema without letting a read-only lookup rewrite it.
+        let legacy = json!({"schema":2,"card":card_key(&run.join("card.bin")).unwrap(),"prompts":[]});
+        fs::write(run.join(CACHE), serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert_eq!(for_run(&run, Cache::Read), expected);
+        let unchanged: Value = serde_json::from_slice(&fs::read(run.join(CACHE)).unwrap()).unwrap();
+        assert_eq!(unchanged, legacy);
+        assert_eq!(for_run(&run, Cache::ReadWrite), expected);
         assert_eq!(for_run(&run, Cache::Read), expected);
         // A cache for a different card is ignored.
         fs::write(run.join("card.bin"), vec![0x42; 8192]).unwrap();

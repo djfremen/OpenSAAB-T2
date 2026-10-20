@@ -1,10 +1,11 @@
 {
   "schema": 1,
-  "version": "0.2.27-preview.4",
-  "predecessor_revision": "4fee8dace3558fe341e01d5d208599fc87fda661",
-  "scope": "Language-independent TIS2000 transfer prompt and off-by-default local MCP on 0.2.27-preview.3 for Intel and Apple silicon; exact source and retained build inputs, without private history, captures or diagnostic-card binaries.",
+  "version": "0.2.27-preview.5",
+  "predecessor_revision": "0fbc939d985c40f64fbc07d516b46ef27612919a",
+  "scope": "Dutch blank-separator TIS2000 transfer prompt support on 0.2.27-preview.4 for Intel and Apple silicon; source candidate, exact installed and vehicle verification pending. No private history, captures or diagnostic-card binaries.",
   "reviewed_changes": [
-    "Recognize the TIS2000 transfer prompt from the session card's own localized message (title, step 1, RS232 step); English wording check retained",
+    "Accept the Dutch card's blank separator while requiring its card-derived title, blank screen row, step 1 and RS232 line in order; dashed-separator cards and the English wording check retained",
+    "Prompt cache schema 3 invalidates preview.4's cached empty extraction for the unchanged Dutch card",
     "Same card-derived check on every processing gate, the live workflow poll and display status; display status never writes",
     "Diagnostic screen.raw keeps original LCD character codes beside the ASCII screen.txt",
     "Local MCP stdio server and native binding, off by default (app menu or --mcp-dir)",

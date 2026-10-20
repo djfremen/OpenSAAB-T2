@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "version": "0.2.27-preview.5",
+  "status": "source_candidate_not_packaged",
+  "predecessor_revision": "0fbc939d985c40f64fbc07d516b46ef27612919a",
+  "change": "Recognize the Dutch card's blank separator while retaining ordered card-derived title, separator, step 1 and RS232 matching. Cache schema 3 invalidates old empty prompt lists.",
+  "source_verification": {
+    "command": "cargo test --locked --features load-test",
+    "library_passed": 266,
+    "other_binary_and_integration_passed": 153,
+    "failed": 0,
+    "ignored": 16,
+    "real_card_command": "OPENSAAB_LANGUAGE_CARDS=<verified cards directory> cargo test --locked --features load-test --lib real_cards -- --ignored --nocapture",
+    "real_card_result": "Exactly one extracted prompt and a successful generated LCD match for each of the ten runnable catalog images",
+    "cards": ["en-nao-9.250", "en-148.000", "de", "es", "fi", "fr", "it", "nl", "ru", "se"],
+    "card_integrity": "All ten images match the packaged catalog imageSha; newly downloaded ZIPs also match downloadBytes and zipSha",
+    "regressions": [
+      "Dutch title plus blank separator plus numbered step and RS232 continuation matches",
+      "Missing blank separator, missing RS232 continuation or changed first step is rejected",
+      "Empty title, step or cable cache fields remain invalid",
+      "Schema-2 empty cache is ignored; read-only lookup does not rewrite it"
+    ],
+    "limits": "Real card bytes and generated LCD layouts are source checks, not captured non-English vehicle transfer screens"
+  },
+  "target_status": {
+    "macos-arm64": {"source": "Shared parser fix and existing run argument present", "installed_preview5": "pending", "vehicle_preview5": "pending"},
+    "macos-x86_64": {"source": "Shared parser fix and existing run argument present", "installed_preview5": "pending", "vehicle_preview5": "pending"},
+    "android": {"source": "Shell run-argument adoption pending", "installed": "pending", "vehicle": "pending"},
+    "windows": {"source": "Shell run-argument adoption pending", "installed": "pending", "vehicle": "pending"},
+    "ios": {"source": "Shell run-argument adoption pending", "installed": "pending", "vehicle": "pending"},
+    "linux": {"source": "Frontend adoption not established by this change", "installed": "pending", "vehicle": "pending"}
+  },
+  "preserved": ["no operator password", "internal service authentication", "explicit processing consent", "cancellation", "response validation", "SSA import integrity"],
+  "publication": "not_authorized"
+}
