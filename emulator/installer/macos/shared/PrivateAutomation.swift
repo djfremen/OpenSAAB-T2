@@ -68,9 +68,7 @@ final class PrivateAutomation {
     guard fm.fileExists(atPath: input.path) else { return }
     var id = "invalid", op = "invalid"
     do {
-      let attributes = try fm.attributesOfItem(atPath: input.path)
-      guard attributes[.type] as? FileAttributeType == .typeRegular,
-        let size = attributes[.size] as? NSNumber, size.intValue <= 8192 else {
+      guard try regularSize(input) <= 8192 else {
         throw ShellError.message("Private command must be a bounded regular file.")
       }
       let bytes = try Data(contentsOf: input)

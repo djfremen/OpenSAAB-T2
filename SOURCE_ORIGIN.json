@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "0.2.28-mxplus.4",
+  "version": "0.2.28-mxplus.5",
   "predecessor_revision": "1cd8fc3aee2c19cd4a83417c8c63d7306286aea6",
   "language_revision": "6a26f2239dc9f81a639fec638d4d6e6a47d1a810",
   "mx_backend_revision": "f0addf2c2fcd71248da194b690386b5653299863",
@@ -12,7 +12,9 @@
     "MX+ native manual read-only mode rejects mixed adapters, replay and seed/clear permissions",
     "Same Apple authenticated byte bridge shared with iOS native binding",
     "Native component companion archives are produced during packaging",
-    "Open access, consent, cancellation and SSA-only import validation preserved"
+    "Open access, consent, cancellation and SSA-only import validation preserved",
+    "No-follow file size/type metadata avoids Foundation getxattr launch stall; signature/checksum validation retained"
   ],
-  "mxplus_guest_timing_reference": "f0addf2c2fcd71248da194b690386b5653299863; UART, TPU and switch routing only; recovered private services excluded"
+  "mxplus_guest_timing_reference": "f0addf2c2fcd71248da194b690386b5653299863; UART, TPU and switch routing only; recovered private services excluded",
+  "previous_candidate": "c1616964fd2de756465e3db9e435654e96b5e79c / 0.2.28-mxplus.4"
 }

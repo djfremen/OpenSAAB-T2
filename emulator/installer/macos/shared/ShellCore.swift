@@ -108,11 +108,14 @@ func sha256(_ file: URL) throws -> String {
   return hash.finalize().map { String(format: "%02x", $0) }.joined()
 }
 func regularSize(_ url: URL) throws -> Int {
-  let a = try fm.attributesOfItem(atPath: url.path)
-  guard a[.type] as? FileAttributeType == .typeRegular, let n = a[.size] as? NSNumber else {
+  // Foundation attributesOfItem also fetches extended attributes. A blocked
+  // provider/xattr lookup must not keep the app and MCP from launching.
+  var metadata = stat()
+  guard lstat(url.path, &metadata) == 0,
+        (metadata.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG), metadata.st_size >= 0 else {
     throw ShellError.message("Not a regular file: \(url.lastPathComponent)")
   }
-  return n.intValue
+  return Int(metadata.st_size)
 }
 struct FirmwareEntry: Codable {
   let id, label: String

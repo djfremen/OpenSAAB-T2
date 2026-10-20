@@ -1,4 +1,4 @@
-# OpenSAAB 0.2.28-mxplus.4 — macOS Intel and Apple silicon
+# OpenSAAB 0.2.28-mxplus.5 — macOS Intel and Apple silicon
 
 This private preview combines the MX+ native session binding with localized
 security transfer recognition and off-by-default MCP. The same compiled native
@@ -32,7 +32,7 @@ files with the sizes/hashes in emulator/ui/support-files.json:
 
 ```sh
 python3 emulator/installer/macos/build.py --arch x86_64 \
-  --version 0.2.28-mxplus.4 --support-root /path/to/support \
+  --version 0.2.28-mxplus.5 --support-root /path/to/support \
   --output /path/to/new-output
 cargo test --locked --features load-test --manifest-path emulator/Cargo.toml
 ```
@@ -49,3 +49,5 @@ reproduction is unverified. Ad-hoc signing and toolchain/package metadata vary.
 [Community](https://github.com/djfremen/OpenSAAB-T2/discussions/5).
 
 The combined core also adopts the reference UART activity/timeout, TPU arbitration and switch-routing fixes. Recovered pSOS/file/display services from the broader private core are outside this scoped integration.
+
+Mac attempt .5 replaces Foundation extended-attribute metadata enumeration with no-follow POSIX regular-file size checks. Attempt .4 stalled there during an unlocked MCP launch; its packages and stack sample remain preserved.

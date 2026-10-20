@@ -268,6 +268,16 @@ enum ShellChecks {
     // the shell only presents report.json. Check that binding.
     let failureRun = temp.appendingPathComponent("failure-run")
     try fm.createDirectory(at: failureRun, withIntermediateDirectories: true)
+    let sized = temp.appendingPathComponent("size-check.bin")
+    try Data([1,2,3]).write(to:sized)
+    try need(try regularSize(sized) == 3,"regular file size without extended-attribute enumeration")
+    let indirect = temp.appendingPathComponent("size-check-link")
+    try fm.createSymbolicLink(at:indirect,withDestinationURL:sized)
+    for rejected in [temp,indirect,temp.appendingPathComponent("missing-size-check")] {
+      var refused=false
+      do {_ = try regularSize(rejected)} catch {refused=true}
+      try need(refused,"file-size check rejects directory, symlink and missing inputs")
+    }
     try need(AdapterFailure.read(run: failureRun) == nil, "missing report has no adapter failure")
     try Data("{\"status\":\"incomplete\",\"adapter_failure\":null}".utf8).write(to: failureRun.appendingPathComponent("report.json"))
     try need(AdapterFailure.read(run: failureRun) == nil, "report without adapter failure is a plain session end")
