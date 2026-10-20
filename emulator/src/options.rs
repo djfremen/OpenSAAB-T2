@@ -28,6 +28,7 @@ pub struct Options {
     pub strict: bool,
     pub candi: bool,
     pub candi_native_link: bool,
+    pub candi_obdlink_token: Option<String>,
     pub candi_on_demand: bool,
     pub candi_nano_ssh: Option<String>,
     pub candi_seatbelt_audible: bool,
@@ -124,6 +125,7 @@ impl Options {
             strict: parse_bool("STRICT_BOOT", env("STRICT_BOOT"))?
                 || parse_bool("STRICT_GUEST_BOOT", env("STRICT_GUEST_BOOT"))?,
             candi_native_link: false,
+            candi_obdlink_token: None,
             candi_on_demand: false,
             candi_nano_ssh: None,
             candi_seatbelt_audible: false,
@@ -196,13 +198,14 @@ impl Options {
                     "--candi" => { out.candi = true; continue; }
                     "--ecm-information" => { out.ecm_information = true; continue; }
                     "--help" | "-help" => { out.help = true; continue; }
-                    "--candi-mdi-mode" | "--candi-nano-port" | "--candi-chipsoft-port" | "--candi-chipsoft-usb-token" | "--candi-j2534-adapter" | "--candi-nano-usb-token" | "--candi-nano-ssh" | "--candi-nano-control" | "--ibus-dtc" | "--vcx-ecu" | "--vcx-ssh" | "--vcx-ssh-control" | "--candi-firmware" | "--replay-keys" | "--boot" | "--opsys" | "--config" | "--output-dir" | "--max-insns" | "--warmup-insns" | "--harness-target" => {
+                    "--candi-obdlink-token" | "--candi-mdi-mode" | "--candi-nano-port" | "--candi-chipsoft-port" | "--candi-chipsoft-usb-token" | "--candi-j2534-adapter" | "--candi-nano-usb-token" | "--candi-nano-ssh" | "--candi-nano-control" | "--ibus-dtc" | "--vcx-ecu" | "--vcx-ssh" | "--vcx-ssh-control" | "--candi-firmware" | "--replay-keys" | "--boot" | "--opsys" | "--config" | "--output-dir" | "--max-insns" | "--warmup-insns" | "--harness-target" => {
                         let value = args.next().filter(|v| !v.is_empty() && !v.starts_with("--"))
                             .ok_or_else(|| format!("{arg} requires a value"))?;
                         match arg.as_str() {
                             "--candi-j2534-adapter" => out.candi_j2534_adapter = tech2_emu::vcx::J2534Adapter::parse(&value)?,
                             "--candi-nano-ssh" => out.candi_nano_ssh = Some(value),
                             "--candi-nano-usb-token" => out.candi_nano_usb_token = Some(value),
+                            "--candi-obdlink-token" => out.candi_obdlink_token = Some(value),
                             "--candi-mdi-mode" => out.candi_mdi_mode = Some(value),
                             "--candi-nano-port" => out.candi_nano_port = Some(value.into()),
                             "--candi-chipsoft-port" => out.candi_chipsoft_port = Some(value.into()),
@@ -245,6 +248,20 @@ impl Options {
             }
             if out.card.replace(arg.into()).is_some() {
                 return Err("only one CARD_IMAGE may be specified".into());
+            }
+        }
+        if let Some(token) = &out.candi_obdlink_token {
+            if !cfg!(feature = "load-test") || token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit())
+                || !out.interactive_headless || !out.research || !out.candi_native_link
+                || out.target != HarnessTarget::NativeManual || out.test_harness || out.candi_on_demand
+                || out.replay.is_some() || out.candi_mdi_mode.is_some() || out.candi_nano_port.is_some()
+                || out.candi_chipsoft_port.is_some() || out.candi_chipsoft_usb_token.is_some()
+                || out.candi_nano_usb_token.is_some() || out.candi_nano_ssh.is_some()
+                || out.vcx_ssh.is_some() || out.ibus_dtc.is_some() || out.candi_nano_control.is_some()
+                || out.candi_chipsoft_seeds || out.candi_nano_seeds || out.candi_nano_clear_dtc
+                || out.candi_nano_add_remove || out.candi_chipsoft_symbol_only
+                || out.candi_chipsoft_audible || out.candi_seatbelt_audible {
+                return Err("MX+ requires an exclusive read-only native-manual session and a valid app-owned token".into());
             }
         }
         if let Some(mode)=&out.candi_mdi_mode {
@@ -479,7 +496,7 @@ impl Options {
         if out.strict && out.research {
             return Err("--strict cannot be combined with research mode".into());
         }
-        if target_set && !out.test_harness && out.candi_mdi_mode.is_none() && out.candi_chipsoft_port.is_none() && out.candi_nano_port.is_none()
+        if target_set && !out.test_harness && out.candi_obdlink_token.is_none() && out.candi_mdi_mode.is_none() && out.candi_chipsoft_port.is_none() && out.candi_nano_port.is_none()
             && !(out.interactive_headless && interactive_local_j2534) {
             return Err("--harness-target requires --test-harness".into());
         }
@@ -1007,4 +1024,26 @@ mod mdi_mode_tests {
   for extra in [vec!["--candi-nano-port","/dev/cu.usbmodemFAKE"],vec!["--candi-chipsoft-port","/dev/cu.usbmodemFAKE"],vec!["--harness-target","security"],vec!["--candi-mdi-mode","automatic"],vec!["--candi-chipsoft-seeds"],vec!["--test-harness"],vec!["--replay-keys","keys.txt"]]{assert!(parse(&extra).is_err(),"{extra:?}");}
   for mode in ["read","seeds"]{assert_eq!(parse(&["--candi-mdi-mode",mode]).unwrap().candi_mdi_mode.as_deref(),Some(mode));}
  }
+}
+
+#[cfg(all(test, feature = "load-test"))]
+mod mx_manual_tests {
+    use super::*;
+    fn parse(extra: &[&str]) -> Result<Options, String> {
+        let mut args = vec!["--interactive-headless", "--research-harness", "--candi-native-link",
+            "--harness-target", "native-manual", "--candi-obdlink-token", "0123456789abcdef0123456789abcdef", "card.bin"];
+        args.extend_from_slice(extra);
+        Options::parse(args.into_iter().map(str::to_owned), |_| None)
+    }
+    #[test]
+    fn mx_read_requires_exclusive_native_manual_owner() {
+        assert!(parse(&[]).unwrap().candi_obdlink_token.is_some());
+        for extra in [vec!["--candi-on-demand"], vec!["--test-harness"], vec!["--candi-mdi-mode", "read"],
+            vec!["--candi-nano-port", "/dev/cu.usbmodemFAKE"], vec!["--candi-chipsoft-port", "/dev/cu.usbmodemFAKE"],
+            vec!["--replay-keys", "keys.txt"], vec!["--harness-target", "security"],
+            vec!["--candi-chipsoft-seeds"], vec!["--candi-nano-clear-dtc"],
+            vec!["--candi-obdlink-token", "wrong"]] {
+            assert!(parse(&extra).is_err(), "{extra:?}");
+        }
+    }
 }

@@ -23,6 +23,7 @@ pub struct OfflineSession {
     welcome_ms: Option<u128>,
     failure: Option<String>,
     pixels: Vec<u32>,
+    mx_read: bool,
 }
 
 pub fn validate_component(kind: &str, path: &Path) -> Result<(), String> {
@@ -106,7 +107,15 @@ impl OfflineSession {
             welcome_ms: None,
             failure: None,
             pixels: vec![0; 320 * 240],
+            mx_read: false,
         })
+    }
+    pub fn open_mx(directory: &Path, output: &Path, token: &str) -> Result<Self, String> {
+        crate::embedded_mx::validate_token(token)?;
+        let mut session = Self::open(directory, output)?;
+        crate::embedded_mx::attach(&mut session.bus, directory, output, token)?;
+        session.mx_read = true;
+        Ok(session)
     }
     pub fn advance(&mut self, milliseconds: u32) -> bool {
         if self.failure.is_some() {
@@ -118,7 +127,7 @@ impl OfflineSession {
                 break;
             }
             #[cfg(feature = "load-test")]
-            if self.welcome_ms.is_none() && crate::load_test::candidate(&self.cpu) {
+            if !self.mx_read && self.welcome_ms.is_none() && crate::load_test::candidate(&self.cpu) {
                 let bound = (self.instructions / 50_000 + 1) * 50_000;
                 let skipped = crate::load_test::advance(
                     &mut self.cpu,
@@ -171,10 +180,10 @@ impl OfflineSession {
         true
     }
     pub fn snapshot(&self) -> String {
-        serde_json::json!({"mode":"offline","vehicle_connected":false,"instructions":self.instructions,
+        serde_json::json!({"mode":if self.mx_read { "obdlink-original-firmware-read" } else { "offline" },"vehicle_connected":self.mx_read && self.failure.is_none(),"instructions":self.instructions,
             "welcome_ms":self.welcome_ms,"screen":self.bus.screen_text(),"failure":self.failure,
-            "candi_started":self.bus.candi_link.is_some(),"external_tx":false,
-            "profile":"existing-android-research-harness; deferred CANdi; no live backend"}).to_string()
+            "candi_started":self.bus.candi_link.is_some(),"external_tx":self.bus.candi_link.as_ref().is_some_and(|v| v.live_confirmations()>0),
+            "profile":if self.mx_read { "app-owned MX+; original firmware read only; no key or clear permission" } else { "existing-android-research-harness; deferred CANdi; no live backend" }}).to_string()
     }
 }
 
@@ -226,6 +235,32 @@ pub unsafe extern "C" fn opensaab_create_offline(
         OfflineSession::open(
             &PathBuf::from(string(directory)?),
             &PathBuf::from(string(output)?),
+        )
+    }) {
+        Ok(Ok(session)) => Box::into_raw(Box::new(session)),
+        Ok(Err(e)) => {
+            error(err, capacity, &e);
+            std::ptr::null_mut()
+        }
+        Err(_) => {
+            error(err, capacity, "Emulator initialization failed safely");
+            std::ptr::null_mut()
+        }
+    }
+}
+#[no_mangle]
+pub unsafe extern "C" fn opensaab_create_mx(
+    directory: *const c_char,
+    output: *const c_char,
+    token: *const c_char,
+    err: *mut c_char,
+    capacity: usize,
+) -> *mut OfflineSession {
+    match catch_unwind(|| {
+        OfflineSession::open_mx(
+            &PathBuf::from(string(directory)?),
+            &PathBuf::from(string(output)?),
+            &string(token)?,
         )
     }) {
         Ok(Ok(session)) => Box::into_raw(Box::new(session)),

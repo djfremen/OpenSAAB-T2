@@ -1,15 +1,18 @@
 {
   "schema": 1,
-  "version": "0.2.27-preview.5",
-  "predecessor_revision": "0fbc939d985c40f64fbc07d516b46ef27612919a",
-  "scope": "Dutch blank-separator TIS2000 transfer prompt support on 0.2.27-preview.4 for Intel and Apple silicon; source candidate, exact installed and vehicle verification pending. No private history, captures or diagnostic-card binaries.",
+  "version": "0.2.28-mxplus.4",
+  "predecessor_revision": "1cd8fc3aee2c19cd4a83417c8c63d7306286aea6",
+  "language_revision": "6a26f2239dc9f81a639fec638d4d6e6a47d1a810",
+  "mx_backend_revision": "f0addf2c2fcd71248da194b690386b5653299863",
+  "mx_android_reference": "f981f3ac4b38340c4d277f74f578b7df41560ea4 / preview.18 read-only",
+  "scope": "Private combined MX+, USB, localized security and off-by-default MCP candidate. No publication or inherited physical qualification.",
   "reviewed_changes": [
-    "Accept the Dutch card's blank separator while requiring its card-derived title, blank screen row, step 1 and RS232 line in order; dashed-separator cards and the English wording check retained",
-    "Prompt cache schema 3 invalidates preview.4's cached empty extraction for the unchanged Dutch card",
-    "Same card-derived check on every processing gate, the live workflow poll and display status; display status never writes",
-    "Diagnostic screen.raw keeps original LCD character codes beside the ASCII screen.txt",
-    "Local MCP stdio server and native binding, off by default (app menu or --mcp-dir)",
-    "Retain preview.3 open access, cancellation, consent and SSA-only import validation",
-    "Full version and architecture on installed identity, program, window, installer and manifest"
-  ]
+    "One native emulator includes MX+ and existing USB backends; no external prebuilt MX engine dependency",
+    "Shared card-derived localized transfer matching, Dutch blank separator and cache schema 3",
+    "MX+ native manual read-only mode rejects mixed adapters, replay and seed/clear permissions",
+    "Same Apple authenticated byte bridge shared with iOS native binding",
+    "Native component companion archives are produced during packaging",
+    "Open access, consent, cancellation and SSA-only import validation preserved"
+  ],
+  "mxplus_guest_timing_reference": "f0addf2c2fcd71248da194b690386b5653299863; UART, TPU and switch routing only; recovered private services excluded"
 }

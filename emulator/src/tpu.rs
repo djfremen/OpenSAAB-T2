@@ -39,6 +39,7 @@ pub struct Countdown {
 struct UartTimeout {
     service: bool,
     remaining: Option<u64>,
+    half_period: u64,
     last: u64,
     idle: bool,
 }
@@ -74,20 +75,40 @@ impl Countdown {
             self.uart.remaining = None;
             return false;
         }
+        self.uart.service |= (sim[0xe1a] >> 2) & 3 == 1;
+        sim[0xe1a] &= !(3 << 2);
         if self.uart.service || (idle && !self.uart.idle) {
-            let interval = (u64::from(word(sim, 0xf50)) << 16) | u64::from(word(sim, 0xf52));
-            self.uart.remaining = Some(interval.max(1));
+            let p0 = word(sim, 0xf50);
+            let p1 = word(sim, 0xf52);
+            if p1 & 0x8000 != 0 {
+                let half = u64::from(p1 & 0x7fff).max(1);
+                let count = u64::from(p0).max(1);
+                self.uart.half_period = half;
+                self.uart.remaining = Some(count.saturating_mul(2).saturating_mul(half));
+            } else {
+                self.uart.half_period = 0;
+                let interval = (u64::from(p0) << 16) | u64::from(p1);
+                self.uart.remaining = Some(interval.max(1));
+            }
             self.uart.service = false;
             put(sim, 0xf54, u16::from(idle));
-            put(sim, 0xf56, word(sim, 0xf50));
-            put(sim, 0xf58, word(sim, 0xf52) & 0x8000);
+            put(sim, 0xf56, p0);
+            put(sim, 0xf58, p1 & 0x8000);
         } else if idle {
             if let Some(remaining) = self.uart.remaining.as_mut() {
                 *remaining = remaining.saturating_sub(elapsed);
-                put(sim, 0xf56, (*remaining >> 16) as u16);
+                if self.uart.half_period != 0 {
+                    let halves = (*remaining + self.uart.half_period - 1) / self.uart.half_period;
+                    put(sim, 0xf58, if halves % 2 == 0 { 0x8000 } else { 0 });
+                    put(sim, 0xf56, ((halves + 1) / 2) as u16);
+                } else {
+                    put(sim, 0xf56, (*remaining >> 16) as u16);
+                }
                 if *remaining == 0 {
                     self.uart.remaining = None;
                     put(sim, 0xf54, 1);
+                    put(sim, 0xf56, 0);
+                    put(sim, 0xf58, 0x8000);
                     put(sim, CISR, word(sim, CISR) | 0x20);
                     self.uart.idle = idle;
                     return true;
@@ -142,41 +163,57 @@ impl Countdown {
             return 0;
         }
         let mut expired = 0;
-        for channel in [3, 7] {
-            let function = (word(sim, 0xe12 - (channel / 4) * 2) >> ((channel % 4) * 4)) & 15;
-            let priority = (word(sim, 0xe1e) >> (channel * 2)) & 3;
-            let sequence = (word(sim, 0xe16) >> (channel * 2)) & 3;
-            if function != 15 || priority == 0 || sequence != 2 {
+        let mut cisr_mask = 0;
+        for channel in 0..16 {
+            let cfsr = 0xe12 - (channel / 4) * 2;
+            let function = (word(sim, cfsr) >> ((channel % 4) * 4)) & 15;
+            let cpr = if channel < 8 { 0xe1e } else { 0xe1c };
+            let hsq = if channel < 8 { 0xe16 } else { 0xe14 };
+            let shift = (channel % 8) * 2;
+            let priority = (word(sim, cpr) >> shift) & 3;
+            let sequence = (word(sim, hsq) >> shift) & 3;
+            if function != 15 || priority == 0 || (sequence & 2) == 0 {
                 continue;
             }
             let base = 0xf00 + channel * 16;
             put(sim, base, word(sim, base).wrapping_add(elapsed as u16));
             for index in 1..=5 {
-                let off = 0xf00 + channel * 16 + index * 2;
+                let off = base + index * 2;
                 let before = word(sim, off);
                 let after = u64::from(before).saturating_sub(elapsed) as u16;
                 if before != 0 {
                     put(sim, off, after);
                     if after == 0 {
                         expired |= 1 << channel;
+                        if (sequence & 1) == 0 {
+                            cisr_mask |= 1 << channel;
+                        }
                     }
                 }
             }
         }
-        put(sim, CISR, word(sim, CISR) | expired);
+        put(sim, CISR, word(sim, CISR) | cisr_mask);
         expired
     }
 }
 
 /// Pending status survives IACK; the guest ISR clears CISR explicitly.
+/// OEM 0x41E7C0 / 0x44C7F0 scans channels 0..15 in ascending order and requires
+/// nonzero two-bit priority in CPR0/CPR1 (0x7FFE1C/0x7FFE1E) plus CIER & CISR.
 pub fn interrupt(sim: &[u8; 0x1000]) -> Option<(u8, u32)> {
     let pending = word(sim, CIER) & word(sim, CISR);
     let level = ((word(sim, TICR) >> 8) & 7) as u8;
     if pending == 0 || level == 0 {
         return None;
     }
-    let channel = 15 - pending.leading_zeros();
-    Some((level, u32::from(word(sim, TICR) & 0xf0) | channel))
+    for channel in 0..16u32 {
+        let cpr = if channel < 8 { 0xe1e } else { 0xe1c };
+        let prio = (word(sim, cpr) >> ((channel % 8) * 2)) & 3;
+        if (pending & (1 << channel)) != 0 && prio != 0 {
+            return Some((level, u32::from(word(sim, TICR) & 0xf0) | channel));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -365,5 +402,50 @@ mod tests {
         t.uart_host_service(4);
         assert!(!t.advance_uart(&mut s, 2_000_000, true));
         assert_eq!(word(&s, CISR), 0);
+    }
+
+    #[test]
+    fn ascending_arbitration_and_cpr_priority_gate() {
+        let mut s = configured();
+        put(&mut s, CIER, 0x8088);
+        put(&mut s, CISR, 0x8088);
+        put(&mut s, 0xe1c, 0xc000); // ch15 priority 3
+        put(&mut s, 0xe1e, 0x4040); // ch3 priority 1, ch7 priority 1
+        assert_eq!(interrupt(&s), Some((4, 0x53)));
+        put(&mut s, 0xe1e, 0x4000); // ch3 priority 0 -> ch7 wins
+        assert_eq!(interrupt(&s), Some((4, 0x57)));
+        put(&mut s, CISR, 0x8008); // ch7 pending clear -> ch15 wins
+        assert_eq!(interrupt(&s), Some((4, 0x5f)));
+        put(&mut s, 0xe1c, 0); // ch15 priority 0 -> none eligible
+        assert_eq!(interrupt(&s), None);
+    }
+
+    #[test]
+    fn uart_function13_half_period_phase_toggles_and_decrements_active_phase() {
+        let mut s = configured();
+        let mut t = Countdown::default();
+        put(&mut s, 0xe10, 0x00d0);
+        put(&mut s, 0xe1e, 0x0c00);
+        put(&mut s, 0xf50, 2);
+        put(&mut s, 0xf52, 0x8000 | 50);
+        t.uart_host_service(4);
+        assert!(!t.advance_uart(&mut s, 0, true));
+        assert_eq!(word(&s, 0xf54), 1);
+        assert_eq!(word(&s, 0xf56), 2);
+        assert_eq!(word(&s, 0xf58), 0x8000);
+        assert!(!t.advance_uart(&mut s, 50, true));
+        assert_eq!(word(&s, 0xf58), 0);
+        assert_eq!(word(&s, 0xf56), 2);
+        assert!(!t.advance_uart(&mut s, 100, true));
+        assert_eq!(word(&s, 0xf58), 0x8000);
+        assert_eq!(word(&s, 0xf56), 1);
+        assert!(!t.advance_uart(&mut s, 150, true));
+        assert_eq!(word(&s, 0xf58), 0);
+        assert_eq!(word(&s, 0xf56), 1);
+        assert!(t.advance_uart(&mut s, 200, true));
+        assert_eq!(word(&s, 0xf54), 1);
+        assert_eq!(word(&s, 0xf56), 0);
+        assert_eq!(word(&s, 0xf58), 0x8000);
+        assert_eq!(word(&s, CISR) & 0x20, 0x20);
     }
 }

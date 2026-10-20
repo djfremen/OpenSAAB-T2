@@ -199,6 +199,15 @@ impl NativeLink {
         self.events.push(format!("Native Chipsoft CDC; original firmware requests; profile={}; completion=device-reply-compatibility electrical_ack=unverified", if seeds { "Seeds" } else { "Read" }));
         Ok(())
     }
+    pub fn attach_obdlink(&mut self, token: &str, directory: &Path) -> Result<(), String> {
+        let bridge = tech2_emu::adapters::obdlink_guest::Bridge::start(token, directory)?;
+        for controller in 0..3 { self.machine.enable_can_transport(controller)?; }
+        self.bridge = Some(Box::new(tech2_emu::can_adapter::TranslationBackend::new(Box::new(bridge))));
+        self.live_clock = Some((std::time::Instant::now(), self.machine.elapsed_cycles()));
+        self.events.push(format!("{} MX+ app-owned Bluetooth bridge; original CANdi requests; serialized HS/SW; electrical ACK unverified",
+            if cfg!(target_os = "macos") { "macOS IOBluetooth RFCOMM" } else if cfg!(target_os = "ios") { "iOS External Accessory" } else { "Android RFCOMM" }));
+        Ok(())
+    }
     pub fn enable_ignition_monitor(&mut self, directory: &Path) {
         if self.bridge.is_some() {
             self.ignition = Some(tech2_emu::ignition::Monitor::new(directory));
@@ -309,7 +318,8 @@ impl NativeLink {
         }
         if let Err(error) = self.poll_bridge() {
             self.events.push(format!("Native adapter stopped: {error}"));
-            let failure = tech2_emu::adapter_failure::classify(&error, self.last_tx.as_ref());
+            let active = self.bridge.as_ref().and_then(|b| b.failure_context());
+            let failure = tech2_emu::adapter_failure::classify_with_backend(&error, self.last_tx.as_ref(), active.as_ref());
             // One stable, machine-readable line for consoles; report.json carries the same object.
             self.events.push(format!("ADAPTER_FAILURE {failure}"));
             self.failure = Some(failure);
@@ -371,6 +381,9 @@ impl NativeLink {
             if self.uart.rx.is_empty() {
                 self.uart.line_ack = false;
             }
+            if output.iter().any(Option::is_some) {
+                self.uart.activity = false;
+            }
             self.uart.rx.extend(output);
         }
     }
@@ -388,7 +401,10 @@ impl NativeLink {
         !self.stopped
     }
     pub fn uart_receive_idle(&self) -> bool {
-        self.uart.rx.is_empty()
+        self.uart.receive_idle()
+    }
+    pub fn is_thr_write(&self, address: u32) -> bool {
+        self.uart.is_thr_write(address)
     }
     pub fn irq(&self) -> bool { self.uart.irq() }
     pub fn read(&mut self, address: u32) -> u8 { self.uart.read(address, &mut self.events) }

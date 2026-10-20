@@ -12,8 +12,12 @@ pub enum Profile {
     Read,
     Seeds,
     ClearDtc,
+    ResetEngineCounters,
 }
 impl Profile {
+    pub fn permits_key_status_read(self) -> bool {
+        matches!(self, Self::Read | Self::ResetEngineCounters)
+    }
     pub fn collection(seeds: bool) -> Self {
         if seeds {
             Self::Seeds
@@ -40,6 +44,18 @@ pub fn allowed_for_profile(controller: usize, tx: &CanTransmission, profile: Pro
     };
     let id = tx.frame.id;
     let data = &tx.frame.data;
+    // Original T8 "Reset Misfire and Knock Counters", captured from firmware.
+    // An explicit maintenance session admits only this exact HS request. Keep
+    // Read/Seeds/ClearDtc unchanged; never synthesize the request on the host.
+    if profile == Profile::ResetEngineCounters
+        && controller == 0
+        && route.channel == 0
+        && route.mode == ElectricalMode::Data
+        && id == 0x7e0
+        && data.as_slice() == [2, 0xae, 0x14, 0, 0, 0, 0, 0]
+    {
+        return true;
+    }
     if route.mode == ElectricalMode::SingleWireWake {
         return controller == 2 && id == 0x100 && data.is_empty();
     }
@@ -189,3 +205,7 @@ impl CommandGate {
         allowed_for_profile(controller, tx, profile)
     }
 }
+
+#[path = "../../../../shared/native-policy/key_status.rs"]
+mod key_status;
+pub(crate) use key_status::KeyStatusGate;

@@ -81,7 +81,7 @@ extension Shell {
     /// reports unavailable; it never starts offline emulation as a substitute.
     func startMXFirmware(address: String, vehicle: [String:Any]) {
         guard !busy, session == nil else { return }
-        guard fm.isExecutableFile(atPath:binaries.appendingPathComponent("tech2-mx").path) else {
+        guard fm.isExecutableFile(atPath:binaries.appendingPathComponent("tech2-emu").path) else {
             status.stringValue = "MX+ identified · Original-firmware MX+ binding is not included in this build"; return
         }
         guard let device = IOBluetoothDevice(addressString:address), (device.name ?? "").hasPrefix("OBDLink MX+") else {

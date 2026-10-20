@@ -95,3 +95,24 @@ Use its canonical frame/decoder contracts when extending adapter or application
 workflows. It distinguishes completed source adoption from pending driver,
 installed-artifact and physical qualification; current source pins are recorded
 there and in the baseline status.
+
+## Native components for every version and adapter
+
+Owner requirement October 20, 2026: retain the native emulator/workflow and adapter
+components for every application version, preview, architecture and hardware
+adaptation. This includes Android `.so` payloads and the corresponding native
+artifacts on other targets. Keep the exact component bytes with a manifest naming
+the full application version, target/ABI, source revision, component SHA-256 hashes,
+adapter capabilities and verification status. Identical components may be reused
+only with explicit hash pins; a missing component remains an explicit gap.
+
+Use each platform's actual binary format: Android/Linux ELF, Windows PE, macOS
+Mach-O workers/libraries, and iOS embedded static libraries/frameworks. A renamed
+`.so` does not establish an Apple port. Preserve historical packages and append
+separate component archives/receipts rather than altering signed bundles.
+
+The October 20 localized-security implementation must carry forward through the
+shared source to Apple silicon and the iOS preview, as well as the other declared
+targets and adapter bindings. Keep OS transports and thin host bindings explicit;
+build, installed-app and physical-adapter verification remain separate per target.
+An iOS core build alone does not establish the complete security UI/adapter workflow.

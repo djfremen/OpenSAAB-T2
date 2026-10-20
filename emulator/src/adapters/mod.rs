@@ -7,3 +7,7 @@ pub mod mdi;
 pub mod mongoose;
 pub mod vcx_nano;
 pub mod vlinker;
+
+// Shared Android preview.18 MX+ transport, adopted via private core f0addf2.
+pub mod obdlink_guest;
+pub mod stn_parser;

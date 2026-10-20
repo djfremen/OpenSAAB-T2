@@ -98,7 +98,7 @@ pub fn from_probe(adapter: &str, report: &Value) -> Result<Value, String> {
             &report["request_origin"],
             &report["vin"],
         ),
-        "vlinker_mc_plus" | "bluetooth_mic" => {
+        "obdlink_mxp" | "vlinker_mc_plus" | "bluetooth_mic" => {
             if report["host_vehicle_request_attempts"] != 1
                 || report["host_vehicle_requests_written"] != 1
                 || report["automatic_replay"] != false
@@ -227,7 +227,7 @@ impl Session {
                 .root
                 .join("connection-attempts")
                 .join(format!("{}.json", self.id)),
-            &json!({"format":1,"attempt_id":self.id,"created_utc":self.created_utc,"adapter":if self.adapter=="chipsoft"{"CHIPSOFT"}else if self.adapter=="vcx_nano_bridge"{"NANO_BRIDGE"}else{"VLINKER"},"stage":stage,"outcome":outcome,"reason":reason,"elapsed_ms":self.born.elapsed().as_millis(),"stages":self.steps}),
+            &json!({"format":1,"attempt_id":self.id,"created_utc":self.created_utc,"adapter":if self.adapter=="obdlink_mxp"{"OBDLINK"}else if self.adapter=="chipsoft"{"CHIPSOFT"}else if self.adapter=="vcx_nano_bridge"{"NANO_BRIDGE"}else{"VLINKER"},"stage":stage,"outcome":outcome,"reason":reason,"elapsed_ms":self.born.elapsed().as_millis(),"stages":self.steps}),
         );
         if let Ok(entries) = std::fs::read_dir(self.root.join("connection-attempts")) {
             let mut files: Vec<_> = entries
@@ -322,7 +322,7 @@ impl Session {
             }
             ("selecting", "select_adapter") => {
                 let adapter = event["adapter"].as_str().unwrap_or("");
-                if !["vlinker_mc_plus", "bluetooth_mic", "vcx_nano_bridge"].contains(&adapter) || event["transport_available"] != true {
+                if !["obdlink_mxp", "vlinker_mc_plus", "bluetooth_mic", "vcx_nano_bridge"].contains(&adapter) || event["transport_available"] != true {
                     return self.fail(
                         "No supported adapter connection is available in this build",
                         "NO_ADAPTER",
@@ -338,6 +338,10 @@ impl Session {
                 let report = &event["report"];
                 if self.adapter == "vcx_nano_bridge" && report["attempt_id"] != self.id {
                     return self.fail("Bridge reply belongs to another connection attempt", "VIN_UNAVAILABLE");
+                }
+                if self.adapter == "obdlink_mxp"
+                    && (report["connection_attempt_id"] != self.id || report["result"]["adapter_model"] != "obdlink_mxp") {
+                    return self.fail("MX+ discovery belongs to another model or connection attempt", "VIN_UNAVAILABLE");
                 }
                 match from_probe(&self.adapter, report) {
                     Ok(vehicle) => {
@@ -386,8 +390,10 @@ impl Session {
                 }
                 self.phase = "identified";
                 self.message=if self.adapter == "vcx_nano_bridge" {"Vehicle identified · USB bridge firmware transport is not implemented in this build"}else{"Vehicle identified · Bluetooth firmware transport is not implemented in this build"}.into();
-                self.record("FIRMWARE_START", "FAILED", "PROTOCOL_OR_PROCESS_ERROR");
-                let result = self.snapshot("none");
+                let mx = self.adapter == "obdlink_mxp";
+                if mx { self.message = "Vehicle identified · Starting MX+ original firmware".into(); }
+                self.record("FIRMWARE_START", if mx { "IN_PROGRESS" } else { "FAILED" }, if mx { "NONE" } else { "PROTOCOL_OR_PROCESS_ERROR" });
+                let result = self.snapshot(if mx { "start_firmware" } else { "none" });
                 let _ = f::write_json(&run.join("startup-result.json"), &result);
                 self.release();
                 result
@@ -447,6 +453,34 @@ mod tests {
         assert!(from_probe("vcx_nano_bridge",&good).is_ok());
         for (field,value) in [("usb_closed",json!(false)),("channel_cleanup",json!(false)),("hardware",json!("CHIPSOFT")),("origin",json!("saved")),("vehicle_tx",json!(3)),("host_vehicle_requests_written",json!(0)),("host_vehicle_request_attempts",json!(2)),("automatic_replay",json!(true)),("request_origin",json!("host-transport-probe")),("vin",json!("YS3PARTIAL"))] {
             let mut bad=good.clone();bad[field]=value;assert!(from_probe("vcx_nano_bridge",&bad).is_err(),"{field}");
+        }
+    }
+    #[test]
+    fn mx_handoff_requires_same_discovery_model_release_and_attempt() {
+        let _serial = OWNERSHIP_TEST.lock().unwrap();
+        for invalid in ["", "model", "attempt", "release"] {
+            let mut s = session();
+            assert_eq!(s.event(&json!({"op":"begin","firmware_ready":true}))["effect"],"select_adapter");
+            assert_eq!(s.event(&json!({"op":"select_adapter","adapter":"obdlink_mxp","transport_available":true}))["effect"],"discover_vin");
+            let mut report = probe();
+            report["connection_attempt_id"] = json!(s.id);
+            report["result"]["adapter_model"] = json!("obdlink_mxp");
+            match invalid {
+                "model" => report["result"]["adapter_model"] = json!("vlinker_mc_plus"),
+                "attempt" => report["connection_attempt_id"] = json!("old-attempt"),
+                "release" => report["bluetooth_closed"] = json!(false),
+                _ => (),
+            }
+            let observed = s.event(&json!({"op":"probe_result","report":report}));
+            if invalid.is_empty() {
+                assert_eq!(observed["effect"],"lookup");
+                assert_eq!(s.event(&json!({"op":"lookup_unavailable"}))["effect"],"start_firmware");
+            } else {
+                assert_eq!(observed["state"],"failed");
+                assert_ne!(observed["effect"],"start_firmware");
+            }
+            assert!(!active());
+            std::fs::remove_dir_all(&s.root).unwrap();
         }
     }
     fn probe() -> Value {

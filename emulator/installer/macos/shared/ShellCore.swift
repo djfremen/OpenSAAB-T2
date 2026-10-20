@@ -399,7 +399,7 @@ final class EmulatorSession {
     if mxBridge != nil {
       diagnosticBinding["family"] = "obdlink_mxp"; diagnosticBinding["transport"] = "bluetooth_rfcomm"
       diagnosticBinding["native_api"] = "IOBluetoothRFCOMMChannel"; diagnosticBinding["mx_profile"] = "mxp_native_read"
-      diagnosticBinding["engine"] = "tech2-mx"
+      diagnosticBinding["engine"] = "tech2-emu"
     }
     try JSONSerialization.data(withJSONObject:diagnosticBinding).write(to:run.appendingPathComponent("connection-evidence.json"),options:.atomic)
 
@@ -423,11 +423,11 @@ final class EmulatorSession {
       process.arguments=["--target",endpoint.port,"--directory",run.path,"--runtime",store.runtime.path,"--card",card.path,"--mode",mode == .fullNative ? "full" : mode == .seeds ? "seeds" : "read"]
     }
     if let mx = mxBridge {
-      // Android preview.18 MX+ launch (MainActivity.runSession) on the same engine
-      // source: eager CANdi, native manual input, no automatic replay.
-      process.executableURL = binary.deletingLastPathComponent().appendingPathComponent("tech2-mx")
+      // Shared MX+ backend in this exact core: eager CANdi, native manual
+      // input, localized LCD and MCP observation, no automatic replay.
+      process.executableURL = binary
       process.arguments = [
-        "--test-harness", "--boot", store.runtime.appendingPathComponent("eprom.bin").path,
+        "--interactive-headless", "--research-harness", "--boot", store.runtime.appendingPathComponent("eprom.bin").path,
         "--max-insns", Self.mxInstructionLimit, "--output-dir", run.path,
         "--candi-native-link", "--candi-firmware", store.runtime.appendingPathComponent("candi.bin").path,
         "--opsys", store.runtime.appendingPathComponent("opsys.dwn").path,

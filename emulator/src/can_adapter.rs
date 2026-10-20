@@ -104,6 +104,10 @@ mod receive_staging_tests {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompletionSource {
     MdiDeviceTxIndication,
+    StnRfcommWriteCompatibility,
+    StnBatchBoundaryWriteCompatibility,
+    MicByteTransportWriteCompatibility,
+    MicTranslatedWakeWriteCompatibility,
     J2534SoftwareLoopback,
     VcxUsbWriteCompatibility,
     ChipsoftDeviceReplyCompatibility,
@@ -112,6 +116,10 @@ impl CompletionSource {
     pub fn label(self) -> &'static str {
         match self {
             Self::MdiDeviceTxIndication => "mdi-device-tx-indication",
+            Self::StnRfcommWriteCompatibility => "stn-rfcomm-write-compatibility",
+            Self::StnBatchBoundaryWriteCompatibility => "stn-batch-boundary-write-compatibility",
+            Self::MicByteTransportWriteCompatibility => "mic-byte-transport-write-compatibility",
+            Self::MicTranslatedWakeWriteCompatibility => "mic-translated-wake-write-compatibility",
             Self::J2534SoftwareLoopback => "j2534-software-loopback",
             Self::VcxUsbWriteCompatibility => "vcx-usb-write-compatibility",
             Self::ChipsoftDeviceReplyCompatibility => "chipsoft-device-reply-compatibility",
@@ -146,10 +154,18 @@ pub fn realtime_delay(cycles: u64, elapsed: Duration) -> Duration {
 /// Implementations own bounded I/O, deadlines and cleanup. `poll` must not wait
 /// for USB or ECU responses on the emulation thread. RX remains real raw CAN;
 /// segmentation and diagnostic requests belong to the original guest firmware.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FailureContext {
+    pub tx: crate::adapter_failure::TxContext,
+    pub ticket: u64,
+    pub phase: &'static str,
+}
+
 pub trait Backend {
     fn poll(&mut self) -> Result<Vec<Event>, String>;
     fn transmit(&mut self, controller: usize, tx: CanTransmission) -> Result<(), String>;
     fn confirmations(&self) -> u64;
+    fn failure_context(&self) -> Option<FailureContext> { None }
     fn close(&mut self);
 }
 
@@ -213,6 +229,7 @@ impl Backend for TranslationBackend {
     fn confirmations(&self) -> u64 {
         self.inner.confirmations()
     }
+    fn failure_context(&self) -> Option<FailureContext> { self.inner.failure_context() }
     fn close(&mut self) {
         if !self.closed {
             self.closed = true;

@@ -109,6 +109,20 @@ pub fn classify(raw: &str, last_tx: Option<&TxContext>) -> Value {
         "The adapter reported an error and the session stopped. The operation did not complete; no ECU reply was assumed. See Console for the adapter detail.".into())
 }
 
+/// Prefer driver-correlated in-flight evidence when a backend supplies it.
+/// Existing drivers preserve their prior submitted-intent fallback.
+pub fn classify_with_backend(raw: &str, submitted: Option<&TxContext>,
+    active: Option<&crate::can_adapter::FailureContext>) -> Value {
+    let mut out = classify(raw, active.map(|c| &c.tx).or(submitted));
+    if let Some(c) = active {
+        out["in_flight"] = json!({"controller":c.tx.controller,"ticket":c.ticket,
+            "bus":c.tx.bus,"id":format!("{:03X}",c.tx.id),"dlc":c.tx.dlc,
+            "wake":c.tx.wake,"phase":c.phase,"source":"adapter-worker"});
+        out["last_tx_source"] = json!("adapter-worker");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

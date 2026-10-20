@@ -253,6 +253,10 @@ pub struct Tech2Bus {
     pub pit_pending: bool,
     pit_next_tick: Option<u64>,
     tpu_countdown: crate::tpu::Countdown,
+    pub tpu_selected_irq: Option<(u8, u32)>,
+    pub switch_rows: [u8; 16],
+    pub switch_cols: [u16; 8],
+    pub switch_configured: bool,
     pub research_in_app: bool,
     pub research_struct_buf: u32,
     pub research_path_depth: u32,
@@ -349,6 +353,10 @@ impl Tech2Bus {
             pit_pending: self.pit_pending,
             pit_next_tick: self.pit_next_tick,
             tpu_countdown: self.tpu_countdown.clone(),
+            tpu_selected_irq: self.tpu_selected_irq,
+            switch_rows: self.switch_rows,
+            switch_cols: self.switch_cols,
+            switch_configured: self.switch_configured,
             research_in_app: self.research_in_app,
             research_struct_buf: self.research_struct_buf,
             research_path_depth: self.research_path_depth,
@@ -567,6 +575,10 @@ impl Tech2Bus {
             pit_pending: false,
             pit_next_tick: None,
             tpu_countdown: crate::tpu::Countdown::default(),
+            tpu_selected_irq: None,
+            switch_rows: [0; 16],
+            switch_cols: [0; 8],
+            switch_configured: false,
             research_in_app: false,
             research_struct_buf: 0x0030_0000,
             research_path_depth: 0,
@@ -951,6 +963,7 @@ impl Tech2Bus {
         } else {
             0
         };
+        self.tpu_selected_irq = crate::tpu::interrupt(&self.sim);
         timer
             .max(if self.candi_link.as_ref().is_some_and(|link| link.irq()) {
                 5
@@ -959,7 +972,27 @@ impl Tech2Bus {
             })
             .max(if self.pending_candi.as_ref().is_some_and(|pending| pending.uart.irq()) { 5 } else { 0 })
             .max(u8::from(self.key_irq_pending()))
-            .max(crate::tpu::interrupt(&self.sim).map_or(0, |(level, _)| level))
+            .max(self.tpu_selected_irq.map_or(0, |(level, _)| level))
+    }
+
+    fn write_switch(&mut self, address: u32, value: u8) {
+        self.switch_configured = true;
+        let row = ((address >> 1) & 15) as usize;
+        let col = ((address >> 5) & 7) as usize;
+        if (value & 3) == 3 {
+            self.switch_rows = [0; 16];
+            self.switch_cols = [0; 8];
+        } else if (value & 1) != 0 {
+            self.switch_rows[row] |= 1 << col;
+            self.switch_cols[col] |= 1 << row;
+        } else {
+            self.switch_rows[row] &= !(1 << col);
+            self.switch_cols[col] &= !(1 << row);
+        }
+    }
+
+    pub fn uartb_connected(&self) -> bool {
+        !self.switch_configured || self.switch_cols[6] != 0 || self.switch_cols[7] != 0
     }
 
     /// Visible text cells at the programmed font height and address pitch.
@@ -1764,7 +1797,7 @@ impl AddressBus for Tech2Bus {
             return 0x1d;
         }
 
-        if let Some((tpu_level, vector)) = crate::tpu::interrupt(&self.sim) {
+        if let Some((tpu_level, vector)) = self.tpu_selected_irq.or_else(|| crate::tpu::interrupt(&self.sim)) {
             if level == tpu_level {
                 return vector;
             }
@@ -1783,6 +1816,7 @@ impl AddressBus for Tech2Bus {
     fn read_byte(&mut self, address: u32) -> u8 {
         let a = address & A24;
         self.trace_eram_access('R', a, None);
+        if (0x401000..0x401800).contains(&a) { return 0xff; }
         if (0x400800..0x400810).contains(&a) {
             if let Some(pending) = &mut self.pending_candi {
                 return pending.uart.read(a, &mut Vec::new());
@@ -1992,7 +2026,14 @@ impl AddressBus for Tech2Bus {
     fn write_byte(&mut self, address: u32, value: u8) {
         let a = address & A24;
         self.trace_eram_access('W', a, Some(value));
+        if (0x401000..0x401800).contains(&a) {
+            self.write_switch(a, value);
+            return;
+        }
         if (0x400800..0x400810).contains(&a) {
+            let thr = self.pending_candi.as_ref().is_some_and(|p| p.uart.is_thr_write(a))
+                || self.candi_link.as_ref().is_some_and(|l| l.is_thr_write(a));
+            if thr && !self.uartb_connected() { return; }
             if let Some(pending) = &mut self.pending_candi {
                 if !pending.uart.needs_processor(a, value) {
                     pending.uart.write(a, value, &mut Vec::new());
@@ -2199,15 +2240,27 @@ impl AddressBus for Tech2Bus {
                 }
             }
             if (OFF_HSRR0..=OFF_HSRR1 + 1).contains(&off) {
-                if (self.candi_link.is_some() || self.pending_candi.is_some()) && off == OFF_HSRR1 {
+                if off == OFF_HSRR1 {
                     self.tpu_countdown.uart_host_service(value);
+                }
+                if (self.candi_link.is_some() || self.pending_candi.is_some()) && off == OFF_HSRR1 {
                     self.trace_event("candi_uart_timer", &format!(
                         "host_service={value:#04x} ch4_words={:02x?} ch5_words={:02x?} functions={:02x?} sequence={:02x?} priority={:02x?} external_tx=false",
                         &self.sim[0xf40..0xf4a], &self.sim[0xf50..0xf5a],
                         &self.sim[0xe10..0xe12], &self.sim[0xe16..0xe18], &self.sim[0xe1e..0xe20]
                     ));
                 }
-                self.sim[off] = 0;
+                let mut keep = 0u8;
+                let first = (if off <= OFF_HSRR0 + 1 { 8 } else { 0 }) + if off & 1 != 0 { 0 } else { 4 };
+                for lane in 0..4usize {
+                    let channel = first + lane;
+                    let cfsr = 0xe12 - (channel / 4) * 2;
+                    let word = u16::from_be_bytes([self.sim[cfsr], self.sim[cfsr + 1]]);
+                    if ((word >> ((channel % 4) * 4)) & 15) == 13 {
+                        keep |= 3u8 << (lane * 2);
+                    }
+                }
+                self.sim[off] = value & keep;
             }
             if off == OFF_SPCR1 && (value & 0x80) != 0 {
                 self.qspi_transfer();
@@ -2224,6 +2277,7 @@ impl AddressBus for Tech2Bus {
     }
 
     fn read_word(&mut self, address: u32) -> u16 {
+        if (0x401000..0x401800).contains(&(address & A24)) { return 0; }
         #[cfg(feature = "load-test")]
         if let Some(bytes) = self.load_test_plain_read(address) { return u16::from_be_bytes(bytes); }
         let hi = self.read_byte(address) as u16;
@@ -2240,6 +2294,11 @@ impl AddressBus for Tech2Bus {
     }
 
     fn write_word(&mut self, address: u32, value: u16) {
+        let switch_address = address & A24;
+        if (0x401000..0x401800).contains(&switch_address) {
+            if switch_address & 1 == 0 { self.write_switch(switch_address, value as u8); }
+            return;
+        }
         #[cfg(feature = "load-test")]
         {
             let a = address & A24;
@@ -2387,6 +2446,65 @@ mod tests {
         assert_eq!(bus.poll_interrupt(110_001), 4);
         bus.write_word(SIM7 + 0xe20, 0xfff7);
         assert_eq!(bus.poll_interrupt(110_002), 0);
+    }
+
+    #[test]
+    fn candi_switch_matrix_routes_crosspoints_and_gates_uartb_thr_writes() {
+        let mut bus = Tech2Bus::new(vec![0; 0x40000], vec![], ExecutionMode::Fidelity);
+        bus.pending_candi = Some(crate::candi::demand::Pending::from_options(&crate::options::Options::parse(["card.bin".to_string()], |_| None).unwrap()));
+        assert_eq!(bus.read_byte(0x401000), 0xff);
+        assert_eq!(bus.read_word(0x401000), 0x0000);
+        // Connect row 13, col 6 (0x4010DA) via word write (low byte 0x01 used once, high byte 0x03 ignored).
+        bus.write_word(0x4010da, 0x0301);
+        assert_eq!(bus.switch_rows[13], 1 << 6);
+        assert_eq!(bus.switch_cols[6], 1 << 13);
+        assert!(bus.uartb_connected());
+        // Clear all via value & 3 == 3.
+        bus.write_byte(0x4017ff, 3);
+        assert_eq!(bus.switch_rows, [0; 16]);
+        assert_eq!(bus.switch_cols, [0; 8]);
+        assert!(!bus.uartb_connected());
+        // Enable UART loopback and verify DLAB-clear THR write is blocked while columns 6/7 are 0.
+        bus.write_byte(0x400808, 0x10);
+        bus.write_byte(0x400800, 0x5a);
+        assert_eq!(bus.read_byte(0x40080a), 0x60);
+        // Connect column 7 via mirror 0x4015E2 (row 1, col 7).
+        bus.write_byte(0x4015e2, 1);
+        assert!(bus.uartb_connected());
+        bus.write_byte(0x400800, 0x5a);
+        assert_eq!(bus.read_byte(0x40080a), 0x61);
+        assert_eq!(bus.read_byte(0x400800), 0x5a);
+    }
+
+    #[test]
+    fn tpu_cached_iack_and_hsrr_function13_preservation() {
+        let mut bus = Tech2Bus::new(vec![0; 0x40000], vec![], ExecutionMode::Fidelity);
+        bus.pending_candi = Some(crate::candi::demand::Pending::from_options(&crate::options::Options::parse(["card.bin".to_string()], |_| None).unwrap()));
+        for (offset, value) in [0x48, 0xe7, 0x01, 0x04, 0x3f, 0x3c, 0x00, 0x88]
+            .into_iter()
+            .enumerate()
+        {
+            bus.write_byte(0x1d9c7e + offset as u32, value);
+        }
+        bus.write_byte(0x400804, 0);
+        bus.write_word(SIM7 + 0xe08, 0x0450);
+        bus.write_word(SIM7 + 0xe0a, 0x0020);
+        bus.write_word(SIM7 + 0xe10, 0x00d0);
+        bus.write_word(SIM7 + 0xe1e, 0x0000);
+        bus.write_word(SIM7 + 0xf50, 0x0000);
+        bus.write_word(SIM7 + 0xf52, 0x0004);
+        // Write HSRR1 while channel 5 priority in CPR1 is 0: bits 3..2 must be preserved.
+        bus.write_byte(SIM7 + 0xe1a, 0x04);
+        assert_eq!(bus.read_byte(SIM7 + 0xe1a), 0x04);
+        assert_eq!(bus.poll_interrupt(10), 0);
+        // Enable channel 5 priority in CPR1; advance_uart consumes HSRR1 and arms the timer.
+        bus.write_word(SIM7 + 0xe1e, 0x0400);
+        assert_eq!(bus.poll_interrupt(11), 0);
+        assert_eq!(bus.read_byte(SIM7 + 0xe1a), 0x00);
+        assert_eq!(bus.poll_interrupt(15), 4);
+        // Mutating CIER before IACK must still return the vector cached during poll_interrupt.
+        bus.write_word(SIM7 + 0xe0a, 0x0000);
+        assert_eq!(bus.interrupt_acknowledge(4), 0x55);
     }
 
     #[test]

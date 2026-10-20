@@ -83,3 +83,6 @@ mod load_test;
 pub use guest::{service_interrupt, step_guest};
 
 pub use adapters::mdi::guest as mdi_backend;
+
+#[cfg(feature = "embedded")]
+pub mod embedded_mx;
