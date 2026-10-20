@@ -8,6 +8,16 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 [Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.98) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
+## Mac 0.2.28-mxplus.5 — Intel and Apple silicon, October 20
+
+Both Mac architectures have matching developer previews with card-derived security-transfer recognition, the existing USB backends, a read-only OBDLink MX+ Bluetooth route and optional local MCP. No operator password is required; explicit processing consent, cancellation and response/SSA integrity checks remain. MX+ clearing, security collection/processing and programming are unavailable. MCP is off by default and requires explicit local enablement.
+
+[Intel DMG](https://github.com/djfremen/OpenSAAB-T2/releases/download/macos-v0.2.28-mxplus.5/OpenSAAB-0.2.28-mxplus.5-macos-x86_64.dmg) · [Apple silicon DMG](https://github.com/djfremen/OpenSAAB-T2/releases/download/macos-v0.2.28-mxplus.5/OpenSAAB-0.2.28-mxplus.5-macos-arm64.dmg) · [Release notes, exact matching source, manifests and hashes](https://github.com/djfremen/OpenSAAB-T2/releases/tag/macos-v0.2.28-mxplus.5) · [Installation and test scope](https://www.opensaab.com/static/t2/download.html#desktop)
+
+Both exact native installed apps passed full identity, payload/signature, software self-test, all ten generated catalog-card prompt cases and Dutch offline firmware menu/clean Stop checks through packaged MCP. **Fresh physical MX+/USB vehicle tests and complete non-English security collection/service processing/SSA import remain pending.** Generated layouts and historical Intel MX+ key-status results do not qualify these new DMGs. macOS 12+, ad-hoc signed and not notarized. Stop diagnostics and quit the old app before installing the fully versioned new app alongside historical versions; updates remain manual.
+
+The exact Mac source is commit `efad90e5bb06c54fb99770396f71a13c47066e6d`, linked from the release. This default branch remains the Android source line. Android, Windows and iOS retain separate versions and tests; MX+ is not yet released across every app version. Full parity remains unfinished.
+
 ## Corrected Android and Mac developer previews — October 16
 
 We caught an error while checking the previews and corrected it. Sorry for the confusion.
