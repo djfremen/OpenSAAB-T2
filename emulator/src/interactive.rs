@@ -58,6 +58,9 @@ pub struct Session<'a> {
     next_frame: Instant,
     next_limits: Instant,
     screen: String,
+    raw: Vec<u8>,
+    menu_state: String,
+    input_sequence: u64,
     frame: artifacts::LiveFrame,
     checkpoint: Option<recovery::Checkpoint>,
     waiting: Option<Instant>,
@@ -74,6 +77,9 @@ impl<'a> Session<'a> {
             next_frame: Instant::now(),
             next_limits: Instant::now(),
             screen: String::new(),
+            raw: Vec::new(),
+            menu_state: String::new(),
+            input_sequence: 0,
             frame: artifacts::LiveFrame::default(),
             checkpoint: None,
             waiting: None,
@@ -111,7 +117,41 @@ impl<'a> Session<'a> {
             self.next_frame = now + Duration::from_millis(if bus.pending_candi.is_some() && !bus.demand_boot_complete { 150 } else { 33 });
             // Publish by rename so a reader never sees a partially written PPM.
             self.frame.publish(bus, self.dir)?;
+            // Raw codes first, so a reader of the new text never pairs it with
+            // older raw cells. Raw cells and the MCP menu are auxiliary: a failed
+            // write is retried on the next frame and never ends the session.
+            let publish = |name: &str, data: &[u8]| {
+                let temporary = self.dir.join(format!("{name}.tmp"));
+                fs::write(&temporary, data)
+                    .and_then(|()| fs::rename(&temporary, self.dir.join(name)))
+                    .is_ok()
+            };
+            let raw = bus.screen_raw();
+            if raw != self.raw && publish("screen.raw", &raw) {
+                self.raw = raw;
+            }
             let screen = bus.screen_text();
+            // Native menu state for the optional MCP binding: original LCD text
+            // cells plus the guest's XOR selection bar, read before image scaling.
+            // A border or a few glyph pixels do not establish a selected row.
+            let (columns, rows) = bus.lcd.text_dimensions();
+            let fy = bus.lcd.fy.max(1) as usize;
+            let highlighted: Vec<usize> = if bus.lcd.overlay_mode & 3 == 1 && bus.lcd.display_mode & 0x30 != 0 {
+                (0..rows).filter(|row| {
+                    let solid = (row*fy..((row+1)*fy).min(240)).filter(|y| {
+                        let count = (0..40).map(|x| bus.lcd.vram[(bus.lcd.sad2+y*bus.lcd.ap+x)%bus.lcd.vram.len()].count_ones()).sum::<u32>();
+                        count >= 240
+                    }).count();
+                    solid >= fy.div_ceil(2)
+                }).collect()
+            } else { Vec::new() };
+            let mut menu = tech2_emu::native_menu::inspect(&screen, &highlighted, columns, fy);
+            menu["input_sequence"] = serde_json::json!(self.input_sequence);
+            menu["input_idle"] = serde_json::json!(bus.key_queue.is_empty() && bus.key_active.is_none());
+            let encoded = menu.to_string();
+            if encoded != self.menu_state && publish("native-menu.json", encoded.as_bytes()) {
+                self.menu_state = encoded;
+            }
             if screen != self.screen {
                 fs::write(self.dir.join("screen.txt.tmp"), &screen)?;
                 fs::rename(self.dir.join("screen.txt.tmp"), self.dir.join("screen.txt"))?;
@@ -202,6 +242,7 @@ impl<'a> Session<'a> {
             } else {
                 bus.press_key(code);
             }
+            self.input_sequence += 1;
         }
         Ok(Poll::Continue)
     }

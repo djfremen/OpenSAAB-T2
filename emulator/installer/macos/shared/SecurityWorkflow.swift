@@ -156,7 +156,8 @@ extension Shell {
       let result=Result {()->([String:Any],[String:Any]?) in
         let bytes=try Data(contentsOf:run.appendingPathComponent("screen.txt"));guard bytes.count<=8192 else{throw ShellError.message("Invalid firmware screen.")}
         let screen=String(decoding:bytes,as:UTF8.self)
-        let observed=try SecurityWorker.call(worker,["op":"observe","screen":screen])
+        // The run lets the worker match the card's own localized transfer prompt.
+        let observed=try SecurityWorker.call(worker,["op":"observe","screen":screen,"run":run.path])
         let next=navigate ? try SecurityWorker.call(worker,["op":"navigate","screen":screen,"vin":vin,"navigation":nav,"now_ms":Int(Date().timeIntervalSince1970*1000)]):nil
         return(observed,next)
       }

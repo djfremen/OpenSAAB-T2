@@ -100,6 +100,7 @@ pub fn run_headless(
     let mut replay_index = 0;
     let mut next_live_frame = std::time::Instant::now();
     let mut live_screen = String::new();
+    let mut live_raw = Vec::new();
     let mut live_frame = artifacts::LiveFrame::default();
     let mut working_ssa = artifacts::WorkingSsa::default();
     let mut next_native_key = std::time::Instant::now();
@@ -138,6 +139,11 @@ pub fn run_headless(
                     // Publish after the guest returns the flash to read-array mode.
                     if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
                         working_ssa.publish(&bus.card, settings.output_dir)?;
+                    }
+                    let raw = bus.screen_raw();
+                    if raw != live_raw {
+                        std::fs::write(settings.output_dir.join("screen.raw"), &raw)?;
+                        live_raw = raw;
                     }
                     let screen = bus.screen_text();
                     if screen != live_screen {
@@ -505,6 +511,12 @@ pub fn run_headless(
                                     std::fs::write(
                                         evidence_dir.join("screen.txt"),
                                         bus.screen_text(),
+                                    )
+                                })
+                                .and_then(|()| {
+                                    std::fs::write(
+                                        evidence_dir.join("screen.raw"),
+                                        bus.screen_raw(),
                                     )
                                 });
                             if let Err(error) = saved {

@@ -40,6 +40,26 @@ print('PASS packaged open access: no operator credential; cancellation and malfo
 def write(path, value):
     path.write_text(json.dumps(value))
 
+# Localized cards: the worker matches the card's own transfer prompt (German
+# 148.000 bytes here); the LCD text capture blanks non-ASCII cells.
+with tempfile.TemporaryDirectory(prefix='opensaab-security-language-test-') as folder:
+    run = Path(folder).resolve() / 'runs' / 'live'
+    run.mkdir(parents=True)
+    title = b'Sicherheitszugang v. TIS2000 erforderl.'
+    steps = [b'1. Tech2 von Fahrzeug abbauen.', b'2. Tech2 \xfcber RS232-Kabel an TIS2000-PC', b'anschlie\xdfen.']
+    block = b'\0\x02St\0\x02S\x98\0\x02S\xe3' + title + b'\0' + b'-' * 39 + b'\0' + b'\0'.join(steps) + b'\0\xff\0'
+    card = bytearray(b'\x42' * (32 * 1024 * 1024))
+    card[0x1025000:0x1025000 + len(block)] = block
+    (run / 'card.bin').write_bytes(card)
+    rows = [title, b'-' * 39] + steps
+    screen = '\n'.join(bytes(c if 0x20 <= c < 0x7f else 0x20 for c in r).decode().ljust(40) for r in rows) + '\n'
+    assert call('observe', screen=screen)['transfer'] is False
+    observed = call('observe', screen=screen, run=str(run))
+    assert observed['transfer'] is True and observed['match'] == 'card'
+    partial = '\n'.join(screen.splitlines()[:2]) + '\n'
+    assert call('observe', screen=partial, run=str(run))['transfer'] is False
+print('PASS packaged worker: localized card transfer prompt recognized from the card; partial screen rejected')
+
 with tempfile.TemporaryDirectory(prefix='opensaab-security-worker-test-') as folder:
     state = Path(folder).resolve()
     run = state / 'runs' / 'collected'

@@ -95,6 +95,49 @@ fn android_provider_oracle() {
         "validate"
     );
 }
+fn localize(w: &Workspace, shown: &[&[u8]]) {
+    use prompt::tests::{message, screen, same, DE_STEPS, DE_TITLE};
+    let r = w.0.join("runs/collected");
+    let block = message([2, 0x53, 0xe3], &[DE_TITLE], &DE_STEPS);
+    let mut card = fs::read(r.join("card.bin")).unwrap();
+    card[0x1025000..0x1025000 + block.len()].copy_from_slice(&block);
+    fs::write(r.join("card.bin"), card).unwrap();
+    fs::write(r.join("screen.txt"), screen(shown, same)).unwrap();
+}
+#[test]
+fn localized_card_prompt_passes_every_transfer_gate() {
+    use prompt::tests::{DE_STEPS, DE_TITLE};
+    let dashes = [b'-'; 39];
+    let w = workspace();
+    let p = &w.0;
+    let r = p.join("runs/collected");
+    localize(&w, &[DE_TITLE, &dashes, DE_STEPS[0], DE_STEPS[1]]);
+    let shown = fs::read_to_string(r.join("screen.txt")).unwrap();
+    assert_eq!(observe(&shown)["transfer"], false);
+    assert_eq!(dispatch(&json!({"schema":1,"op":"observe","screen":shown})).unwrap()["transfer"], false);
+    let live = dispatch(&json!({"schema":1,"op":"observe","screen":shown,"run":r})).unwrap();
+    assert_eq!(live["transfer"], true);
+    assert_eq!(live["match"], "card");
+    assert!(r.join("security-prompt.json").exists());
+    let existing = inspect_existing(p, &r, "test").unwrap();
+    assert_eq!(existing["collection_pending_stop"], false);
+    assert!(prepare(p, &r, "test", false).is_ok());
+    // English screens keep their original wording path.
+    fs::write(r.join("screen.txt"), "You need Security Access from TIS2000\nDisconnect Tech 2 from Vehicle").unwrap();
+    let english = dispatch(&json!({"schema":1,"op":"observe","screen":fs::read_to_string(r.join("screen.txt")).unwrap(),"run":r})).unwrap();
+    assert_eq!(english["match"], "english");
+    // Title without the numbered steps, or the steps alone, is not the prompt.
+    for shown in [&[DE_TITLE, &dashes[..]][..], &[DE_STEPS[0], DE_STEPS[1]][..]] {
+        let w = workspace();
+        let p = &w.0;
+        let r = p.join("runs/collected");
+        localize(&w, shown);
+        let text = fs::read_to_string(r.join("screen.txt")).unwrap();
+        assert_eq!(dispatch(&json!({"schema":1,"op":"observe","screen":text,"run":r})).unwrap()["transfer"], false);
+        assert!(inspect_existing(p, &r, "test").is_err());
+        assert!(prepare(p, &r, "test", false).unwrap_err().contains("TIS transfer prompt"));
+    }
+}
 #[test]
 fn only_real_transfer_prompt() {
     assert_eq!(observe("F6: Get Security Access")["transfer"], false);

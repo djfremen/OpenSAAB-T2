@@ -985,6 +985,23 @@ impl Tech2Bus {
         text
     }
 
+    /// LCD text-layer codes exactly as the guest wrote them, row-major after a
+    /// dimensions header. `screen_text` blanks codes outside printable ASCII,
+    /// which localized cards use for accented and non-Latin characters.
+    pub fn screen_raw(&self) -> Vec<u8> {
+        if !self.lcd.text_enabled() {
+            return Vec::new();
+        }
+        let (cols, rows) = self.lcd.text_dimensions();
+        let mut raw = format!("OPENSAAB-LCD-TEXT 1 {cols} {rows}\n").into_bytes();
+        for row in 0..rows {
+            for col in 0..cols {
+                raw.push(self.lcd.vram[(self.lcd.sad1 + row * self.lcd.ap + col) % self.lcd.vram.len()]);
+            }
+        }
+        raw
+    }
+
     pub fn guest_splash_reached(&self) -> bool {
         let text = self.screen_text();
         let nao = (text.contains("Press [ENTER]") || text.contains("Press ENTER"))
@@ -2583,6 +2600,26 @@ mod robustness_tests {
             bus.lcd.vram[start..start + text.len()].copy_from_slice(text.as_bytes());
         }
         assert!(bus.guest_splash_reached());
+    }
+
+    #[test]
+    fn raw_screen_keeps_localized_codes_that_text_capture_blanks() {
+        let mut bus = Tech2Bus::new(vec![0; 0x40000], vec![0; 0x100000], ExecutionMode::Fidelity);
+        bus.lcd.sad1 = 0x3000;
+        let row = b"2. Tech2 \xfcber RS232-Kabel an TIS2000-PC";
+        bus.lcd.vram[0x3000 + 40..0x3000 + 40 + row.len()].copy_from_slice(row);
+        if !bus.lcd.text_enabled() {
+            bus.lcd.display_on = true;
+            bus.lcd.display_mode = 0x04;
+            bus.lcd.overlay_mode = 0;
+        }
+        let (cols, rows) = bus.lcd.text_dimensions();
+        let raw = bus.screen_raw();
+        let header = format!("OPENSAAB-LCD-TEXT 1 {cols} {rows}\n");
+        assert!(raw.starts_with(header.as_bytes()));
+        assert_eq!(raw.len(), header.len() + cols * rows);
+        assert_eq!(&raw[header.len() + cols..header.len() + cols + row.len()], row);
+        assert!(bus.screen_text().lines().nth(1).unwrap().starts_with("2. Tech2  ber RS232"));
     }
 
     #[test]

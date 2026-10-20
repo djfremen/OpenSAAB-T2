@@ -1,13 +1,14 @@
 {
   "schema": 1,
-  "version": "0.2.27-preview.3",
-  "predecessor_revision": "a0363f131d33f42c898ba2f817c430c213eddf27",
-  "scope": "Focused all-channel open-access and manual-session candidate for Intel and Apple silicon; exact source and retained build inputs, without private history, captures or diagnostic-card binaries.",
+  "version": "0.2.27-preview.4",
+  "predecessor_revision": "4fee8dace3558fe341e01d5d208599fc87fda661",
+  "scope": "Language-independent TIS2000 transfer prompt and off-by-default local MCP on 0.2.27-preview.3 for Intel and Apple silicon; exact source and retained build inputs, without private history, captures or diagnostic-card binaries.",
   "reviewed_changes": [
-    "Retain published Intel preview.7 Nano filter/key-status/docked-keypad behavior",
-    "No operator feature password on UI, automation, primary/fallback or import routes",
-    "Preserve cancellation, the public primary-service compatibility header, consent and SSA-only import validation",
-    "Use verified original welcome and hand manual navigation to the operator without the erroneous Splash deadline",
+    "Recognize the TIS2000 transfer prompt from the session card's own localized message (title, step 1, RS232 step); English wording check retained",
+    "Same card-derived check on every processing gate, the live workflow poll and display status; display status never writes",
+    "Diagnostic screen.raw keeps original LCD character codes beside the ASCII screen.txt",
+    "Local MCP stdio server and native binding, off by default (app menu or --mcp-dir)",
+    "Retain preview.3 open access, cancellation, consent and SSA-only import validation",
     "Full version and architecture on installed identity, program, window, installer and manifest"
   ]
 }

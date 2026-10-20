@@ -97,7 +97,7 @@ def main():
         resources = contents / "Resources"
         binaries.mkdir(parents=True)
         resources.mkdir()
-        for binary in ("tech2-emu", "chipsoft-probe", "chipsoft-vin", "nano-usb-probe", "opensaab-security", "opensaab-reports", "opensaab-connection", "opensaab-mdi"):
+        for binary in ("tech2-emu", "chipsoft-probe", "chipsoft-vin", "nano-usb-probe", "opensaab-security", "opensaab-reports", "opensaab-connection", "opensaab-mdi", "opensaab-mcp"):
             shutil.copy2(rust_target_dir / target_triple / "release" / binary, binaries / binary)
         mx_engine = None
         if options.mx_engine:
@@ -109,7 +109,7 @@ def main():
                 "transport": "IOBluetoothRFCOMMChannel via authenticated 127.0.0.1:35676 byte bridge",
                 "qualification": "host build only; Mac MX+ hardware/vehicle validation pending"}
         run("xcrun", "swiftc", "-O", "-target", f"{architecture}-apple-macos12.0", "-framework", "AppKit", "-framework", "Security", "-framework", "CoreBluetooth", "-framework", "IOBluetooth", "-framework", "IOKit",
-            SOURCES / "Launcher.swift", SOURCES / "ShellCore.swift", SOURCES / "NanoAdapterWorkflow.swift", SOURCES / "MdiAdapterWorkflow.swift", SOURCES / "PrivateAutomation.swift", SOURCES / "BundledRuntime.swift", SOURCES / "ShellChecks.swift", SOURCES / "DesignChecks.swift", SOURCES / "SecurityStatus.swift", SOURCES / "VehicleStatusView.swift", SOURCES / "UIParityChecks.swift", SOURCES / "USBAdapterDiscovery.swift", SOURCES / "USBAdapterChooser.swift", SOURCES / "USBChooserChecks.swift", SOURCES / "SecurityWorkflow.swift", SOURCES / "DtcReports.swift", SOURCES / "SupportReports.swift", SOURCES / "MenuShortcuts.swift", SOURCES / "EngineStartup.swift", SOURCES / "MacBluetoothTransport.swift", SOURCES / "MacBluetoothWorkflow.swift", SOURCES / "BluetoothActions.swift", SOURCES / "MacBluetoothChecks.swift", SOURCES / "MacMXFirmwareBridge.swift", ROOT / "shared/apple-bluetooth/AppleBLETransport.swift", "-o", binaries / "OpenSAAB")
+            SOURCES / "Launcher.swift", SOURCES / "MCPBinding.swift", SOURCES / "ShellCore.swift", SOURCES / "NanoAdapterWorkflow.swift", SOURCES / "MdiAdapterWorkflow.swift", SOURCES / "PrivateAutomation.swift", SOURCES / "BundledRuntime.swift", SOURCES / "ShellChecks.swift", SOURCES / "DesignChecks.swift", SOURCES / "SecurityStatus.swift", SOURCES / "VehicleStatusView.swift", SOURCES / "UIParityChecks.swift", SOURCES / "USBAdapterDiscovery.swift", SOURCES / "USBAdapterChooser.swift", SOURCES / "USBChooserChecks.swift", SOURCES / "SecurityWorkflow.swift", SOURCES / "DtcReports.swift", SOURCES / "SupportReports.swift", SOURCES / "MenuShortcuts.swift", SOURCES / "EngineStartup.swift", SOURCES / "MacBluetoothTransport.swift", SOURCES / "MacBluetoothWorkflow.swift", SOURCES / "BluetoothActions.swift", SOURCES / "MacBluetoothChecks.swift", SOURCES / "MacMXFirmwareBridge.swift", ROOT / "shared/apple-bluetooth/AppleBLETransport.swift", "-o", binaries / "OpenSAAB")
         shutil.copy2(EMULATOR / "ui/firmware-catalog.json", resources / "firmware-catalog.json")
         support_dir = resources / "system"
         support_dir.mkdir()
@@ -199,6 +199,8 @@ def main():
             minimum_macos="12.0", rust_target=target_triple,
             private_candidate=True, source_shape=source_shape, nano_qualification="installed-app/hardware pending; CLI predecessor scope remains separate",
             mdi_workflow={"Android_reference":"0.1.0-preview.70","shared_package":"opensaab-mdi-workflow","USB_binding":"native-IOKit","installed_guest_qualification":"pending","reference_manifest_sha256":digest(ROOT / "shared/mdi-workflow/ANDROID_REFERENCE.json")},
+            mcp={"server":"opensaab-mcp","transport":"stdio","native_binding":"MCPBinding.swift","native_menu_source":"original_guest_lcd","enabled":"off by default; explicit app-menu action or --mcp-dir","protocol_versions":["2024-11-05","2025-03-26","2025-06-18","2025-11-25"]},
+            security_transfer_prompt={"english":"original wording","localized":"derived from the session card message database (TIS2000 title, step 1, RS232 step); no compiled translations","lcd_capture":"screen.txt (ASCII) + screen.raw (diagnostic)"},
             interface_contract_sha256=digest(resources / "interface-contract.json"),
             bluetooth_workflow={"package":"opensaab-vlinker-workflow", "version":"0.1.3", "source_pin_sha256":digest(ROOT / "shared/vlinker-workflow/SOURCE_SHA256")},
             apple_ble_source_sha256=digest(ROOT / "shared/apple-bluetooth/AppleBLETransport.swift"),

@@ -195,9 +195,9 @@ pub(super) fn dispatch(v: &Value) -> Result<Value> {
     // separate from saved card classification. A partial PRE_AUTH card alone
     // must never produce a ready-to-process label or bypass processing gates.
     let workflow_summary = if !offline && state != "UNAVAILABLE" && v["run"].as_str().is_some() {
-        selected.run.as_ref().and_then(|run| read(&run.join("screen.txt"), 8192).ok())
-            .and_then(|screen| {
-                let observed = super::observe(&String::from_utf8_lossy(&screen));
+        selected.run.as_ref().and_then(|run| read(&run.join("screen.txt"), 8192).ok().map(|s| (run, s)))
+            .and_then(|(run, screen)| {
+                let observed = super::observe_run(run, &screen, super::prompt::Cache::Read);
                 if observed["transfer"] == true && bytes.is_some_and(|b| super::validate_input(b).is_ok()) {
                     Some("Security status · Ready to process")
                 } else if observed["collecting"] == true {
@@ -308,5 +308,21 @@ mod tests {
         req["offline"]=json!(true);assert!(dispatch(&req).unwrap()["workflow_summary"].is_null());
         req=request(p);assert!(dispatch(&req).unwrap()["workflow_summary"].is_null());
         req["run"]=json!(p.join("runs/wrong"));assert!(dispatch(&req).unwrap()["workflow_summary"].is_null());
+    }
+    #[test] fn localized_card_transfer_prompt_is_ready_without_display_writes() {
+        use super::super::prompt::tests::{message, screen, same, DE_STEPS, DE_TITLE};
+        let f=fixture();let p=&f.0;let run=p.join("runs/current");
+        let block=message([2,0x53,0xe3],&[DE_TITLE],&DE_STEPS);
+        for name in ["firmware/test.bin","runs/current/card.bin"] {
+            let mut card=fs::read(p.join(name)).unwrap();card[0x1025000..0x1025000+block.len()].copy_from_slice(&block);fs::write(p.join(name),card).unwrap();
+        }
+        let mut ready=pre();ready[0x132..0x13a].copy_from_slice(&[0x02,0x41,0x03,0x01,0x12,0x34,0xff,0xff]);set_working(p,&ready);
+        let mut req=request(p);req["run"]=json!(&run);
+        let dashes=[b'-';39];
+        fs::write(run.join("screen.txt"),screen(&[DE_TITLE,&dashes,DE_STEPS[0],DE_STEPS[1]],same)).unwrap();
+        assert_eq!(dispatch(&req).unwrap()["workflow_summary"],"Security status · Ready to process");
+        assert!(!run.join("security-prompt.json").exists());
+        fs::write(run.join("screen.txt"),screen(&[DE_TITLE,&dashes],same)).unwrap();
+        assert!(dispatch(&req).unwrap()["workflow_summary"].is_null());
     }
 }

@@ -11,6 +11,7 @@ use std::{
 };
 pub mod navigation;
 mod platform;
+mod prompt;
 mod status;
 pub const SIZE: usize = 714;
 pub const OFFSET: usize = 0xfe0000;
@@ -112,8 +113,31 @@ pub fn observe(text: &str) -> Value {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase();
+    let transfer = s.contains("you need security access from tis2000")
+        && s.contains("disconnect tech 2 from vehicle");
     json!({"collecting":s.contains("checking security access") && s.contains("reading all vehicle vins") && s.contains("reading all vehicle seed"),
-        "transfer":s.contains("you need security access from tis2000") && s.contains("disconnect tech 2 from vehicle")})
+        "transfer":transfer, "match":if transfer {json!("english")} else {Value::Null}})
+}
+// Localized cards show the transfer instructions from their own message
+// database. The English wording remains the first check; otherwise the screen
+// is matched against the prompt extracted from the session's card.
+fn observe_prompts(screen: &[u8], prompts: impl FnOnce() -> Vec<prompt::TransferPrompt>) -> Value {
+    let mut observed = observe(&String::from_utf8_lossy(screen));
+    // Every card prompt title names TIS2000 in ASCII; other screens never read the card.
+    if observed["transfer"] != true && prompt::mentions_anchor(screen) {
+        let prompts = prompts();
+        let card = prompt::matches_any(&prompts, screen);
+        observed["transfer"] = json!(card);
+        observed["match"] = if card { json!("card") } else { Value::Null };
+        observed["card_prompts"] = json!(prompts.len());
+    }
+    observed
+}
+fn observe_card(screen: &[u8], card: &[u8]) -> Value {
+    observe_prompts(screen, || prompt::extract(card))
+}
+fn observe_run(run: &Path, screen: &[u8], cache: prompt::Cache) -> Value {
+    observe_prompts(screen, || prompt::for_run(run, cache))
 }
 // OS transport maps only documented network-outage categories. TLS and malformed
 // successful replies never trigger a second disclosure to another provider.
@@ -301,10 +325,8 @@ fn collected_source(run: &Path, input: &[u8], card: &[u8]) -> Result<()> {
         "Collected data changed",
     )?;
     let screen = read(&run.join("screen.txt"), 8192)?;
-    need(
-        observe(&String::from_utf8_lossy(&screen))["transfer"] == true,
-        "Collection has not reached the transfer prompt",
-    )?;
+    // English needs no card; a localized prompt is derived from the
+    // candidate's own card, which must equal the selected firmware.
     let original = read(&run.join("card.bin"), CARD_SIZE)?;
     need(
         original.len() == CARD_SIZE
@@ -312,6 +334,10 @@ fn collected_source(run: &Path, input: &[u8], card: &[u8]) -> Result<()> {
             && original[..OFFSET] == card[..OFFSET]
             && original[OFFSET + SIZE..] == card[OFFSET + SIZE..],
         "Collection belongs to different firmware",
+    )?;
+    need(
+        observe_card(&screen, &original)["transfer"] == true,
+        "Collection has not reached the transfer prompt",
     )
 }
 pub fn inspect_existing(state: &Path, run: &Path, firmware: &str) -> Result<Value> {
@@ -329,7 +355,7 @@ pub fn inspect_existing(state: &Path, run: &Path, firmware: &str) -> Result<Valu
     // Current live collection is finalized by stop() before prepare_existing.
     let current_prompt = read(&run.join("screen.txt"), 8192)
         .ok()
-        .map(|b| observe(&String::from_utf8_lossy(&b))["transfer"] == true)
+        .map(|b| observe_card(&b, &card)["transfer"] == true)
         .unwrap_or(false);
     if current_prompt && !run.join("report.json").exists() {
         return Ok(
@@ -432,8 +458,9 @@ fn prepare(state: &Path, run: &Path, firmware: &str, allow_fallback: bool) -> Re
         "Firmware has not written fresh SSA; collect again and follow all key prompts",
     )?;
     let screen = read(&run.join("screen.txt"), 8192)?;
+    let card = read(&run.join("card.bin"), CARD_SIZE)?;
     need(
-        observe(&String::from_utf8_lossy(&screen))["transfer"] == true,
+        observe_card(&screen, &card)["transfer"] == true,
         "Finish collection and reach the TIS transfer prompt first",
     )?;
     let before = read(&run.join("ssa-card-before.bin"), SIZE)?;
@@ -448,7 +475,6 @@ fn prepare(state: &Path, run: &Path, firmware: &str, allow_fallback: bool) -> Re
         observation["vin"].as_str() == Some(vin(&input)?),
         "Collected data belongs to another vehicle",
     )?;
-    let card = read(&run.join("card.bin"), CARD_SIZE)?;
     need(
         card.len() == CARD_SIZE && card[OFFSET..OFFSET + SIZE] == before,
         "Working card changed; collect again",
@@ -651,7 +677,13 @@ pub fn dispatch(v: &Value) -> Result<Value> {
         "status" => status::dispatch(v),
         "restore" => restore(Path::new(text(v,"state")?),text(v,"firmware")?,Path::new(text(v,"card")?)),
         "endpoints" => Ok(json!({"primary":PRIMARY,"fallback":FALLBACK})),
-        "observe" => Ok(observe(text(v, "screen")?)),
+        "observe" => {
+            let screen = text(v, "screen")?;
+            Ok(match v.get("run").and_then(Value::as_str) {
+                Some(run) => observe_run(Path::new(run), screen.as_bytes(), prompt::Cache::ReadWrite),
+                None => observe(screen),
+            })
+        }
         "navigate" => Ok(navigation::next(v)),
         "menu_navigate" => crate::menu_navigation::dispatch(v),
         "validate_input" => Ok(

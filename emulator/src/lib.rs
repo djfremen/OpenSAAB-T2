@@ -38,6 +38,11 @@ pub mod dtc_reports;
 
 pub mod support_reports;
 pub mod menu_navigation;
+pub mod native_menu;
+pub mod app_health;
+pub mod android_remote;
+#[cfg(unix)]
+pub mod mcp;
 pub mod adapter_failure;
 
 // Embedded hosts reuse the CLI hardware models and exact guest step routine.

@@ -228,6 +228,8 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
   var window: NSWindow!, store: FirmwareStore
   var session: EmulatorSession?, timer: Timer?, eventMonitor: Any?, busy = false, quitting = false
   var privateAutomation: PrivateAutomation?
+  // Optional local MCP endpoint; off unless enabled from the app menu or --mcp-dir.
+  var mcpBinding: MCPBinding?, mcpOperatorGeneration = 0
   var appMenuButton: ActionButton?, actionsButton: ActionButton?
   var vehicleSummaryButton: ActionButton?, vehicleStatusSnapshot: VehicleStatusView?
   var vehicleStatusContext = "", vehicleStatusGeneration = 0, vehicleStatusPending = false
@@ -542,6 +544,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     RunLoop.main.add(t, forMode: .common)
     RunLoop.main.add(t, forMode: .modalPanel)
     privateAutomation?.start()
+    mcpBinding?.start()
     eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
       guard let self = self, self.window.isKeyWindow, !event.modifierFlags.contains(.command) else {
         return event
@@ -646,8 +649,9 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let details = vehicleStatusSnapshot?.details ?? "auth_status: [N/A]\nTimestamp unavailable\nShared vehicle history is loading or unavailable.\nSaved emulator data · Vehicle access not verified"
     textDialog("Vehicle and security details","Diagnostic software: " + (store.selected?.label ?? "None selected") + "\n\n" + bluetoothDetails()+details)
   }
-  func key(_ code: Int) {
+  func key(_ code: Int, fromMCP: Bool = false) {
     guard !busy else { return }
+    if !fromMCP { mcpOperatorGeneration += 1 }
     if menuNavigating { status.stringValue = "Shortcut stopped · Manual control" }
     securityNavigating=false;securityNavigationGeneration+=1
     menuNavigating=false;menuNavigationGeneration+=1
@@ -938,6 +942,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       ("Run without an adapter", { self.start() }),
       ("Firmware selection", { self.firmwareDialog() }),
       ("Preferences", { self.unavailable("Preferences") }),
+      ("AI control (MCP)", { self.mcpControl() }),
       ("Import runtime folder", { self.importDialog() }),
       ("Adapter & advanced tools", { self.bluetoothTools() }),
       ("Report issue", { self.reportIssue() }),
@@ -1273,6 +1278,16 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
     do {
       var args = Array(CommandLine.arguments.dropFirst())
       var automation: URL?
+      var mcpDirectory: URL?
+      if (args.count == 2 || args.count == 4) && args[0] == "--mcp-dir" {
+        guard args[1].hasPrefix("/") else { throw ShellError.message("MCP directory must be absolute.") }
+        mcpDirectory = URL(fileURLWithPath:args[1],isDirectory:true)
+        if args.count == 4 {
+          guard args[2] == "--private-state", args[3].hasPrefix("/") else { throw ShellError.message("Private state must be absolute.") }
+          state = URL(fileURLWithPath:args[3],isDirectory:true)
+        }
+        args = []
+      }
       if args.count == 4 && args[0] == "--private-automation-dir" && args[2] == "--private-state" {
         guard args[1].hasPrefix("/"), args[3].hasPrefix("/") else { throw ShellError.message("Private paths must be absolute.") }
         automation = URL(fileURLWithPath: args[1], isDirectory: true)
@@ -1325,6 +1340,7 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate {
       app.setActivationPolicy(.regular)
       let shell = try Shell(state: state, binaries: binaries, catalog: catalog)
       if let directory = automation { shell.privateAutomation = try PrivateAutomation(shell: shell, directory: directory) }
+      if let directory = mcpDirectory { shell.mcpBinding = try MCPBinding(shell:shell,directory:directory) }
       app.delegate = shell
       withExtendedLifetime(shell) { app.run() }
     } catch {
