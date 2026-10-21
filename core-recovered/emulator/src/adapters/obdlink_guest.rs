@@ -550,7 +550,7 @@ impl Bridge {
                 link.setup()?;
                 let mut pending = None;
                 while !cancelled.load(Ordering::Relaxed) {
-                    if link.started.elapsed() > Duration::from_secs(1800) {
+                    if profile != Profile::FullNative && link.started.elapsed() > Duration::from_secs(1800) {
                         return Err("Private MX+ firmware session reached its 30-minute limit".into());
                     }
                     if pending.is_none() { pending = requests.try_recv().ok(); }

@@ -27,6 +27,9 @@ public final class SessionModes {
         if("mxplus".equals(family))return new Capabilities("OBDLink MX+ Bluetooth",true,Mode.FULL,"Full native control is available on the supported HS-CAN and SW-CAN routes. Security access requires collection, processing and valid import; follow original firmware confirmations. Other buses and unavailable operations remain unavailable.");
         return new Capabilities("Bluetooth adapter",true,null,"Write access is unavailable for this adapter. Its model and supported connection are checked after connecting.");
     }
+    public static long nativeInstructionLimit(Mode mode,long bounded){return mode==Mode.FULL?Long.MAX_VALUE:bounded;}
+    public static long nativeDeadline(Mode mode,long now,long budget){return mode==Mode.FULL?Long.MAX_VALUE:now+budget;}
+    public static int stopGraceSeconds(Mode mode){return mode==Mode.FULL?15:2;}
     public static Mode bluetoothAction(String action){
         if("native_seed".equals(action))return Mode.SEEDS;
         if("native_reset_counters".equals(action))return Mode.RESET;

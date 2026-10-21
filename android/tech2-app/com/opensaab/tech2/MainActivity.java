@@ -596,7 +596,7 @@ public final class MainActivity extends Activity {
                 getApplicationInfo().nativeLibraryDir+"/"+engine,
                 mxDevice==null?"--interactive-headless":"--test-harness",
                 "--boot",new File(firmware,"eprom.bin").toString(),
-                "--max-insns",Long.toString(com.opensaab.usb.OfflineSessionEvidence.INSTRUCTION_LIMIT),"--output-dir",session.toString(),
+                "--max-insns",Long.toString(com.opensaab.usb.SessionModes.nativeInstructionLimit(mxDevice==null?null:mxMode,com.opensaab.usb.OfflineSessionEvidence.INSTRUCTION_LIMIT)),"--output-dir",session.toString(),
                 sessionCard.toString()));
             if(mxDevice==null){
             File captures=new File(getFilesDir(),"captures");if(!captures.isDirectory()&&!captures.mkdirs())throw new IOException("Cannot prepare capture storage");
@@ -621,7 +621,7 @@ public final class MainActivity extends Activity {
             // The UI cannot be trapped by a blocked native process or lost ADB connection.
             if(stopping.get()) child.destroy();
             Thread reader=new Thread(()->readLogs(child,mxSession,policyRejected),"tech2-console"); reader.start();
-            long deadline=System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(com.opensaab.usb.OfflineSessionEvidence.DEADLINE_MS);
+            long deadline=com.opensaab.usb.SessionModes.nativeDeadline(mxDevice==null?null:mxMode,System.nanoTime(),TimeUnit.MILLISECONDS.toNanos(com.opensaab.usb.OfflineSessionEvidence.DEADLINE_MS));
             File mailbox=new File(session,mxDevice==null?"interactive-key.txt":"native-key.txt");
             keyPump=new com.opensaab.usb.InteractiveKeyPump(mailbox,e->ui.post(()->append("Input stopped: "+e)));
             health.begin(session);
@@ -633,7 +633,7 @@ public final class MainActivity extends Activity {
             keyPump.close();keyPump=null;
             if(child.isAlive()) {
                 publish(mailbox,"stop\n");
-                if(!child.waitFor(2,TimeUnit.SECONDS)) { forced=true;child.destroyForcibly(); child.waitFor(2,TimeUnit.SECONDS); }
+                if(!child.waitFor(com.opensaab.usb.SessionModes.stopGraceSeconds(mxDevice==null?null:mxMode),TimeUnit.SECONDS)) { forced=true;child.destroyForcibly(); child.waitFor(2,TimeUnit.SECONDS); }
             }
             reader.join(2000);
             // NativeLcdPump observes final frame publication as well.

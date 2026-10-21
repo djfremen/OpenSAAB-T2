@@ -1417,7 +1417,7 @@
       "Android security collection includes Bluetooth MX+ and uses the common collection/process/validated-import workflow with fresh vehicle identity and confirmed release. No operator password.",
       "Full native control removes the diagnostic-service allowlist only. Standard CAN frames, supported electrical routes, authenticated role, cancellation, original confirmations and ECU authorization remain. No implicit command replay."
     ],
-    "candidate": "Android ARM64 0.1.1-preview.22; full native and security workflow implementation, exact installed/physical checks recorded separately.",
+    "candidate": "Android ARM64 0.1.1-preview.23; full native and security workflow implementation, exact installed/physical checks recorded separately.",
     "other_targets": "Adoption and exact installed verification pending for Android ARM32, Windows, macOS ARM64/Intel, Linux and iOS."
   }
 }
