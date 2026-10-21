@@ -10,6 +10,7 @@ public final class SessionWorkspace extends LinearLayout {
     private final LinearLayout rail;
     private final Tech2Controls controls;
     private final Button summary;
+    private final TextView mode;
     private final Activity activity;
     private boolean expanded;
     public SessionWorkspace(Activity a,String title,Tech2Controls display,Runnable menu,Runnable details){
@@ -19,6 +20,7 @@ public final class SessionWorkspace extends LinearLayout {
         top.addView(new BrandHeader(a,title,true),new LayoutParams(0,-2,1));
         Button more=new Button(a);more.setText("⋮");more.setContentDescription("App menu");more.setTag("session-menu");SessionStyle.button(more,false);more.setOnClickListener(v->menu.run());
         top.addView(more,new LayoutParams(SessionStyle.dp(a,48),SessionStyle.dp(a,48)));rail.addView(top);
+        mode=new TextView(a);mode.setTag("session-mode-badge");mode.setTextSize(15);mode.setTextColor(0xffb6e8ff);mode.setTypeface(null,android.graphics.Typeface.BOLD);mode.setVisibility(GONE);rail.addView(mode);
         summary=new Button(a);summary.setTag("session-summary");SessionStyle.button(summary,false);summary.setTextSize(12);summary.setMaxLines(3);summary.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         summary.setContentDescription("Vehicle and security status — tap for details");summary.setOnClickListener(v->details.run());
         LayoutParams sp=new LayoutParams(-1,SessionStyle.dp(a,64));sp.topMargin=SessionStyle.dp(a,6);rail.addView(summary,sp);
@@ -27,6 +29,7 @@ public final class SessionWorkspace extends LinearLayout {
         setOnApplyWindowInsetsListener((v,i)->{v.setPadding(pad+i.getSystemWindowInsetLeft(),pad+i.getSystemWindowInsetTop(),pad+i.getSystemWindowInsetRight(),pad+i.getSystemWindowInsetBottom());return i;});
     }
     public void summary(String text){if(!text.contentEquals(summary.getText()))summary.setText(text);}
+    public void mode(String text){mode.setText(text==null?"":text);mode.setVisibility(text==null||text.isEmpty()?GONE:VISIBLE);}
     public void addLaunch(View launch){LayoutParams p=new LayoutParams(-1,SessionStyle.dp(activity,48));p.topMargin=SessionStyle.dp(activity,6);rail.addView(launch,p);}
     public void toggleExpanded(){expanded=!expanded;rail.setVisibility(expanded?GONE:VISIBLE);requestLayout();}
     public boolean expanded(){return expanded;}

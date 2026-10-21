@@ -1397,5 +1397,25 @@
       "android-arm64": "Preview.20 shared UI source removes help click from instruction strip; exact build and isolated root-touch tests pending; Fire stays under owner control on preview.19",
       "ios-arm64": "Implementation remains on hold; Android validation first"
     }
+  },
+  "session_mode_selection": {
+    "id": "session-mode-selection-1",
+    "date": "2026-10-20",
+    "workflow": "Connect and start -> select USB adapter or Bluetooth endpoint -> Choose session mode -> explicit Connect. Cancel opens no connection.",
+    "labels": [
+      "Read-only",
+      "Read + write",
+      "Read + clear codes"
+    ],
+    "rules": [
+      "Show the same chooser after adapter selection for USB and Bluetooth, before opening its transport.",
+      "Read-only is the default only when the selected binding enforces it. Unsupported modes remain visibly unavailable; never silently substitute full control.",
+      "Write capability labels reflect actual adapter/profile limits. MX+ and release Nano offer Read + clear codes; do not label these full write. MDI current carrier offers full control only; require an explicit selection.",
+      "Show the selected mode in the normal session header and retain original firmware confirmations. Choosing a mode never replays a diagnostic action.",
+      "Mode selection is scoped to the selected adapter and current foreground attempt. Cancel, background and stale callbacks start no connection. Internal service authentication, command policies and operation-specific consent remain.",
+      "Counter reset and security-data collection keep their separate existing workflows. No new driver or packet permission is granted by this UI."
+    ],
+    "candidate": "Android ARM640.1.1-preview.21; actual installed checks pending",
+    "other_targets": "Adoption and exact installed verification pending for Android ARM32, Windows, macOS ARM64/Intel, Linux and iOS."
   }
 }

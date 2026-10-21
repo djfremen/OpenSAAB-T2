@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
     private boolean mxCompatibility,mxResetCounters,mxClearDtc;
     private final com.opensaab.usb.MxWriteAccess mxWriteAccess=new com.opensaab.usb.MxWriteAccess();
     private android.app.AlertDialog mxWriteDialog;
+    private android.app.AlertDialog sessionModeDialog;
     private String mxPendingConsentUtc,mxConsentUtc;
     private long mxChoiceGeneration;
     private final com.opensaab.usb.BluetoothFirmwareHandoff bluetoothHandoff=new com.opensaab.usb.BluetoothFirmwareHandoff();
@@ -64,7 +65,7 @@ public final class MainActivity extends Activity {
         return j;
     }
     private void startMx(){startMx(false);}
-    private void startMx(boolean resetCounters){if(!idleTool())return;selectVlinker((device,compatibility)->{try{if(device.getName()==null||!device.getName().startsWith("OBDLink MX")){status.setText("Select the OBDLink MX+ for original firmware diagnostics");return;}mxDevice=device;mxCompatibility=compatibility;mxResetCounters=resetCounters;mxClearDtc=false;mxConsentUtc=null;startSession();}catch(SecurityException denied){status.setText("Allow Nearby devices before connecting MX+");}});}
+    private void startMx(boolean resetCounters){if(!idleTool())return;selectVlinker((device,compatibility)->{try{if(device.getName()==null||!device.getName().startsWith("OBDLink MX")){status.setText("Select the OBDLink MX+ for original firmware diagnostics");return;}if(!resetCounters){chooseBluetoothMode(device,compatibility);return;}mxDevice=device;mxCompatibility=compatibility;mxResetCounters=true;mxClearDtc=false;mxConsentUtc=null;startSession();}catch(SecurityException denied){status.setText("Allow Nearby devices before connecting MX+");}});}
 
     private TextView status, console;
     private TextView vehicleSummary,connectionDate,authStatus,authDate;
@@ -181,6 +182,7 @@ public final class MainActivity extends Activity {
     }
     private void updateWorkspace(){
         if(workspace==null)return;
+        workspace.mode(running?(mxDevice==null?"Offline emulation":mxResetCounters?"Session mode: Counter reset":(mxClearDtc?com.opensaab.usb.SessionModes.Mode.CLEAR:com.opensaab.usb.SessionModes.Mode.READ).badge()):null);
         if(updateReminder!=null)updateReminder.refresh();
         workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):status.getText()+"\n"+compactVehicle+(compactSecurity.isEmpty()?"":"\n"+compactSecurity));
         if(!running&&simulatorSnapshot!=null&&simulatorSnapshot.optJSONObject("vehicle")!=null){
@@ -265,7 +267,7 @@ public final class MainActivity extends Activity {
         if(running)menu.add("Stop emulation",()->stopSession("Stopped by operator"));
         if(com.opensaab.usb.SetupCleanup.available(this))menu.add("Remove installer",()->{if(idleTool())com.opensaab.usb.SetupCleanup.remove(this);});
         menu.add("AI control (MCP)",()->com.opensaab.usb.AndroidMcp.show(this));
-        menu.add("MX+ read-only firmware session",this::startMx);
+        menu.add("MX+ firmware session…",this::startMx);
         menu.add("MX+ reset misfire and knock counters",()->new android.app.AlertDialog.Builder(this)
             .setTitle("Reset misfire and knock counters?")
             .setMessage("Start a T8 counter-reset session with MX+. Read the existing values first and keep the engine stopped. Only the original Reset Misfire and Knock Counters request is added to the read profile. Follow the firmware confirmation.")
@@ -332,7 +334,7 @@ public final class MainActivity extends Activity {
             if(bluetooth&&index==0){
                 if(!allowEmulation){showHscanProbe();return;}
                 Runnable begin=()->{clearSimulatorIdentity();status.setText("Opening selected adapter · Reading a fresh vehicle VIN…");simulatorConnection.start();updateWorkspace();};
-                if(localMac)begin.run();else selectVlinker((device,compatibility)->{beginBluetoothStartup(device,compatibility);});
+                if(localMac)begin.run();else selectVlinker(this::chooseBluetoothMode);
             }else connectAdapter(devices.get(index-(bluetooth?1:0)),mode,!allowEmulation);
         });
         picker.setPositiveButton("Refresh",(dialog,which)->selectAdapter(mode,allowEmulation));
@@ -340,7 +342,16 @@ public final class MainActivity extends Activity {
         if(allowEmulation)picker.setNeutralButton("Run in emulation mode",(dialog,which)->{mxDevice=null;startSession();});
         adapterPicker=picker.show();
     }
-    private void beginBluetoothStartup(android.bluetooth.BluetoothDevice device,boolean compatibility){
+    private boolean modeSelectionReady(){return foreground&&resumed&&!isDestroyed()&&!running&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy()&&!com.opensaab.usb.VlinkerVehicleConnection.active();}
+    private void chooseBluetoothMode(android.bluetooth.BluetoothDevice device,boolean compatibility){
+        String family="bluetooth";try{if(device.getName()!=null&&device.getName().startsWith("OBDLink MX"))family="mxplus";}catch(SecurityException denied){status.setText("Allow Nearby devices before connecting");return;}
+        sessionModeDialog=com.opensaab.usb.SessionModePicker.show(this,com.opensaab.usb.SessionModes.forAdapter(family,false),this::modeSelectionReady,
+            selected->beginBluetoothStartup(device,compatibility,selected));
+    }
+    private void beginBluetoothStartup(android.bluetooth.BluetoothDevice device,boolean compatibility,com.opensaab.usb.SessionModes.Mode selectedMode){
+        if(!modeSelectionReady())return;
+        if(selectedMode!=com.opensaab.usb.SessionModes.Mode.READ&&selectedMode!=com.opensaab.usb.SessionModes.Mode.CLEAR){status.setText("Selected session mode is unavailable for Bluetooth");return;}
+        final String consent=selectedMode==com.opensaab.usb.SessionModes.Mode.CLEAR?java.time.Instant.now().toString():null;
         final long attempt=bluetoothHandoff.begin();
         simulatorConnection=com.opensaab.usb.VlinkerVehicleConnection.direct(this,snapshot->{
             if(!bluetoothHandoff.current(attempt)){if(!running&&!com.opensaab.usb.VlinkerVehicleConnection.active())updateWorkspace();return;}
@@ -358,7 +369,7 @@ public final class MainActivity extends Activity {
             if(ready){
                 // Discovery closed its socket and released its owner. Reopen this exact selection.
                 // Never rediscover, replay a VIN request, or fall back to offline firmware.
-                mxDevice=device;mxCompatibility=compatibility;mxResetCounters=false;mxClearDtc=false;mxConsentUtc=null;
+                mxDevice=device;mxCompatibility=compatibility;mxResetCounters=false;mxClearDtc=selectedMode==com.opensaab.usb.SessionModes.Mode.CLEAR;mxConsentUtc=consent;
                 status.setText("Vehicle identified · Starting original firmware…");startSession();
             }else simulatorChanged(snapshot);
         },device,compatibility);
@@ -373,6 +384,15 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(request,permissions,results);if(foreground&&bluetoothPicker!=null)bluetoothPicker.permissionsResult(request);
     }
     private void connectAdapter(android.hardware.usb.UsbDevice chosen,String mode,boolean shortcut){
+        if(!mode.equals("native_dtc")){connectAdapterInMode(chosen,mode,shortcut,null);return;}
+        com.opensaab.usb.AdapterCatalog.Match match=com.opensaab.usb.AdapterCatalog.identify(chosen.getVendorId(),chosen.getProductId());
+        String family=com.opensaab.usb.MdiAdapter.candidate(match)?"mdi":match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO?"chipsoft":match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO?"nano":"unsupported";
+        if(family.equals("unsupported")){status.setText("This adapter's firmware connection is unavailable");return;}
+        boolean privateBuild=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
+        sessionModeDialog=com.opensaab.usb.SessionModePicker.show(this,com.opensaab.usb.SessionModes.forAdapter(family,privateBuild),this::modeSelectionReady,
+            selected->connectAdapterInMode(chosen,mode,shortcut,selected));
+    }
+    private void connectAdapterInMode(android.hardware.usb.UsbDevice chosen,String mode,boolean shortcut,com.opensaab.usb.SessionModes.Mode selectedMode){
         android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
         android.hardware.usb.UsbDevice current=usb.getDeviceList().get(chosen.getDeviceName());
         if(current==null || current.getDeviceId()!=chosen.getDeviceId()
@@ -395,23 +415,25 @@ public final class MainActivity extends Activity {
             return;
         }
         android.content.Intent launch;
-        if(mode.equals("dtc_read") || (!shortcut && mode.equals("native_dtc") && match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO)){
+        if(selectedMode==null&&(mode.equals("dtc_read") || (!shortcut && mode.equals("native_dtc") && match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO))){
             if(match.backend()!=com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){android.widget.Toast.makeText(this,"Direct HS-CAN engine-code reading currently requires Chipsoft",android.widget.Toast.LENGTH_LONG).show();return;}
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class).putExtra("dtc_read",true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO){
             if(mode.equals("native_ecu_info")){status.setText("ECU information shortcut is not supported for VCX Nano yet");return;}
-            launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(mode.equals("native_seed")?"nano_security_collect":mode,true);
+            String nanoMode=selectedMode!=null?com.opensaab.usb.SessionModes.usbFlag("nano",selectedMode,(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0):mode.equals("native_seed")?"nano_security_collect":mode;
+            launch=new android.content.Intent(this,com.opensaab.usb.NanoProbeActivity.class).putExtra(nanoMode,true);
         }else if(match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO){
-            boolean restricted=getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false);
+            boolean restricted=selectedMode==null?getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false):selectedMode==com.opensaab.usb.SessionModes.Mode.READ;
+            if(selectedMode!=null)getSharedPreferences("adapter_settings",MODE_PRIVATE).edit().putBoolean("chipsoft_restricted",restricted).apply();
             if(restricted && (mode.equals("native_seed") || mode.equals("native_clear_dtc") || mode.equals("native_reset_counters"))){
-                status.setText("Turn off Chipsoft restricted mode to collect security data, clear DTCs or reset counters");
-                android.widget.Toast.makeText(this,"Restricted mode is read-only. Turn it off to collect security data, clear DTCs or reset counters.",android.widget.Toast.LENGTH_LONG).show();
+                status.setText("Connect again and choose Read + write for this operation");
+                android.widget.Toast.makeText(this,"This session is read-only. Connect again and choose Read + write for this operation.",android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class)
-                // Default to full control; persist an explicit read-only choice.
+                // Bind the explicit choice; legacy operation-specific callers retain their existing authority.
                 // ADB automation profiles remain independent of this UI setting.
-                .putExtra(restricted?"native_firmware":mode.equals("native_seed")?"native_seeds":"full_native",true);
+                .putExtra(selectedMode!=null?com.opensaab.usb.SessionModes.usbFlag("chipsoft",selectedMode,false):restricted?"native_firmware":mode.equals("native_seed")?"native_seeds":"full_native",true);
             if(shortcut&&!mode.equals("native_seed"))launch.putExtra("menu_shortcut",mode);
         }else{status.setText("This adapter is detected, but its Android driver is not ready");return;}
         status.setText(match.profile.openingMessage());
@@ -639,7 +661,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onResume(){resumed=true;if(previewContinued)com.opensaab.usb.AndroidMcp.bind(this,mcpOwner);super.onResume();if(updateReminder!=null)updateReminder.resume();}
     @Override protected void onPause(){resumed=false;if(updateReminder!=null)updateReminder.pause();super.onPause();}
-    @Override protected void onStop() { com.opensaab.usb.AndroidMcp.unbind(this); foreground=false;bluetoothHandoff.cancel();if(!previewContinued){super.onStop();return;}if(bluetoothPicker!=null)bluetoothPicker.close();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();clearSimulatorIdentity();ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
+    @Override protected void onStop() { com.opensaab.usb.AndroidMcp.unbind(this); foreground=false;if(sessionModeDialog!=null)sessionModeDialog.dismiss();bluetoothHandoff.cancel();if(!previewContinued){super.onStop();return;}if(bluetoothPicker!=null)bluetoothPicker.close();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();clearSimulatorIdentity();ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     @Override protected void onSaveInstanceState(Bundle state){state.putBoolean("preview_continued",previewContinued);super.onSaveInstanceState(state);}
     private void refreshVehicleHistory(){
         if(!foreground||isDestroyed()||!historyPending.compareAndSet(false,true))return;

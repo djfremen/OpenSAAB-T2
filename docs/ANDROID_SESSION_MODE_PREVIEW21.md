@@ -1,0 +1,5 @@
+## Session mode selection · preview.21 candidate · 2026-10-20
+
+Connect and start uses the same Choose session mode step after USB adapter or Bluetooth endpoint selection and before transport open. Read-only is selected initially where it is enforced. Read + write means existing full native control; Read + clear codes identifies the narrower MX+/release Nano capability. Unsupported options stay visibly unavailable. The current MDI Android carrier cannot enforce read-only, so its user must explicitly select Read + write; no read-only claim is made. The selected mode is shown in the normal session header. Cancel/background/stale attempts open no transport, and selecting a mode never replays a diagnostic command. Original firmware confirmations and separate counter-reset/security workflows remain.
+
+This UI source change grants no new native permissions. Source adoption, exact installed UI/connection checks and physical USB tests are separate; all other targets require adoption and verification. Preview.20 artifacts and evidence remain unchanged.

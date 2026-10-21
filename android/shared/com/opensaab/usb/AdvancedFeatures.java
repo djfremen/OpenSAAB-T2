@@ -11,14 +11,7 @@ public final class AdvancedFeatures {
     public static AlertDialog show(Activity a,BooleanSupplier running){
         LinearLayout panel=new LinearLayout(a);panel.setOrientation(LinearLayout.VERTICAL);
         int pad=SessionStyle.dp(a,16);panel.setPadding(pad,pad,pad,pad);panel.setBackgroundColor(0xff101922);
-        Switch restricted=new Switch(a);restricted.setText("Chipsoft restricted mode");restricted.setTextColor(0xffedf4fa);
-        restricted.setMinHeight(SessionStyle.dp(a,48));
-        android.content.SharedPreferences prefs=a.getSharedPreferences("adapter_settings",Activity.MODE_PRIVATE);
-        restricted.setChecked(prefs.getBoolean("chipsoft_restricted",false));
-        restricted.setOnCheckedChangeListener((v,checked)->{
-            prefs.edit().putBoolean("chipsoft_restricted",checked).apply();
-            Toast.makeText(a,"Applies to the next connection",Toast.LENGTH_SHORT).show();
-        });panel.addView(restricted);
+        TextView modes=new TextView(a);modes.setText("Choose Read-only or the supported write mode after selecting an adapter with Connect and start.");modes.setTextColor(0xffedf4fa);panel.addView(modes);
         ScrollView scroll=new ScrollView(a);scroll.addView(panel);
         AlertDialog dialog=new AlertDialog.Builder(a).setTitle("Adv. Features").setView(scroll).create();
         add(panel,"Adapters",()->{if(idle(a,running)){dialog.dismiss();a.startActivity(new Intent(a,AdapterDetectorActivity.class));}});

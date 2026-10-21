@@ -131,6 +131,7 @@ public final class MdiUsbActivity extends Activity {
     private void update(){
         if(workspace==null)return;
         TextView auth=security==null?null:security.findViewWithTag("security-state");
+        workspace.mode(authority.equals("seeds")?"Session mode: Security-data collection":SessionModes.Mode.FULL.badge());
         workspace.summary(message+(auth==null?"":"\n"+auth.getText())+(identity==null?"\nVehicle access not verified":(running.get()&&!stopping?"\nVIN: ":"\nLast session VIN: ")+identity.vin+"\nVehicle access not verified"));
         connect.setVisibility(running.get()||permissionPending?View.GONE:View.VISIBLE);
         cancel.setVisibility(running.get()||permissionPending?View.VISIBLE:View.GONE);
@@ -169,7 +170,7 @@ public final class MdiUsbActivity extends Activity {
         FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed",setup="";
         try{
             lease=FirmwareGate.use();
-            directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());if(attempt!=null)attempt.bind(directory,"read_only","connection");
+            directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());if(attempt!=null)attempt.bind(directory,authority.equals("seeds")?"security_seeds":"full_native","connection");
             nativeDirectory=new File(directory,"native");Files.createDirectories(nativeDirectory.toPath());
             File card=new File(getFilesDir(),"firmware/card.bin");
             if(card.isFile())SecuritySessionData.recordBaseline(nativeDirectory,card);

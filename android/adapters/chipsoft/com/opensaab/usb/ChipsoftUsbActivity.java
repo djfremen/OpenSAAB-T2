@@ -144,6 +144,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void updateWorkspace(){
         if(workspace==null)return;
+        workspace.mode(seeds?"Session mode: Security-data collection":keyStatus?"Session mode: Key-status test":(symbolOnly||audible)?"Session mode: BCM reminder operation":(fullNative?SessionModes.Mode.FULL:SessionModes.Mode.READ).badge());
         String heading=vehicle==null?"Chipsoft · no vehicle identified":(running.get()?"Vehicle · ":"Last vehicle · ")+vehicle.modelYear+" · "+vehicle.platform;
         String security="";
         if(securityAccess!=null){TextView state=securityAccess.findViewWithTag("security-state");security=securityAccess.busy()?"Security: processing · details":state.getText().toString();}
