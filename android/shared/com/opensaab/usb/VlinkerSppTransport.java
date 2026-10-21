@@ -65,5 +65,6 @@ final class VlinkerSppTransport implements VlinkerTransport {
     private void closeEndpoint(){stopped=true;try{endpoint.close();closeConfirmed=true;}catch(IOException error){failure=new IOException("Bluetooth release was not confirmed",error);}}
     public void cancelPendingIO(){if(connecting||writing)closeEndpoint();}
     public boolean closeConfirmed(){return closeConfirmed;}
+    boolean readyForHandoff(){return !stopped&&failure==null&&output!=null&&!connecting;}
     public void shutdown(){closeEndpoint();watchdog.shutdownNow();packets.clear();}
 }

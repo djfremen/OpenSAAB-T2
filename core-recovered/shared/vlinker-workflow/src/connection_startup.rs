@@ -83,6 +83,9 @@ fn valid_vin(vin: &str) -> bool {
             .all(|b| b.is_ascii_digit() || b.is_ascii_uppercase() && !b"IOQ".contains(&b))
 }
 pub fn from_probe(adapter: &str, report: &Value) -> Result<Value, String> {
+    from_probe_for_native(adapter, report, None)
+}
+fn from_probe_for_native(adapter: &str, report: &Value, native_attempt: Option<&str>) -> Result<Value, String> {
     let (closed, origin, vin) = match adapter {
         "vcx_nano_bridge" => {
             if report["channel_cleanup"] != true || report["hardware"] != "VCX-NANO"
@@ -106,7 +109,17 @@ pub fn from_probe(adapter: &str, report: &Value) -> Result<Value, String> {
                 return Err("Vehicle discovery did not complete exactly one request".into());
             }
             (
-                report["bluetooth_closed"] == true,
+                native_attempt.map_or(report["bluetooth_closed"] == true, |attempt|
+                    adapter == "bluetooth_mic" && report["bluetooth_closed"] == false
+                    && report["native_transport_handoff"]["attempt_id"] == attempt
+                    && report["native_transport_handoff"]["target"] == "mxplus-native"
+                    && report["native_transport_handoff"]["retained"] == true
+                    && report["transport"] == "android-classic-spp"
+                    && report["selected_device"]["transport"] == "android-classic-spp"
+                    && report["selected_device"]["type"] == "ready"
+                    && report["result"]["adapter_model"] == "obdlink_mxp"
+                    && report["result"]["diagnostic_session_stopped"] == true
+                    && report["command_writes"]["STPC"] == 1),
                 &report["result"]["request_origin"],
                 &report["result"]["vin"],
             )
@@ -191,6 +204,7 @@ pub struct Session {
     message: String,
     lease: Option<crate::ownership::Lease>,
     steps: Vec<Value>,
+    native_handoff: bool,
 }
 impl Session {
     pub fn root_path(&self) -> String { self.root.to_string_lossy().into_owned() }
@@ -208,6 +222,7 @@ impl Session {
             message: String::new(),
             lease: None,
             steps: Vec::new(),
+            native_handoff: false,
         }
     }
     fn release(&mut self) {
@@ -243,7 +258,7 @@ impl Session {
     fn snapshot(&self, effect: &str) -> Value {
         json!({"schema":1,"state":self.phase,"busy":self.busy(),"effect":effect,"attempt_id":self.id,"adapter":self.adapter,"vehicle":self.vehicle,
             "description":if self.vehicle.is_null(){String::new()}else{description(&self.vehicle)},"message":self.message,
-            "vehicle_connected":false,"firmware_running":false,"firmware_transport_available":false,"automatic_replay":false})
+            "vehicle_connected":false,"firmware_running":false,"firmware_transport_available":self.native_handoff && self.phase == "identified","transport_retained_for_native":self.native_handoff && ["lookup","identified"].contains(&self.phase),"automatic_replay":false})
     }
     fn fail(&mut self, message: impl Into<String>, reason: &str) -> Value {
         self.phase = "failed";
@@ -306,6 +321,7 @@ impl Session {
         }
         match (self.phase, op) {
             ("idle", "begin") => {
+                self.native_handoff = event["native_transport_handoff"] == true;
                 if event["firmware_ready"] != true {
                     self.phase = "setup_required";
                     self.message = "Firmware setup is required before connecting".into();
@@ -328,6 +344,7 @@ impl Session {
                         "NO_ADAPTER",
                     );
                 }
+                if self.native_handoff && adapter != "bluetooth_mic" { return self.fail("Native transport handoff requires the selected MX+ Bluetooth path", "NO_ADAPTER"); }
                 self.adapter = adapter.into();
                 self.phase = "discovering";
                 self.message = "Opening selected adapter · Reading a fresh vehicle VIN…".into();
@@ -339,7 +356,7 @@ impl Session {
                 if self.adapter == "vcx_nano_bridge" && report["attempt_id"] != self.id {
                     return self.fail("Bridge reply belongs to another connection attempt", "VIN_UNAVAILABLE");
                 }
-                match from_probe(&self.adapter, report) {
+                match from_probe_for_native(&self.adapter, report, self.native_handoff.then_some(self.id.as_str())) {
                     Ok(vehicle) => {
                         self.vehicle = vehicle;
                         self.phase = "lookup";
@@ -385,8 +402,8 @@ impl Session {
                     );
                 }
                 self.phase = "identified";
-                self.message=if self.adapter == "vcx_nano_bridge" {"Vehicle identified · USB bridge firmware transport is not implemented in this build"}else{"Vehicle identified · Bluetooth firmware transport is not implemented in this build"}.into();
-                self.record("FIRMWARE_START", "FAILED", "PROTOCOL_OR_PROCESS_ERROR");
+                self.message=if self.native_handoff {"Vehicle identified · Native Bluetooth transport ready for handoff"}else if self.adapter == "vcx_nano_bridge" {"Vehicle identified · USB bridge firmware transport is not implemented in this build"}else{"Vehicle identified · Bluetooth firmware transport is not implemented in this build"}.into();
+                if self.native_handoff { self.record("FIRMWARE_START", "IN_PROGRESS", "NONE"); } else { self.record("FIRMWARE_START", "FAILED", "PROTOCOL_OR_PROCESS_ERROR"); }
                 let result = self.snapshot("none");
                 let _ = f::write_json(&run.join("startup-result.json"), &result);
                 self.release();
@@ -451,6 +468,41 @@ mod tests {
     }
     fn probe() -> Value {
         json!({"status":"vin_received","bluetooth_closed":true,"automatic_replay":false,"host_vehicle_request_attempts":1,"host_vehicle_requests_written":1,"result":{"request_origin":"host-startup-discovery","vin":"YS3FD49YX41000001"}})
+    }
+    fn retained_probe(attempt: &str) -> Value {
+        let mut p=probe();p["bluetooth_closed"]=json!(false);p["transport"]=json!("android-classic-spp");
+        p["selected_device"]=json!({"type":"ready","transport":"android-classic-spp"});
+        p["result"]["adapter_model"]=json!("obdlink_mxp");p["result"]["diagnostic_session_stopped"]=json!(true);
+        p["command_writes"]=json!({"STPC":1});
+        p["native_transport_handoff"]=json!({"attempt_id":attempt,"target":"mxplus-native","retained":true});p
+    }
+    #[test]
+    fn native_handoff_is_explicit_attempt_bound_and_never_a_closed_receipt() {
+        let p=retained_probe("attempt-1");
+        assert!(from_probe("bluetooth_mic",&p).is_err());
+        assert!(from_probe_for_native("bluetooth_mic",&p,Some("attempt-1")).is_ok());
+        assert!(from_probe_for_native("bluetooth_mic",&p,Some("stale-attempt")).is_err());
+        assert!(from_probe_for_native("vlinker_mc_plus",&p,Some("attempt-1")).is_err());
+        for pointer in ["/native_transport_handoff/retained","/result/diagnostic_session_stopped"] {
+            let mut bad=p.clone();*bad.pointer_mut(pointer).unwrap()=json!(false);
+            assert!(from_probe_for_native("bluetooth_mic",&bad,Some("attempt-1")).is_err());
+        }
+        for (pointer,value) in [("/bluetooth_closed",json!(true)),("/native_transport_handoff/target",json!("other")),("/result/adapter_model",json!("carista_evo")),("/command_writes/STPC",json!(0)),("/host_vehicle_requests_written",json!(0)),("/host_vehicle_request_attempts",json!(2)),("/automatic_replay",json!(true)),("/selected_device/type",json!("unverified")),("/transport",json!("other"))] {
+            let mut bad=p.clone();*bad.pointer_mut(pointer).unwrap()=value;
+            assert!(from_probe_for_native("bluetooth_mic",&bad,Some("attempt-1")).is_err(),"{pointer}");
+        }
+    }
+    #[test]
+    fn native_handoff_saves_fresh_identity_without_a_second_probe_and_cancel_rejects_it() {
+        let _serial=OWNERSHIP_TEST.lock().unwrap();let mut s=session();
+        s.event(&json!({"op":"begin","firmware_ready":true,"native_transport_handoff":true}));
+        s.event(&json!({"op":"select_adapter","adapter":"bluetooth_mic","transport_available":true}));
+        let p=retained_probe(&s.id);assert_eq!(s.event(&json!({"op":"probe_result","report":p}))["effect"],"lookup");
+        let terminal=s.event(&json!({"op":"lookup_unavailable"}));assert_eq!(terminal["state"],"identified");assert_eq!(terminal["firmware_transport_available"],true);assert_eq!(terminal["firmware_running"],false);assert_eq!(terminal["automatic_replay"],false);
+        assert_eq!(s.event(&json!({"op":"probe_result","report":p}))["effect"],"none");
+        let mut cancelled=session();cancelled.event(&json!({"op":"begin","firmware_ready":true,"native_transport_handoff":true}));cancelled.event(&json!({"op":"select_adapter","adapter":"bluetooth_mic","transport_available":true}));
+        cancelled.event(&json!({"op":"cancel"}));let late=retained_probe(&cancelled.id);assert!(cancelled.event(&json!({"op":"probe_result","report":late}))["vehicle"].is_null());
+        cancelled.event(&json!({"op":"transport_closed","bluetooth_closed":true}));std::fs::remove_dir_all(&s.root).unwrap();std::fs::remove_dir_all(&cancelled.root).unwrap();
     }
     fn session() -> Session {
         Session::new(std::env::temp_dir().join(format!("opensaab-startup-test-{}", f::unique())))

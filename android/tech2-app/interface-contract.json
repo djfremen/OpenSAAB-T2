@@ -1431,5 +1431,14 @@
     "initialization": "After verified discovery and released Bluetooth ownership, native setup uses ATD to restore runtime defaults without reboot; ATE0/ATI/STI/STDI/STSN/ATRV and all raw HS/SW-CAN configuration/readback checks remain required.",
     "guards": "Explicit connection mode and native session role retained; failed prompt/readback/identity stops startup with no fallback, reset retry or vehicle-request replay.",
     "qualification": "Captured reset-failure regression and exact installed Fire/MX+ opening/cleanup recorded separately. No new ECU operation, other-adapter or other-platform qualification."
+  },
+  "android_mxplus_retained_handoff_preview26": {
+    "version": "0.1.1-preview.26",
+    "date": "2026-10-21",
+    "scope": "Android MX+ native connection continuity; shared Rust proof validation and thin Android ownership binding.",
+    "workflow": "Explicit selected adapter/mode -> one Bluetooth open -> shared reset/model/firmware/fresh VIN -> confirmed STPC -> retain the same socket through lookup -> one-shot exact-attempt/device/connection-mode adoption by native bridge -> ATD runtime defaults and native initialization.",
+    "guards": "Retained socket is never reported closed. Default discovery still requires transport closure. Only opt-in MX+ native intent accepts attempt-bound retained proof with exact one VIN/no replay and confirmed protocol stop. No fallback reconnect if adoption fails. Cancellation/background/stale/mismatch/unclaimed callbacks close retained resources. Native role/authority and original confirmations unchanged.",
+    "evidence": "preview.25 repeated failure was 8161ms before process launch after successful VIN. Source and synthetic tests do not qualify the installed physical workflow; exact native archives and live results recorded separately.",
+    "other_targets": "Shared core proof source adoption and Android ARM64 binding are scoped separately; ARM32/macOS/iOS/Windows/Linux installed and physical qualification pending."
   }
 }

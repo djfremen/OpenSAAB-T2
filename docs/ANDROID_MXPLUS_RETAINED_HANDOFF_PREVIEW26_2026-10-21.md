@@ -1,0 +1,9 @@
+# MX+ connection continuity, preview.26
+
+Preview.25 changed the native hard reset but did not remove the close/reopen handoff. Its 2026-10-21 21:47:53 UTC full-native attempt read a fresh VIN, closed discovery and failed before native launch after 8161ms. The ATD change never ran. Historical packages and raw evidence remain immutable in the M4 private research archive.
+
+Preview.26 retains the verified discovery socket after the shared workflow confirms its single VIN request and STPC prompt. The core accepts this disposition only for an explicitly requested, exact-attempt MX+ native handoff; default discovery still requires closure. The receipt says bluetooth_closed=false and carries retained handoff proof. Android keeps exclusive ownership through lookup and transfers one exact socket once, checking adapter address and connection mode. Missing, stale, mismatched, background/cancelled or unclaimed handoffs close rather than reconnect. Legacy standalone discovery/probes and separately consented later reconnections retain their existing behavior.
+
+Native initialization keeps preview.25 ATD defaults restoration, fresh identity/voltage checks and unchanged protocol configuration/readbacks. Full/read/security roles and original firmware confirmations are unchanged; no VIN or vehicle operation is replayed. Startup exceptions now retain their stage and bounded message locally. The UI says Preparing native session while the socket is retained.
+
+Tests cover strict retained-proof validation, unchanged closed discovery, single-consumer resource transfer, cancellation/stale/device/connection-mode rejection, production Java with the actual shared worker against a synthetic byte endpoint, and native protocol regressions. Exact installed artifact and physical opening/cleanup remain separately recorded; this is an unpublished preview and supplies no ECU-operation or other-target qualification.

@@ -18,6 +18,18 @@ public final class MxNativeBridge implements AutoCloseable {
     private Thread worker;
     private volatile Socket client;
     private volatile boolean closed,bluetoothClosed;
+    public static final class PreparedTransport implements AutoCloseable {
+        private final NativeTransportLease<VlinkerSppTransport> lease;
+        private final VlinkerSppTransport original;
+        private final String attempt;
+        PreparedTransport(String attempt,String address,boolean compatibility,VlinkerSppTransport link){
+            this.attempt=attempt;original=link;lease=new NativeTransportLease<>(attempt,address,compatibility,link,VlinkerSppTransport::shutdown);
+        }
+        boolean available(){return lease.available()&&original.readyForHandoff();}
+        boolean bluetoothClosed(){return original.closeConfirmed();}
+        private VlinkerSppTransport claim(BluetoothDevice device,boolean compatibility){return lease.claim(attempt,device.getAddress(),compatibility);}
+        public void close(){lease.close();}
+    }
     public MxNativeBridge(Context context,BluetoothDevice device,boolean compatibility)throws Exception {
         this(context,device,compatibility,false);
     }
@@ -29,13 +41,21 @@ public final class MxNativeBridge implements AutoCloseable {
     }
     private static SessionModes.Mode legacyMode(boolean reset,boolean clear){if(reset&&clear)throw new IllegalArgumentException("Choose one MX+ profile");return reset?SessionModes.Mode.RESET:clear?SessionModes.Mode.CLEAR:SessionModes.Mode.READ;}
     public MxNativeBridge(Context context,BluetoothDevice device,boolean compatibility,SessionModes.Mode mode)throws Exception {
+        this(context,device,compatibility,mode,null);
+    }
+    public MxNativeBridge(Context context,BluetoothDevice device,boolean compatibility,SessionModes.Mode mode,PreparedTransport prepared)throws Exception {
         if(mode==null)throw new IllegalArgumentException("Choose one MX+ profile");this.mode=mode;
         try{if(device==null || device.getName()==null || !device.getName().startsWith("OBDLink MX"))throw new IOException("Select the OBDLink MX+ for this firmware session");}
         catch(SecurityException denied){throw new IOException("Allow Nearby devices before connecting MX+",denied);}
         byte[] random=new byte[16];new SecureRandom().nextBytes(random);StringBuilder t=new StringBuilder();for(byte b:random)t.append(String.format(java.util.Locale.ROOT,"%02x",b&255));token=t.toString();
-        server=new ServerSocket();server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"),35676));server.setSoTimeout(12000);
+        server=new ServerSocket();
+        try{server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"),35676));server.setSoTimeout(12000);}
+        catch(Exception failure){server.close();if(prepared!=null)prepared.close();throw failure;}
         VlinkerSppTransport effect=null;
-        try{effect=new VlinkerSppTransport(context,device,compatibility);effect.open();effect.receive(1000);}catch(Exception e){if(effect!=null)effect.shutdown();server.close();throw e;}transport=effect;
+        try{
+            if(prepared!=null)effect=prepared.claim(device,compatibility);
+            else{effect=new VlinkerSppTransport(context,device,compatibility);effect.open();effect.receive(1000);}
+        }catch(Exception e){if(effect!=null)effect.shutdown();if(prepared!=null)prepared.close();server.close();throw e;}transport=effect;
         worker=new Thread(this::serve,"mx-native-owner");worker.start();
     }
     public String token(){return token;}
