@@ -10,6 +10,10 @@ static PEER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy)]
 enum Mode {
     Success,
+    ResetBluetoothLeak,
+    DefaultsRejected,
+    DefaultsMissingPrompt,
+    WrongStartupIdentity,
     DiscoveryLateReply,
     CanError,
     Stopped,
@@ -29,7 +33,7 @@ enum Mode {
 
 fn setup_value(command: &str, protocol: &mut u32) -> &'static str {
     match command {
-        "ATZ" => "ELM327 v1.4b",
+        "ATZ" | "ATI" => "ELM327 v1.4b",
         "STI" => "STN2255 v5.12.4",
         "STDI" => "OBDLink MX+ r3.1.3",
         "STSN" => "225530563988",
@@ -142,11 +146,33 @@ impl Peer {
                         ordinary_reads = 0;
                         requests += 1;
                     } else {
+                        if c == "ATZ" && matches!(mode, Mode::ResetBluetoothLeak) {
+                            // Exact bytes from the Fire/MX+ 2026-10-21 failure:
+                            // reboot leaks radio configuration, with no ELM prompt.
+                            replies.push_back(b"AT+AB UpdateInquiryScan 0 512 2048\r".to_vec());
+                            writeln!(reader.get_mut(), "WRITTEN").unwrap();
+                            continue;
+                        }
+                        if c == "ATD" && matches!(mode, Mode::DefaultsMissingPrompt) {
+                            replies.push_back(b"OK\r".to_vec());
+                            writeln!(reader.get_mut(), "WRITTEN").unwrap();
+                            continue;
+                        }
                         let value = match c {
+                            "ATD" if matches!(mode, Mode::DefaultsRejected) => "?",
+                            "STDI" if matches!(mode, Mode::WrongStartupIdentity) => "Unknown adapter",
                             "STBC1" if matches!(mode, Mode::NoBatchCapability) => "?",
                             _ => setup_value(c, &mut protocol),
                         };
-                        replies.push_back(format!("{value}\r\r>").into_bytes());
+                        if c == "ATD" && matches!(mode, Mode::ResetBluetoothLeak) {
+                            // Defaults restore may turn echo on; handle echo and
+                            // arbitrary byte fragmentation before accepting OK.
+                            for chunk in format!("ATD\r{value}\r\r>").as_bytes().chunks(2) {
+                                replies.push_back(chunk.to_vec());
+                            }
+                        } else {
+                            replies.push_back(format!("{value}\r\r>").into_bytes());
+                        }
                     }
                     "WRITTEN".to_string()
                 } else if command == "READ" {
@@ -248,6 +274,46 @@ impl Peer {
         commands
     }
 }
+#[test]
+fn native_start_restores_defaults_without_rebooting_the_connected_radio() {
+    let (peer, mut link) = Peer::open(Mode::ResetBluetoothLeak);
+    let result = link.setup();
+    let setup_log = std::fs::read_to_string(peer.directory.join("obdlink-native-transcript-private.jsonl")).unwrap();
+    let (events, _) = mpsc::sync_channel(8);
+    link.cleanup(&events);
+    let commands = peer.close();
+    assert!(result.is_ok(), "captured reset failure recurred: {result:?}");
+    let writes: Vec<_> = commands.iter().filter(|s| s.starts_with("WRITE ")).collect();
+    assert_eq!(writes.first().map(|s| s.as_str()), Some("WRITE ATD"));
+    assert_eq!(writes.iter().filter(|s| s.as_str() == "WRITE ATD").count(), 1);
+    assert!(!writes.iter().any(|s| matches!(s.as_str(), "WRITE ATZ" | "WRITE ATWS")));
+    for command in ["ATI", "STI", "STDI", "STSN", "STPR", "STPBRR"] {
+        assert!(commands.contains(&format!("WRITE {command}")), "missing startup check: {command}");
+    }
+    assert!(setup_log.contains("setup_complete"));
+    assert!(!commands.iter().any(|s| s.starts_with("WRITE STPX")));
+}
+
+#[test]
+fn defaults_failure_or_wrong_identity_never_reboots_or_transmits_a_vehicle_frame() {
+    for (mode, expected) in [
+        (Mode::DefaultsRejected, "readback rejected ATD"),
+        (Mode::DefaultsMissingPrompt, "prompt timeout: ATD"),
+        (Mode::WrongStartupIdentity, "readback rejected STDI"),
+    ] {
+        let (peer, mut link) = Peer::open(mode);
+        let result = link.setup();
+        let (events, _) = mpsc::sync_channel(8);
+        link.cleanup(&events);
+        let commands = peer.close();
+        assert!(result.unwrap_err().contains(expected));
+        assert!(!commands.iter().any(|s| matches!(s.as_str(), "WRITE ATZ" | "WRITE ATWS" | "WRITE STPO" | "INTERRUPT")));
+        assert!(!commands.iter().any(|s| s.starts_with("WRITE STPX")));
+        assert_eq!(commands.iter().filter(|s| s.as_str() == "WRITE ATD").count(), 1);
+        assert_eq!(commands.last().map(String::as_str), Some("CLOSE"));
+    }
+}
+
 fn tx(controller: usize, ticket: u64) -> CanTransmission {
     use crate::candi_cpu::{CanElectricalState, CanFrame};
     CanTransmission {

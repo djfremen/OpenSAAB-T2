@@ -323,11 +323,18 @@ impl Link {
         }
         self.parser = Parser::default();
         self.receiving = false;
-        let reset = self.reply("ATZ")?;
-        if reset.len() != 1 || !reset[0].starts_with("ELM327") {
-            return Err(format!("STN reset rejected: {reset:?}"));
-        }
+        // FRPM F, ATD: restore every runtime setting without rebooting OBDLink.
+        // Discovery already reset/identified the adapter and closed its protocol.
+        // A second ATZ on the newly opened RFCOMM stream can expose radio boot
+        // traffic instead of a command prompt (captured Fire/MX+ failure).
+        // Never retry that reset or treat radio text as a successful response.
+        self.exact("ATD", "OK")?;
         self.exact("ATE0", "OK")?;
+        let identity = self.reply("ATI")?;
+        if identity.len() != 1 || !identity[0].starts_with("ELM327") {
+            return Err(format!("STN ELM identity rejected: {identity:?}"));
+        }
+        self.record(serde_json::json!({"runtime_defaults_restored":true,"adapter_rebooted":false,"source":"ATD; FRPM F section 7.2"}))?;
         self.exact("STI", "STN2255 v5.12.4")?;
         self.exact("STDI", "OBDLink MX+ r3.1.3")?;
         self.exact("STSN", "225530563988")?;

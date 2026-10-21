@@ -1423,5 +1423,13 @@
     ],
     "candidate": "Android primary-control candidate under implementation; exact artifact checks recorded separately.",
     "other_targets": "Primary-control source bindings tracked separately for all seven declared targets. Capability and installed/physical qualification are not inferred from labels."
+  },
+  "android_mxplus_startup_preview25": {
+    "version": "0.1.1-preview.25",
+    "date": "2026-10-21",
+    "scope": "MX+ native startup only; common runtime-default restore and identity checks in shared Rust.",
+    "initialization": "After verified discovery and released Bluetooth ownership, native setup uses ATD to restore runtime defaults without reboot; ATE0/ATI/STI/STDI/STSN/ATRV and all raw HS/SW-CAN configuration/readback checks remain required.",
+    "guards": "Explicit connection mode and native session role retained; failed prompt/readback/identity stops startup with no fallback, reset retry or vehicle-request replay.",
+    "qualification": "Captured reset-failure regression and exact installed Fire/MX+ opening/cleanup recorded separately. No new ECU operation, other-adapter or other-platform qualification."
   }
 }

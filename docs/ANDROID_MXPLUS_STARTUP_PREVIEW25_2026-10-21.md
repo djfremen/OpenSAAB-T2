@@ -1,0 +1,9 @@
+# Android MX+ startup, preview.25
+
+The Fire ARM64 preview.24 attempt at 2026-10-21 21:33:47 UTC connected, read a fresh VIN, released discovery, and reopened the native link. Its second `ATZ` received `AT+AB UpdateInquiryScan 0 512 2048` without an ELM prompt. The native engine exited 3 after the prompt timeout. The original evidence remains private in the M4 diagnostic archive.
+
+Preview.25 changes the shared native backend to use `ATD` for runtime defaults, followed by echo-off and fresh ELM/STN/product/serial/voltage checks. The [manufacturer FRPM F, section 7.2](https://www.scantool.net/scantool/downloads/682/obdlink_frpm_f.pdf) defines `ATD` as restoring runtime settings without reboot. This avoids the redundant native hard reset while retaining complete protocol setup and readback. Discovery keeps its existing initial reset and single VIN request. The precise radio behavior behind the captured unexpected text remains unproven.
+
+The loopback regression reproduces the captured failure before this fix. It checks fragmented/echoed defaults acknowledgment, all identity/readback checks, no hard/warm reset, and no vehicle frame during setup. Negative defaults and wrong-identity cases must stop without retry or vehicle traffic. Existing HS/SW raw-frame, batch, ownership, cancellation and authority tests remain required.
+
+The versioned APK, matching source, exact eight native payloads and per-component hashes are retained separately. Five unchanged adapter/workflow components remain explicitly hash-pinned to preview.24. The root runtime and recovered runtime share this backend and are rebuilt. Exact installed Fire identity and physical opening/cleanup are separate from software tests; ECU operations, the initial paired-socket failure, other adapters, ARM32 and other platforms remain unqualified by this fix. No package is published by this work.
