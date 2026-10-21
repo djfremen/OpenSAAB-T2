@@ -16,7 +16,7 @@ public final class SessionModePicker {
         TextView adapter=text(activity,caps.adapter,18);content.addView(adapter);
         RadioGroup options=new RadioGroup(activity);options.setTag("session-mode-options");content.addView(options);
         RadioButton read=new RadioButton(activity);read.setId(View.generateViewId());read.setText("Read-only"+(caps.read?"":" · unavailable"));read.setTag("session-mode-read");read.setEnabled(caps.read);options.addView(read);
-        RadioButton write=new RadioButton(activity);write.setId(View.generateViewId());write.setText(caps.write==null?"Read + write · unavailable":caps.write.label);write.setTag("session-mode-write");write.setEnabled(caps.write!=null);options.addView(write);
+        RadioButton write=new RadioButton(activity);write.setId(View.generateViewId());write.setText(caps.write==null?"Full session · unavailable":caps.write.label);write.setTag("session-mode-write");write.setEnabled(caps.write!=null);options.addView(write);
         TextView description=text(activity,"",15);description.setTag("session-mode-description");content.addView(description);
         content.addView(text(activity,caps.explanation,14));
         ScrollView scroll=new ScrollView(activity);scroll.addView(content);

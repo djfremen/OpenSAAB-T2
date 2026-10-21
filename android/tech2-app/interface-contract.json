@@ -137,7 +137,11 @@
     "console": "Console",
     "stop": "Stop emulation",
     "expand": "Expand screen",
-    "restore": "Show header"
+    "restore": "Show header",
+    "session_mode": "Session Mode",
+    "session_read_only": "Read-only",
+    "session_full": "Full session",
+    "session_mode_help": "Full session allows supported changes. Original confirmations and security access still apply."
   },
   "key_encoders": {
     "S1": 10,
@@ -185,13 +189,13 @@
     "setup": "Fresh install to ready screen; same product steps and selected language; show any OS permission dialogs.",
     "ready": "Header, status, Connect and start, offline entry and firmware selection use the reference labels and hierarchy.",
     "offline": "Start offline, reach real Main Menu, then Diagnostics/model year, move selection and return with EXIT. No live vehicle claim.",
-    "controls": "Show S1\u2013S4, full keypad, Actions, Console and app menu; demonstrate EXIT versus Stop emulation.",
+    "controls": "Show S1–S4, full keypad, Actions, Console and app menu; demonstrate EXIT versus Stop emulation.",
     "responsive": "Capture compact and wide layouts, expanded screen and restored header; preserve 4:3 framebuffer and accessible keys.",
     "language": "Switch English to a supported non-English diagnostic image and back; show app-language fallback, progress, cancellation and retained working selection.",
     "connected": "Using the same supported bench fixture, detect/name Chipsoft and read a fresh VIN and complete T8 HS-CAN DTC report through the installed interface.",
     "recovery": "Cancel work, disconnect/reconnect adapter, then stop and reopen; no stale success or held adapter handle.",
     "advanced_actions": "Compare every reference Actions/app-menu entry and its behavior; record unsupported functionality as a gap, never a parity pass.",
-    "branding": "Official logo and always-visible Donate \u00b7 Support OpenSAAB footer in compact, wide and expanded views; donation dialog requires explicit Continue and never interrupts an active session. No diagnostic data in URL. About / Support also offers an explicit Discord community action using the permanent invite; no automatic navigation, appended vehicle data or interruption of an active session.",
+    "branding": "Official logo and always-visible Donate · Support OpenSAAB footer in compact, wide and expanded views; donation dialog requires explicit Continue and never interrupts an active session. No diagnostic data in URL. About / Support also offers an explicit Discord community action using the permanent invite; no automatic navigation, appended vehicle data or interruption of an active session.",
     "security_status": "Display cleared, PRE-AUTH, POST-AUTH/Fresh, POST-AUTH/Stale, invalid and unavailable states using isolated synthetic data. Verify the three-hour boundary, changed card/vehicle, missing receipt, future timestamp and reopen without rejuvenating old data. Show details in expanded mode. Separately qualify real processing/import; no simulated ECU authorization claim. Collect seed data, verify PRE-AUTH refresh, stop/reopen and retain the state for the same firmware/vehicle; verify another vehicle or firmware cannot inherit it.",
     "session_modes": "Select Chipsoft full native control and complete the original Check Ignition Key Status test. In restricted mode verify the same command is blocked before USB, the ended session is clearly displayed, and reconnect works. Keep seed-only and offline modes isolated from inherited environment flags. Qualify separately on each installed target.",
     "security_processing": "Collect on the installed app, follow physical key prompts, consent, process, validate/import and resume. Separately test denial, outage with/without fallback consent, TLS/redirect/oversize/malformed response, cancel, changed context and reopen without rejuvenating the receipt. Hardware authorization requires observed ECU evidence. Reopen with valid PRE-AUTH at the splash screen or offline: offer Process existing data without another VIN read. POST-AUTH offers Continue firmware. Mismatched/partial/changed data must not be substituted from history. Process after a clean operator Stop, preserve idle handoff eligibility, reject obsolete refreshes after return/import, and offer Continue firmware from the matching imported card while retaining PRE evidence. Unconfirmed cleanup, explicit cancellation, changed USB target and background state cannot silently restart diagnostics.",
@@ -209,10 +213,10 @@
     "logo_content_description": "OpenSAAB logo",
     "header_logo_dp": 48,
     "support": {
-      "button": "Donate \u00b7 Support OpenSAAB",
+      "button": "Donate · Support OpenSAAB",
       "title": "Help keep OpenSAAB moving",
-      "message": "I\u2019ve put my own time into bringing OpenSAAB to life. If it helps you, consider buying me a beer or supporting development. Contributions help fund adapter testing, documentation and ongoing work.\n\nSupport is voluntary. It does not unlock features, purchase vehicle security access or guarantee compatibility. Testing, documentation and code contributions are welcome too.",
-      "external": "Continue opens the project\u2019s donation page in your browser. No vehicle data or diagnostic logs are added to the link.",
+      "message": "I’ve put my own time into bringing OpenSAAB to life. If it helps you, consider buying me a beer or supporting development. Contributions help fund adapter testing, documentation and ongoing work.\n\nSupport is voluntary. It does not unlock features, purchase vehicle security access or guarantee compatibility. Testing, documentation and code contributions are welcome too.",
+      "external": "Continue opens the project’s donation page in your browser. No vehicle data or diagnostic logs are added to the link.",
       "pending": "The donation page is not available yet. Thank you for supporting the project through testing and feedback.",
       "donate": "Continue to donation page",
       "close": "Close",
@@ -262,7 +266,7 @@
       "owner_recorded_date": "2026-10-13",
       "status": "planned_upcoming_feature_not_implemented",
       "owner_requirement": "Replace the headline Fresh/Stale presentation with last security-access timestamp and VIN last four beside Auth_Status.",
-      "primary_example": "Auth_Status: [POST-AUTH] \u00b7 VIN \u20262017",
+      "primary_example": "Auth_Status: [POST-AUTH] · VIN …2017",
       "timestamp_example": "Last SA data import: <saved date, time and timezone>",
       "timestamp_source": "Successful validated security-data import: matching receipt imported_utc. Do not label API start, response-only, seed collection or app startup as successful SA. This timestamp describes imported data, not a current ECU grant.",
       "binding": "Validate the complete VIN/vehicle_hash and current SSA/ssa_hash before presenting an import as belonging to this Auth_Status. Display only the VIN last four in this summary; never use last-four equality to associate receipts.",
@@ -336,7 +340,7 @@
       "Cancellation or changed session/vehicle/card leaves the previously active card intact. Credentials remain in the native protected credential store when the user chooses to remember them.",
       "Imported card data displays POST-AUTH with a bound, persistent receipt. It does not claim current vehicle authorization. Resume requires the same adapter connection; firmware retains responsibility for vehicle security exchanges.",
       "Before deliberately stopping for security processing, notify the crash monitor that this is an expected stop. Preserve the bounded cleanup timeout and processing error path; unrelated unexpected exits must remain reportable.",
-      "Get security access is reachable from Ready and Actions. Collect fresh data explicitly offers Manual collection (owner navigates Diagnostics \u2192 All \u2192 Get Security Access) and Guided collection (recognized original firmware menus only). Missing/unknown mode defaults to manual; a firmware control cancels guidance. Original firmware owns seed requests; never synthesize a host seed client or acknowledge physical ignition prompts.",
+      "Get security access is reachable from Ready and Actions. Collect fresh data explicitly offers Manual collection (owner navigates Diagnostics → All → Get Security Access) and Guided collection (recognized original firmware menus only). Missing/unknown mode defaults to manual; a firmware control cancels guidance. Original firmware owns seed requests; never synthesize a host seed client or acknowledge physical ignition prompts.",
       "An explicit fresh request takes precedence over an older imported receipt. Start collection from a disposable card with exactly the 714-byte SSA erased; preserve the selected source card, old receipt and every surrounding firmware byte. Retain source-before and guest-before evidence separately: fresh guest proof is checked against guest-before, while import checks the unchanged selected source baseline. Collection needs no internet or password; processing requires separate authorization and disclosure consent."
     ],
     "platform_status": "Shared worker and macOS binding under qualification; Windows/Linux bindings and Android shared-core cutover pending.",
@@ -345,7 +349,7 @@
       "reference_base": "OpenSAAB-T2@92c72fd5545efe008020e7f192aff7242c5976a8",
       "scope": "Urgent Android oracle fix; shared Rust migration and all installed physical tests pending",
       "receipt": "releases/consistent-baseline/SECURITY_COLLECTION_PATHS_2026-10-13.json",
-      "guided_scope": "Recognized English menus; operator confirms Saab 9-3 Sport (9440), MY2003\u20132012. Fresh VIN supplies the year without an external lookup. Unknown model/year/language falls back to manual.",
+      "guided_scope": "Recognized English menus; operator confirms Saab 9-3 Sport (9440), MY2003–2012. Fresh VIN supplies the year without an external lookup. Unknown model/year/language falls back to manual.",
       "context_arrival_rule": "A new session directory can precede fresh verified VIN metadata. Wait without constructing a cancelled navigator, then start assistance when matching same-run context arrives. Never substitute previous identity or override an operator manual takeover."
     },
     "operator_password_menu_retired": {
@@ -477,7 +481,7 @@
       },
       {
         "id": "engine_codes",
-        "label": "Read engine codes \u2014 HS-CAN"
+        "label": "Read engine codes — HS-CAN"
       },
       {
         "id": "read_dtc",
@@ -569,7 +573,7 @@
       },
       {
         "id": "reset",
-        "label": "Clear offset \u00b7 refresh access"
+        "label": "Clear offset · refresh access"
       }
     ],
     "rule": "Entries remain visible when a platform lacks a capability; show its specific reason. Visibility is not implementation or qualification. Android remains the behavior reference; no offline session invents a VIN or live diagnostic result.",
@@ -638,19 +642,19 @@
     "flow_control_owner": "adapter",
     "failure_rule": "Cancel, timeout or disconnect clears pending VIN and releases the transport. No automatic vehicle request replay. Publish success only after VTPC and transport release.",
     "simulator_rule": "Debug Xcode simulator uses an explicitly selected local Mac Bluetooth relay with an observed BLE or Classic SPP profile. Offline original-menu sessions never inherit its VIN. This does not qualify direct physical-iPhone Bluetooth or full firmware diagnostics.",
-    "read_ecm_info": "Read ECM information \u2014 HS-CAN",
-    "read_ecm_codes": "Read engine codes \u2014 HS-CAN",
+    "read_ecm_info": "Read ECM information — HS-CAN",
+    "read_ecm_codes": "Read engine codes — HS-CAN",
     "probe_rule": "Explicit ECM-only probe with fresh VIN; readIdentifier 1A fields retain raw bytes and documented names. A9/81 current/history mask 12 requires a real 5E8 end marker plus confirmed 10/20 session stop, VTPC and Bluetooth release. No clear/programming/security writes or automatic replay."
   },
   "adapter_startup": {
     "select_adapter": "Select adapter",
-    "vlinker_label": "Carista EVO / vLinker MC+ \u00b7 Bluetooth",
+    "vlinker_label": "Carista EVO / vLinker MC+ · Bluetooth",
     "cancel": "Cancel",
-    "identified": "Vehicle identified \u00b7 Adapter connection closed",
+    "identified": "Vehicle identified · Adapter connection closed",
     "reference": "ChipsoftUsbActivity, VehicleSession and VehicleIdentity: fresh VIN -> confirmed discovery release -> bounded vehicle lookup -> durable session identity -> adapter firmware handoff.",
     "history_rule": "Last vehicle is saved history only. Starting offline, cancellation, reconnect or backgrounding cannot inherit a current vehicle claim.",
     "firmware_gate": "Vehicle identification and running original firmware through an adapter are separate states. A missing firmware transport returns an explicit unavailable result; never start offline emulation as a connected substitute.",
-    "opening": "Adapter startup \u00b7 No firmware session",
+    "opening": "Adapter startup · No firmware session",
     "ready": "Choose Connect and start to identify the vehicle, or Run without an adapter to explore the menus.",
     "android_bluetooth": {
       "transport": "Classic Bluetooth RFCOMM SPP UUID 00001101-0000-1000-8000-00805f9b34fb",
@@ -659,8 +663,8 @@
         "vLinker MC-Android",
         "Carista EVO"
       ],
-      "selection": "Select adapter \u2192 Carista EVO / vLinker MC+ \u00b7 Bluetooth \u2192 Select Bluetooth adapter. Refresh paired adapters or explicitly Find nearby adapters; connect only after Use selected adapter.",
-      "permissions": "API31+: Nearby devices CONNECT/SCAN at runtime. API26\u201330: legacy Bluetooth plus fine location for discovery. A denied permission or unavailable radio never starts a vehicle read.",
+      "selection": "Select adapter → Carista EVO / vLinker MC+ · Bluetooth → Select Bluetooth adapter. Refresh paired adapters or explicitly Find nearby adapters; connect only after Use selected adapter.",
+      "permissions": "API31+: Nearby devices CONNECT/SCAN at runtime. API26–30: legacy Bluetooth plus fine location for discovery. A denied permission or unavailable radio never starts a vehicle read.",
       "pairing": "Authenticated SPP by default; connecting without saved pairing is an explicit unchecked option, never an automatic fallback.",
       "bounds": "Discovery 15 seconds, socket connect 8 seconds, native write 2 seconds, bounded RX queue; shared protocol owns command deadlines and decoding.",
       "failure_rule": "Single native owner for startup and probes; Stop/backgrounding closes pending native I/O. No automatic reconnect, fallback to M4, or vehicle-command replay. Complete observations require protocol cleanup and confirmed socket close.",
@@ -698,7 +702,7 @@
     "windows_bluetooth": {
       "implementation": "Windows.Devices.Bluetooth GATT and paired RFCOMM serial through thin .NET Framework bindings; the exact shared Rust 0.1.3 worker owns startup, model/firmware validation, commands, decoding and reports.",
       "profiles": "EVO and vLinker MC-IOS BLE: service18F0/write2AF1/notify2AF0 withResponse. Paired EVO/vLinker MC or MC-Android: Serial Port UUID00001101-0000-1000-8000-00805f9b34fb; observe its service instead of fixing a channel.",
-      "selection": "Connect and start -> Carista EVO / vLinker MC+ \u00b7 Bluetooth -> select exact endpoint and transport -> Use this adapter. Discovery sends no adapter command.",
+      "selection": "Connect and start -> Carista EVO / vLinker MC+ · Bluetooth -> select exact endpoint and transport -> Use this adapter. Discovery sends no adapter command.",
       "cleanup": "Stop/cancel closes only owned native handles, awaits pending I/O and checks endpoint disconnection metadata. Unconfirmed closure retains ownership. Reject an already connected endpoint without disconnecting other applications.",
       "result": "Fresh VIN and confirmed Bluetooth release precede bounded lookup and current identification. Offline/reopen cannot inherit current identity from history. The original-firmware wireless handoff remains unavailable.",
       "scope": "Explicit VIN, seven Trionic 8 ECM identifiers and complete current/history mask12 engine codes; shared durable reports reopen without reconnect. No automatic fallback/reconnect/command replay, SW-CAN/I-bus, ECM add/remove, clearing, programming or security.",
@@ -1046,7 +1050,7 @@
   "nano_reboot_action": {
     "date": "2026-10-13",
     "label": "Reboot Nano",
-    "entry": "Ready \u2192 Actions when Nano attached; selected Nano session \u2192 Actions",
+    "entry": "Ready → Actions when Nano attached; selected Nano session → Actions",
     "rules": [
       "Explicit user action only; selecting/attaching Nano never reboots it. Multiple candidates require explicit selection.",
       "Active diagnostics offer Keep session or Stop and reboot; wait for confirmed native and USB cleanup before a separate adapter-only reboot. Cancel on background/unplug, deadline, failed cleanup or changed selected USB identity. Block while security processing is busy.",
@@ -1366,7 +1370,7 @@
   },
   "android_mxplus_confirmed_clear_preview19": {
     "version": "0.1.1-preview.19",
-    "workflow": "Normal MX+ startup remains read-only. Selecting original Clear Codes intercepts the key before enqueue and asks Enable code clearing? Stay read-only preserves the same session. Proceed stops it, requires confirmed native protocol cleanup and Bluetooth socket release, then starts a separately authenticated code-clearing session and restarts menus. The operator chooses Clear again and confirms the original firmware erase. No automatic command replay. App menu also exposes Enable code clearing\u2026 during a read session.",
+    "workflow": "Normal MX+ startup remains read-only. Selecting original Clear Codes intercepts the key before enqueue and asks Enable code clearing? Stay read-only preserves the same session. Proceed stops it, requires confirmed native protocol cleanup and Bluetooth socket release, then starts a separately authenticated code-clearing session and restarts menus. The operator chooses Clear again and confirms the original firmware erase. No automatic command replay. App menu also exposes Enable code clearing… during a read session.",
     "capability": "Existing common Profile::ClearDtc only: exact service04 and A9/81/0A in supported routes, plus existing reads. Counter reset remains separate. No security, programming or unrelated writes. Internal service authentication and no-operator-password policy retained.",
     "guards": "Current session and foreground consent, once-only cleanup handoff; cancel, stop, background, stale callback or unconfirmed release cannot enable writes. Fresh menu preflight applies to touch, hardware keys and MCP; backend policy still rejects unknown operations.",
     "qualification": "Preview.19 adds confirmed MX+ code clearing. Exact Fire tests verified pre-command prompting through MCP and touch Enter, Cancel preserving the same read session, zero erase requests in that read session, and a new clear session after confirmed protocol/Bluetooth release. One original firmware Yes led to 19 addressed erase requests, 18 with matched positive44 replies, plus 2 original functional clears with 21 positive44 frames. The workflow paused for physical ignition LOCK before CIM/SCL completion; local input paused remote navigation. Transport was stopped before the five-minute limit with both native cleanups confirmed and no forced kill. The owner subsequently chose to skip CIM/SCL clearing and take over on the tablet. Whole-vehicle completion is not claimed; no post-clear inventory was performed remotely. A misleading unresponsive warning during the physical wait remains open.",
@@ -1385,7 +1389,7 @@
   },
   "android_softkey_help_preview20": {
     "version": "0.1.1-preview.20",
-    "workflow": "S1\u2013S4 send only their canonical original firmware keys. The adjacent navigation instruction strip is informational and opens no dialog. Firmware controls help remains in App menu. No change to original firmware confirmation, erase permissions or frame bytes.",
+    "workflow": "S1–S4 send only their canonical original firmware keys. The adjacent navigation instruction strip is informational and opens no dialog. Firmware controls help remains in App menu. No change to original firmware confirmation, erase permissions or frame bytes.",
     "evidence": "Owner preview.19 photo shows Firmware controls modal over original Clear confirmation. Source maps S4 to encoder8; only the adjacent clickable instruction strip or App menu can show that modal. Live read-only view hierarchy confirms the strip begins exactly at the S4 lower edge; no overlap or key remapping was established. Near-edge targeting is a supported explanation, not a captured touch-event proof.",
     "qualification": "Exact preview.20 isolated Android touch-dispatch test and packaging pending. No live Fire input, installation or erase attempt during owner takeover.",
     "targets": {
@@ -1399,25 +1403,25 @@
     }
   },
   "session_mode_selection": {
-    "id": "session-mode-selection-1",
-    "date": "2026-10-20",
-    "workflow": "Connect and start -> select USB adapter or Bluetooth endpoint -> Choose session mode -> explicit Connect. Cancel opens no connection.",
+    "id": "session-mode-selection-2",
+    "date": "2026-10-21",
+    "workflow": "Finish setup -> main screen Session Mode: Read-only / Full session -> Connect and start -> select adapter -> validate selected mode before opening transport.",
     "labels": [
       "Read-only",
-      "Read + write",
-      "Read + clear codes"
+      "Full session"
     ],
     "rules": [
-      "Show the same chooser after adapter selection for USB and Bluetooth, before opening its transport.",
-      "Read-only is the default only when the selected binding enforces it. Unsupported modes remain visibly unavailable; never silently substitute full control.",
-      "Write capability labels reflect actual bindings. Chipsoft, Nano and MX+ offer explicit Read + write. MX+ retains read-only and separate bounded clear/reset/security-collection authorities. MDI current carrier offers full control only; require an explicit selection.",
+      "Show Session Mode prominently on the main screen above Connect and start after setup. Both choices are visible; USB and Bluetooth use the same selection. Do not hide the primary choice in an adapter dialog or advanced tools.",
+      "Begin a new application instance in Read-only. Full session requires an explicit foreground selection. If the selected binding cannot enforce the chosen mode, explain that limitation and open no transport; never silently substitute another mode.",
+      "Full session binds the existing full native authority where implemented, including Android Chipsoft, Nano and MX+. Unsupported bindings keep the choice visible and explain why connecting is unavailable. Bounded clearing is a separate action, not a substitute for Full session.",
       "Show the selected mode in the normal session header and retain original firmware confirmations. Choosing a mode never replays a diagnostic action.",
+      "Changing the Ready-screen choice sends no command. Lock the control during connection, firmware changes, security processing and a running session; show the actual active mode. Stop and reconnect to change authority. Keep launch details scrollable independently of firmware controls on small screens.",
       "Mode selection is scoped to the selected adapter and current foreground attempt. Cancel, background and stale callbacks start no connection. Internal service authentication, command policies and operation-specific consent remain.",
       "Counter reset and security-data collection keep their separate existing workflows. No new driver or packet permission is granted by this UI.",
       "Android security collection includes Bluetooth MX+ and uses the common collection/process/validated-import workflow with fresh vehicle identity and confirmed release. No operator password.",
       "Full native control removes the diagnostic-service allowlist only. Standard CAN frames, supported electrical routes, authenticated role, cancellation, original confirmations and ECU authorization remain. No implicit command replay."
     ],
-    "candidate": "Android ARM64 0.1.1-preview.23; full native and security workflow implementation, exact installed/physical checks recorded separately.",
-    "other_targets": "Adoption and exact installed verification pending for Android ARM32, Windows, macOS ARM64/Intel, Linux and iOS."
+    "candidate": "Android primary-control candidate under implementation; exact artifact checks recorded separately.",
+    "other_targets": "Primary-control source bindings tracked separately for all seven declared targets. Capability and installed/physical qualification are not inferred from labels."
   }
 }

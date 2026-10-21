@@ -12,6 +12,17 @@ public final class SessionModePickerInstrumentedTest extends Instrumentation {
   DisposableEmulator.require(getTargetContext());DisposableEmulator.requireInstalledVersion(getTargetContext(),arguments);
   host=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));final Activity activity=host;
   waitForIdleSync();ui(()->{View continueButton=activity.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(continueButton!=null)continueButton.performClick();});
+  ui(()->{
+   View root=activity.findViewById(android.R.id.content);
+   SessionModeControl home=root.findViewWithTag("session-mode-control");check(home!=null,"Session Mode missing from main screen");
+   RadioButton read=root.findViewWithTag("session-mode-read"),full=root.findViewWithTag("session-mode-full");
+   check(read.isShown()&&full.isShown(),"Both primary options must be visible");
+   check(home.selected()==SessionModes.Mode.READ,"New app must begin Read-only");
+   check(full.getText().toString().equals("Full session"),"Primary full option has a partial-authority label");
+   full.performClick();check(home.selected()==SessionModes.Mode.FULL,"Home full choice lost authority");
+   home.available(false);check(!read.isEnabled()&&!full.isEnabled(),"Busy mode control remains interactive");check(home.selected()==SessionModes.Mode.FULL,"Busy mode control changed authority");
+   home.available(true);read.performClick();check(home.selected()==SessionModes.Mode.READ,"Home read choice failed");
+  });
   final int[] calls={0};final SessionModes.Mode[] chosen={null};AtomicBoolean ready=new AtomicBoolean(true);
   for(String family:new String[]{"chipsoft","mxplus","nano","mdi","bluetooth"}){
    SessionModes.Capabilities caps=SessionModes.forAdapter(family,false);final AlertDialog[] picker={null};
@@ -31,6 +42,6 @@ public final class SessionModePickerInstrumentedTest extends Instrumentation {
     ui(()->{picker[0].getButton(-1).performClick();check(calls[0]==readBefore+1&&chosen[0]==SessionModes.Mode.READ,"Default read selection changed authority");});
    }
   }
-  result.putString("stream","PASS: same USB/Bluetooth production chooser; enforced read defaults, explicit MDI write choice, explicit MX+/Nano full control, unsupported modes disabled, Cancel/stale/once-only selection; zero adapter or firmware operations");finish(-1,result);
+  result.putString("stream","PASS: main-screen Read-only / Full session selection with locked busy authority; same USB/Bluetooth capability validation; enforced read defaults, explicit MDI write choice, explicit MX+/Nano full control, unsupported modes disabled, Cancel/stale/once-only selection; zero adapter or firmware operations");finish(-1,result);
  }catch(Throwable error){result.putString("stream","FAIL: "+error);finish(0,result);}finally{if(host!=null){final Activity activity=host;runOnMainSync(activity::finish);}}}
 }

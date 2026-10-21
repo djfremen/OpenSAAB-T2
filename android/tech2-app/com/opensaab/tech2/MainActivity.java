@@ -82,6 +82,7 @@ public final class MainActivity extends Activity {
     private ScrollView consoleScroll;
     private LcdView lcd;
     private Button start, offline;
+    private com.opensaab.usb.SessionModeControl sessionMode;
     private com.opensaab.usb.VlinkerVehicleConnection simulatorConnection;
     private com.opensaab.usb.VlinkerDevicePicker bluetoothPicker;
     private com.opensaab.usb.VlinkerVehicleConnection hscanProbe;
@@ -131,6 +132,7 @@ public final class MainActivity extends Activity {
         simulatorConnection=new com.opensaab.usb.SimulatorVehicleConnection(this,this::simulatorChanged);
         connectionStatus=label("",12);connectionStatus.setTag("connection-status");connectionStatus.setVisibility(View.GONE);workspace.addLaunch(connectionStatus);
         cancelConnection=new Button(this);cancelConnection.setText("Cancel");cancelConnection.setTag("cancel-connection");com.opensaab.usb.SessionStyle.button(cancelConnection,false);cancelConnection.setOnClickListener(v->{bluetoothHandoff.cancel();status.setText("Connection cancelled · Releasing adapter…");simulatorConnection.stop();});cancelConnection.setVisibility(View.GONE);workspace.addLaunch(cancelConnection);
+        sessionMode=new com.opensaab.usb.SessionModeControl(this);workspace.addLaunchContent(sessionMode);
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         start.setTag("connect-start");
         Button securityStart=new Button(this);securityStart.setText("Get security access");securityStart.setTag("security-start");com.opensaab.usb.SessionStyle.button(securityStart,false);securityStart.setOnClickListener(v->chooseSecurityCollection());workspace.addLaunch(securityStart);
@@ -199,6 +201,7 @@ public final class MainActivity extends Activity {
             org.json.JSONObject vehicle=simulatorSnapshot.optJSONObject("vehicle");
             workspace.summary("Vehicle identified · Adapter connection closed\nVIN: "+vehicle.optString("vin")+"\n"+(vehicle.optString("adapter_label").isEmpty()?simulatorSnapshot.optString("description"):vehicle.optString("adapter_label")+" · "+vehicle.optString("adapter_voltage")));
         }
+        if(sessionMode!=null){sessionMode.setVisibility(running?View.GONE:View.VISIBLE);sessionMode.available(!running&&!com.opensaab.usb.VlinkerVehicleConnection.active()&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy());}
         if(start!=null)start.setVisibility(running?View.GONE:View.VISIBLE);
         if(offline!=null)offline.setVisibility(running?View.GONE:View.VISIBLE);
         if(start!=null&&simulatorConnection!=null)start.setEnabled(!com.opensaab.usb.VlinkerVehicleConnection.active());
@@ -359,11 +362,20 @@ public final class MainActivity extends Activity {
         adapterPicker=picker.show();
     }
     private boolean modeSelectionReady(){return foreground&&resumed&&!isDestroyed()&&!running&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy()&&!com.opensaab.usb.VlinkerVehicleConnection.active();}
+    private com.opensaab.usb.SessionModes.Mode selectedSessionMode(com.opensaab.usb.SessionModes.Capabilities caps){
+        if(!modeSelectionReady())return null;
+        com.opensaab.usb.SessionModes.Mode selected=sessionMode.selected();
+        if(!caps.allows(selected)){
+            status.setText(selected.label+" is unavailable for "+caps.adapter+". "+caps.explanation+" Choose a supported Session Mode on the main screen.");
+            return null;
+        }
+        return selected;
+    }
     private void chooseBluetoothMode(android.bluetooth.BluetoothDevice device,boolean compatibility){
-        mxExpectedVin=null;
         String family="bluetooth";try{if(device.getName()!=null&&device.getName().startsWith("OBDLink MX"))family="mxplus";}catch(SecurityException denied){status.setText("Allow Nearby devices before connecting");return;}
-        sessionModeDialog=com.opensaab.usb.SessionModePicker.show(this,com.opensaab.usb.SessionModes.forAdapter(family,false),this::modeSelectionReady,
-            selected->beginBluetoothStartup(device,compatibility,selected));
+        com.opensaab.usb.SessionModes.Capabilities caps=com.opensaab.usb.SessionModes.forAdapter(family,false);
+        com.opensaab.usb.SessionModes.Mode selected=selectedSessionMode(caps);
+        if(selected!=null)beginBluetoothStartup(device,compatibility,selected);
     }
     private void beginBluetoothStartup(android.bluetooth.BluetoothDevice device,boolean compatibility,com.opensaab.usb.SessionModes.Mode selectedMode){
         if(!modeSelectionReady())return;
@@ -409,8 +421,8 @@ public final class MainActivity extends Activity {
         String family=com.opensaab.usb.MdiAdapter.candidate(match)?"mdi":match.backend()==com.opensaab.usb.AdapterProfile.Backend.CHIPSOFT_PRO?"chipsoft":match.backend()==com.opensaab.usb.AdapterProfile.Backend.VCX_NANO?"nano":"unsupported";
         if(family.equals("unsupported")){status.setText("This adapter's firmware connection is unavailable");return;}
         boolean privateBuild=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0;
-        sessionModeDialog=com.opensaab.usb.SessionModePicker.show(this,com.opensaab.usb.SessionModes.forAdapter(family,privateBuild),this::modeSelectionReady,
-            selected->connectAdapterInMode(chosen,mode,shortcut,selected));
+        com.opensaab.usb.SessionModes.Mode selected=selectedSessionMode(com.opensaab.usb.SessionModes.forAdapter(family,privateBuild));
+        if(selected!=null)connectAdapterInMode(chosen,mode,shortcut,selected);
     }
     private void connectAdapterInMode(android.hardware.usb.UsbDevice chosen,String mode,boolean shortcut,com.opensaab.usb.SessionModes.Mode selectedMode){
         android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
@@ -446,8 +458,8 @@ public final class MainActivity extends Activity {
             boolean restricted=selectedMode==null?getSharedPreferences("adapter_settings",MODE_PRIVATE).getBoolean("chipsoft_restricted",false):selectedMode==com.opensaab.usb.SessionModes.Mode.READ;
             if(selectedMode!=null)getSharedPreferences("adapter_settings",MODE_PRIVATE).edit().putBoolean("chipsoft_restricted",restricted).apply();
             if(restricted && (mode.equals("native_seed") || mode.equals("native_clear_dtc") || mode.equals("native_reset_counters"))){
-                status.setText("Connect again and choose Read + write for this operation");
-                android.widget.Toast.makeText(this,"This session is read-only. Connect again and choose Read + write for this operation.",android.widget.Toast.LENGTH_LONG).show();
+                status.setText("Connect again and choose Full session for this operation");
+                android.widget.Toast.makeText(this,"This session is read-only. Connect again and choose Full session for this operation.",android.widget.Toast.LENGTH_LONG).show();
                 return;
             }
             launch=new android.content.Intent(this,com.opensaab.usb.ChipsoftUsbActivity.class)
@@ -474,8 +486,7 @@ public final class MainActivity extends Activity {
     private void resumeMxSecurity(){
         if(!modeSelectionReady()||!mxCleanupConfirmed||mxDevice==null||mxVehicle==null){status.setText("Security data imported · reconnect after verified adapter cleanup");return;}
         mxExpectedVin=mxVehicle.vin;
-        sessionModeDialog=com.opensaab.usb.SessionModePicker.show(this,com.opensaab.usb.SessionModes.forAdapter("mxplus",false),this::modeSelectionReady,
-            selected->beginBluetoothStartup(mxDevice,mxCompatibility,selected));
+        status.setText("Security data imported · Choose Session Mode on the main screen, then Connect and start. Vehicle identity will be checked again.");
     }
     private boolean permitMxKey(int code){
         if(mxDevice==null)return true;

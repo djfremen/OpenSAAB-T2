@@ -8,7 +8,7 @@ public final class SessionModes {
         CLEAR("Read + clear codes", "Read diagnostics and allow supported code clearing. Clearing erases stored diagnostic information and may reset readiness monitors. Choose Clear Codes and confirm in the original firmware; selecting this mode does not clear anything."),
         SEEDS("Security-data collection", "Collect security challenges through the original firmware. Processing and import remain separate; service writes and security-key submission stay blocked."),
         RESET("Counter reset", "Allow the original T8 misfire and knock counter reset only. Follow the original confirmation."),
-        FULL("Read + write", "Full native control through the original firmware. Supported clearing, adjustments and service operations can change the vehicle. Follow the original confirmations; unavailable operations remain unavailable.");
+        FULL("Full session", "Full native control through the original firmware. Supported clearing, adjustments and service operations can change the vehicle. Follow the original confirmations; unavailable operations remain unavailable.");
         public final String label, description;
         Mode(String label,String description){this.label=label;this.description=description;}
         public String badge(){return "Session mode: "+label;}

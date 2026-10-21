@@ -8,6 +8,7 @@ import android.widget.*;
 /** Firmware-first layout, responsive to the available window, not ABI or model. */
 public final class SessionWorkspace extends LinearLayout {
     private final LinearLayout rail;
+    private final ScrollView railScroll;
     private final Tech2Controls controls;
     private final Button summary;
     private final TextView mode;
@@ -24,22 +25,27 @@ public final class SessionWorkspace extends LinearLayout {
         summary=new Button(a);summary.setTag("session-summary");SessionStyle.button(summary,false);summary.setTextSize(12);summary.setMaxLines(3);summary.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
         summary.setContentDescription("Vehicle and security status — tap for details");summary.setOnClickListener(v->details.run());
         LayoutParams sp=new LayoutParams(-1,SessionStyle.dp(a,64));sp.topMargin=SessionStyle.dp(a,6);rail.addView(summary,sp);
-        addView(rail);addView(display);
+        railScroll=new ScrollView(a);railScroll.setTag("session-header-scroll");railScroll.setFillViewport(false);railScroll.addView(rail,new ScrollView.LayoutParams(-1,-2));
+        addView(railScroll);addView(display);
         int pad=SessionStyle.dp(a,8);setPadding(pad,pad,pad,pad);
         setOnApplyWindowInsetsListener((v,i)->{v.setPadding(pad+i.getSystemWindowInsetLeft(),pad+i.getSystemWindowInsetTop(),pad+i.getSystemWindowInsetRight(),pad+i.getSystemWindowInsetBottom());return i;});
     }
     public void summary(String text){if(!text.contentEquals(summary.getText()))summary.setText(text);}
     public void mode(String text){mode.setText(text==null?"":text);mode.setVisibility(text==null||text.isEmpty()?GONE:VISIBLE);}
     public void addLaunch(View launch){LayoutParams p=new LayoutParams(-1,SessionStyle.dp(activity,48));p.topMargin=SessionStyle.dp(activity,6);rail.addView(launch,p);}
-    public void toggleExpanded(){expanded=!expanded;rail.setVisibility(expanded?GONE:VISIBLE);requestLayout();}
+    public void addLaunchContent(View launch){LayoutParams p=new LayoutParams(-1,-2);p.topMargin=SessionStyle.dp(activity,6);rail.addView(launch,p);}
+    public void toggleExpanded(){expanded=!expanded;railScroll.setVisibility(expanded?GONE:VISIBLE);requestLayout();}
     public boolean expanded(){return expanded;}
     @Override protected void onMeasure(int w,int h){
         int width=MeasureSpec.getSize(w),height=MeasureSpec.getSize(h);
         boolean landscape=!expanded&&width>=SessionStyle.dp(activity,720)&&width>height;
         setOrientation(landscape?HORIZONTAL:VERTICAL);
-        LayoutParams rp=new LayoutParams(landscape?SessionStyle.dp(activity,248):-1,landscape?-1:-2);
+        // Long setup details scroll independently; firmware controls keep usable space.
+        rail.measure(MeasureSpec.makeMeasureSpec(landscape?SessionStyle.dp(activity,248):Math.max(0,width-getPaddingLeft()-getPaddingRight()),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(0,MeasureSpec.UNSPECIFIED));
+        int railHeight=Math.min(rail.getMeasuredHeight(),Math.max(0,(height-getPaddingTop()-getPaddingBottom())/2));
+        LayoutParams rp=new LayoutParams(landscape?SessionStyle.dp(activity,248):-1,landscape?-1:railHeight);
         LayoutParams cp=new LayoutParams(landscape?0:-1,landscape?-1:0,1);
         if(landscape)cp.leftMargin=SessionStyle.dp(activity,8);else if(!expanded)cp.topMargin=SessionStyle.dp(activity,6);
-        rail.setLayoutParams(rp);controls.setLayoutParams(cp);super.onMeasure(w,h);
+        railScroll.setLayoutParams(rp);controls.setLayoutParams(cp);super.onMeasure(w,h);
     }
 }
