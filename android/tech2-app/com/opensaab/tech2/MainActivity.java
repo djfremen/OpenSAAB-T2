@@ -586,6 +586,7 @@ public final class MainActivity extends Activity {
     private void runSession(File firmware) {
         String end="Emulator stopped",launchStage="firmware_prepare";boolean completed=false,hostDeadline=false,forced=false,launchFailed=true;Integer exitCode=null;
         final boolean mxSession=mxDevice!=null;final AtomicBoolean policyRejected=new AtomicBoolean();
+        File launchDirectory=null;
         com.opensaab.usb.FirmwareGate.Lease firmwareLease=null;
         try {
             firmwareLease=com.opensaab.usb.FirmwareGate.use();
@@ -596,6 +597,7 @@ public final class MainActivity extends Activity {
                 for(int i=0;i<old.length-2;i++) remove(old[i]); }
             session=new File(runs,UUID.randomUUID().toString());
             if(!session.mkdir()) throw new IOException("Cannot create session directory");
+            launchDirectory=session;
             String engine=mxDevice==null?"libtech2_recovered.so":"libtech2_mx.so";
             offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,engine),firmware,mxDevice==null?"offline_native":com.opensaab.usb.SessionModes.emulationProfile(mxMode));
             if(mxDevice!=null){
@@ -662,7 +664,7 @@ public final class MainActivity extends Activity {
             end=com.opensaab.usb.MxSessionOutcome.unsupported(mxSession,policyRejected.get(),forced,launchFailed)?com.opensaab.usb.MxSessionOutcome.unavailableMessage():stopping.get()?(mxDevice==null?"Offline menus stopped":"MX+ session stopped"):completed?"Firmware session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
         } catch(Exception e) {
             end="Cannot run firmware: "+e.getMessage();
-            if(launchFailed&&session!=null)try{String detail=String.valueOf(e.getMessage());if(detail.length()>512)detail=detail.substring(0,512);publish(new File(session,"startup-failure.json"),new org.json.JSONObject().put("schema",1).put("stage",launchStage).put("exception",e.getClass().getSimpleName()).put("message",detail).toString(2)+"\n");}catch(Exception ignored){}
+            if(launchFailed&&launchDirectory!=null)try{String detail=String.valueOf(e.getMessage());if(detail.length()>512)detail=detail.substring(0,512);publish(new File(launchDirectory,"startup-failure.json"),new org.json.JSONObject().put("schema",1).put("stage",launchStage).put("exception",e.getClass().getSimpleName()).put("message",detail).toString(2)+"\n");}catch(Exception ignored){}
         } finally {
             com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.close();keyPump=null;
             java.lang.Process child=process;
