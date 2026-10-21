@@ -682,6 +682,7 @@ pub fn run_headless(
     let mut live_frame = artifacts::LiveFrame::default();
     let mut working_ssa = artifacts::WorkingSsa::default();
     let mut collected_ssa = artifacts::WorkingSsa::default();
+    let mut transfer_prompts=None;
     let mut next_native_key = std::time::Instant::now();
     let mut next_health_beat = std::time::Instant::now();
     let security_ssa_before = (settings.harness_target
@@ -743,8 +744,10 @@ pub fn run_headless(
                     if bus.ssa_flash.as_ref().is_some_and(|flash| flash.status().is_none()) {
                         working_ssa.publish(&bus.card, settings.output_dir)?;
                         let normalized = screen.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
-                        if normalized.contains("you need security access from tis2000")
-                            && normalized.contains("disconnect tech 2 from vehicle")
+                        let english=normalized.contains("you need security access from tis2000") && normalized.contains("disconnect tech 2 from vehicle");
+                        let localized=!english&&tech2_emu::security_prompt::prompt::mentions_anchor(screen.as_bytes()) &&
+                            tech2_emu::security_prompt::prompt::matches_any(transfer_prompts.get_or_insert_with(||tech2_emu::security_prompt::prompt::extract(&bus.card)),screen.as_bytes());
+                        if (english||localized)
                             && bus.ssa_flash.as_ref().is_some_and(|flash| flash.erases > 0 && flash.programmed_bytes >= 714) {
                             collected_ssa.publish_as(&bus.card, settings.output_dir, "collection-ssa.bin")?;
                         }
@@ -1471,7 +1474,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         bus.candi_link
             .as_mut()
             .ok_or_else(|| (2, "Missing native CANdi".into()))?
-            .attach_obdlink(token, &opts.output, opts.candi_obdlink_reset_engine_counters, opts.candi_obdlink_clear_dtc)
+            .attach_obdlink(token, &opts.output, opts.candi_obdlink_reset_engine_counters, opts.candi_obdlink_clear_dtc, opts.candi_obdlink_full_native, opts.candi_obdlink_seeds)
             .map_err(|e| (2, e))?;
     }
     if let Some(token) = &opts.candi_chipsoft_usb_token {

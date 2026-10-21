@@ -61,7 +61,7 @@ public final class VehicleSession {
             return new VehicleIdentity(p.getString("vin"),p.getString("observed_utc"),p.getString("source"),p.getInt("model_year"),p.getString("lookup_status"),field(p,"platform"),field(p,"engine"),field(p,"color"),field(p,"gearbox"),field(p,"body"));
         }catch(Exception unavailable){return null;}
     }
-    static void save(File file,VehicleIdentity v)throws Exception{
+    public static void save(File file,VehicleIdentity v)throws Exception{
         File tmp=new File(file.getParentFile(),file.getName()+".tmp");
         Files.write(tmp.toPath(),json(v).toString(2).getBytes(StandardCharsets.UTF_8));
         Files.move(tmp.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);

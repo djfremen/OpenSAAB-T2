@@ -751,6 +751,12 @@ fn clearing_profile_requires_the_matching_authenticated_bridge_role() {
         ("READY obdlink-native-clear-dtc",Profile::Read,false),
         ("READY obdlink-native-reset-counters",Profile::ClearDtc,false),
         ("READY obdlink-native-clear-dtc",Profile::ClearDtc,true),
+        ("READY obdlink-native-full-native",Profile::FullNative,true),
+        ("READY obdlink-native-seeds",Profile::Seeds,true),
+        ("READY obdlink-native-full-native",Profile::Read,false),
+        ("READY obdlink-native-read",Profile::FullNative,false),
+        ("READY obdlink-native-full-native",Profile::Seeds,false),
+        ("READY obdlink-native-seeds",Profile::FullNative,false),
     ] {
         let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
         let worker=thread::spawn(move || {

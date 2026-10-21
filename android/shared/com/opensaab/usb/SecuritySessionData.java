@@ -62,11 +62,12 @@ public final class SecuritySessionData {
         File log=new File(run.getParentFile(),"native-process-private.log");
         if(!log.isFile())log=new File(run,"native-process.log");
         if(!log.isFile())log=new File(run,"rust.log");
+        if(!log.isFile())log=new File(run,"console.log");
         if(!log.isFile())return false;
         try(RandomAccessFile f=new RandomAccessFile(log,"r")){
             f.seek(Math.max(0,f.length()-2*1024*1024));
             if(f.getFilePointer()>0)f.readLine();
-            String line;while((line=f.readLine())!=null)if(line.startsWith("LCD: ")&&SsaData.needsAccess(line.substring(5)))return true;
+            String line;while((line=f.readLine())!=null)if(line.startsWith("LCD: ")&&SsaData.needsAccess(line.substring(5),run))return true;
         }
         return false;
     }
@@ -89,7 +90,7 @@ public final class SecuritySessionData {
             return card(card);
         }catch(Exception unavailable){return null;}
     }
-    static void recordBaseline(File run,File card)throws Exception{
+    public static void recordBaseline(File run,File card)throws Exception{
         File temporary=new File(run,"security-card-baseline.sha256.tmp");
         Files.write(temporary.toPath(),SsaCardImport.hash(card).getBytes(StandardCharsets.US_ASCII));
         Files.move(temporary.toPath(),new File(run,"security-card-baseline.sha256").toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING);

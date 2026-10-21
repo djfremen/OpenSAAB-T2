@@ -55,6 +55,18 @@ public final class SsaData {
         return s.contains("checking security access")&&s.contains("reading all vehicle vins")
             &&s.contains("reading all vehicle seed");
     }
+    private static byte[] witness(java.io.File file)throws java.io.IOException{
+        if(!file.isFile()||file.length()!=SIZE)throw new java.io.IOException("Incomplete native security witness");
+        byte[] value=java.nio.file.Files.readAllBytes(file.toPath());if(value.length!=SIZE)throw new java.io.IOException("Changed native security witness");return value;
+    }
+    /** Non-English completion is witnessed by the shared native card-prompt matcher. */
+    public static boolean needsAccess(String text,java.io.File run){
+        if(needsAccess(text))return true;
+        if(run==null||!text.toUpperCase(Locale.ROOT).contains("TIS2000"))return false;
+        try{byte[] witness=witness(new java.io.File(run,"collection-ssa.bin"));
+            validateInput(witness);return Arrays.equals(witness,witness(new java.io.File(run,"working-ssa.bin")));
+        }catch(Exception incomplete){return false;}
+    }
     public static boolean needsAccess(String text){
         String s=text.replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);
         return s.contains("you need security access from tis2000") && s.contains("disconnect tech 2 from vehicle");

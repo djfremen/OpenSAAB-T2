@@ -235,7 +235,7 @@ public class NanoProbeActivity extends Activity {
         if(nativeResetRejected){log("ERROR Counter reset requires an exclusive maintenance session.");return;}
         if(rebootNano&&!NanoRebootAction.idle()){log("Finish the current session before rebooting Nano");return;}
         if(rebootRequestRejected){log("Reboot Nano requires a separate adapter-only session");return;}
-        if(nativeFullNativeRejected){log("ERROR Full native control requires an exclusive private Nano session.");return;}
+        if(nativeFullNativeRejected){log("ERROR Full native control requires an exclusive Nano session.");return;}
         if(FirmwareGate.busy()){log("Finish firmware installation first");return;}
         if(nativeFirmware()){String missing=new FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty()){log("Firmware setup needed: "+missing);startActivity(new Intent(this,FirmwareActivity.class));return;}}
         if(SecurityAccessView.workflowBusy()){log("Finish security processing before starting another session");return;}

@@ -14,7 +14,7 @@ public final class MxNativeBridge implements AutoCloseable {
     private final VlinkerSppTransport transport;
     private final ServerSocket server;
     private final String token;
-    private final boolean resetCounters,clearDtc;
+    private final SessionModes.Mode mode;
     private Thread worker;
     private volatile Socket client;
     private volatile boolean closed,bluetoothClosed;
@@ -25,8 +25,11 @@ public final class MxNativeBridge implements AutoCloseable {
         this(context,device,compatibility,resetCounters,false);
     }
     public MxNativeBridge(Context context,BluetoothDevice device,boolean compatibility,boolean resetCounters,boolean clearDtc)throws Exception {
-        if(resetCounters&&clearDtc)throw new IllegalArgumentException("Choose one MX+ write profile");
-        this.resetCounters=resetCounters;this.clearDtc=clearDtc;
+        this(context,device,compatibility,legacyMode(resetCounters,clearDtc));
+    }
+    private static SessionModes.Mode legacyMode(boolean reset,boolean clear){if(reset&&clear)throw new IllegalArgumentException("Choose one MX+ profile");return reset?SessionModes.Mode.RESET:clear?SessionModes.Mode.CLEAR:SessionModes.Mode.READ;}
+    public MxNativeBridge(Context context,BluetoothDevice device,boolean compatibility,SessionModes.Mode mode)throws Exception {
+        if(mode==null)throw new IllegalArgumentException("Choose one MX+ profile");this.mode=mode;
         try{if(device==null || device.getName()==null || !device.getName().startsWith("OBDLink MX"))throw new IOException("Select the OBDLink MX+ for this firmware session");}
         catch(SecurityException denied){throw new IOException("Allow Nearby devices before connecting MX+",denied);}
         byte[] random=new byte[16];new SecureRandom().nextBytes(random);StringBuilder t=new StringBuilder();for(byte b:random)t.append(String.format(java.util.Locale.ROOT,"%02x",b&255));token=t.toString();
@@ -42,7 +45,7 @@ public final class MxNativeBridge implements AutoCloseable {
     private void serve(){
         try(Socket socket=server.accept()){
             client=socket;socket.setSoTimeout(5000);InputStream in=socket.getInputStream();OutputStream out=socket.getOutputStream();
-            if(!line(in).equals("HELLO "+token))throw new IOException("MX bridge authentication rejected");reply(out,clearDtc?"READY obdlink-native-clear-dtc":resetCounters?"READY obdlink-native-reset-counters":"READY obdlink-native-read");
+            if(!line(in).equals("HELLO "+token))throw new IOException("MX bridge authentication rejected");reply(out,mode==SessionModes.Mode.FULL?"READY obdlink-native-full-native":mode==SessionModes.Mode.SEEDS?"READY obdlink-native-seeds":mode==SessionModes.Mode.CLEAR?"READY obdlink-native-clear-dtc":mode==SessionModes.Mode.RESET?"READY obdlink-native-reset-counters":"READY obdlink-native-read");
             while(!closed){
                 String request=line(in);
                 if(request.equals("CLOSE")){transport.shutdown();bluetoothClosed=transport.closeConfirmed();if(!bluetoothClosed)throw new IOException("Bluetooth release unconfirmed");reply(out,"CLOSED");break;}

@@ -31,6 +31,6 @@ public final class SessionModePickerInstrumentedTest extends Instrumentation {
     ui(()->{picker[0].getButton(-1).performClick();check(calls[0]==readBefore+1&&chosen[0]==SessionModes.Mode.READ,"Default read selection changed authority");});
    }
   }
-  result.putString("stream","PASS: same USB/Bluetooth production chooser; enforced read defaults, explicit MDI write choice, limited MX+/Nano clearing labels, unsupported modes disabled, Cancel/stale/once-only selection; zero adapter or firmware operations");finish(-1,result);
+  result.putString("stream","PASS: same USB/Bluetooth production chooser; enforced read defaults, explicit MDI write choice, explicit MX+/Nano full control, unsupported modes disabled, Cancel/stale/once-only selection; zero adapter or firmware operations");finish(-1,result);
  }catch(Throwable error){result.putString("stream","FAIL: "+error);finish(0,result);}finally{if(host!=null){final Activity activity=host;runOnMainSync(activity::finish);}}}
 }

@@ -14,7 +14,7 @@ public final class SecurityCollectionMode {
     public static String from(Intent intent){return normalize(intent.getStringExtra(EXTRA));}
     public static void choose(Activity activity,Consumer<String> start){
         new AlertDialog.Builder(activity).setTitle("Collect fresh security data")
-            .setMessage("Manual: you open Diagnostics → All → Get Security Access.\n\nGuided: for Saab 9-3 Sport (9440), model years 2003–2012. Choosing Guided confirms this vehicle model. OpenSAAB selects those menus; the original firmware collects the seeds. You handle every ignition-key prompt.\n\nCollection works locally. Previous security data is kept until a new response is verified. Internet and the password are needed only when you choose Process security data.")
+            .setMessage("Manual: you open Diagnostics → All → Get Security Access.\n\nGuided: for Saab 9-3 Sport (9440), model years 2003–2012. Choosing Guided confirms this vehicle model. OpenSAAB selects those menus; the original firmware collects the seeds. You handle every ignition-key prompt.\n\nCollection works locally. Previous security data is kept until a new response is verified. Internet is needed only when you choose Process security data.")
             .setNegativeButton("Cancel",null)
             .setNeutralButton("Manual collection",(dialog,which)->{activity.getIntent().removeExtra(PLATFORM_EXTRA);start.accept(MANUAL);})
             .setPositiveButton("Guided collection",(dialog,which)->{activity.getIntent().putExtra(PLATFORM_EXTRA,"9440");start.accept(GUIDED);}).show();

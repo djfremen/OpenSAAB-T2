@@ -3,7 +3,6 @@
   "baseline_version": "0.1.1-preview.1",
   "baseline_apk_sha256": "730bde2749430ecd49fbe309dc838342ec28c4a2e041c497e5480f251d44ece2",
   "unchanged": {
-    "lib/arm64-v8a/libtech2_emu.so": "cefddb85f377fa03fc7e3fc17ba51c6aa12002c8c3f9df11f52978f3c30a36cd",
     "lib/arm64-v8a/libnano_probe.so": "86cdc407fec615d30731132e93ffa98486bb71ef9b257b9dfe4bf065ca88db4f",
     "lib/arm64-v8a/libchipsoft_probe.so": "29dd618f713feda0f0348e46ca1770a89be5c7986feb7b80b582bd74debfa599",
     "lib/arm64-v8a/libopensaab_connection.so": "83198fe0427599514ec85ff414372915030687d549473332dff1b0ccd2be2cd1",
@@ -12,6 +11,8 @@
   },
   "allowed_changed": [
     "lib/arm64-v8a/libtech2_recovered.so",
-    "lib/arm64-v8a/libtech2_mx.so"
-  ]
+    "lib/arm64-v8a/libtech2_mx.so",
+    "lib/arm64-v8a/libtech2_emu.so"
+  ],
+  "prior_emulator_sha256": "cefddb85f377fa03fc7e3fc17ba51c6aa12002c8c3f9df11f52978f3c30a36cd"
 }

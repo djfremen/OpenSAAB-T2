@@ -10,6 +10,7 @@ pub enum Profile {
     Seeds,
     ClearDtc,
     ResetEngineCounters,
+    FullNative,
 }
 impl Profile {
     pub fn permits_key_status_read(self) -> bool {
@@ -39,6 +40,7 @@ pub fn allowed_for_profile(controller: usize, tx: &CanTransmission, profile: Pro
     let Ok(route) = electrical_route(controller, tx) else {
         return false;
     };
+    if profile == Profile::FullNative { return true; }
     let id = tx.frame.id;
     let data = &tx.frame.data;
     // Original T8 "Reset Misfire and Knock Counters", captured from firmware.
@@ -147,6 +149,7 @@ impl CommandGate {
         if electrical_route(controller, tx).is_err() {
             return false;
         }
+        if profile == Profile::FullNative { return true; }
         let d = &tx.frame.data;
         let engine = controller == 0 && tx.frame.id == 0x7e0;
         if engine && d.len() == 8 && d[0] & 0xf0 == 0x10 {

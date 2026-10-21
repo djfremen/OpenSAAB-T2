@@ -122,7 +122,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 String age=receipt==null?"Age unknown":receipt.freshness(cardMatches,java.time.Instant.now());
                 stateLabel.setText("Security status  "+cardState.label+(cardState==SsaState.POST_AUTH?" · "+age:""));
                 stateLabel.setTextColor(cardState==SsaState.POST_AUTH&&"Stale".equals(age)?0xffffd77c:cardState.color);
-                boolean prompt=SsaData.needsAccess(screen);
+                boolean prompt=SsaData.needsAccess(screen,run);
                 if(!collection&&run!=null&&running.getAsBoolean()&&(SsaData.collectingAccess(screen)||prompt)){
                     collectInCurrentSession();android.util.Log.i("OpenSaabSecurity","Manual security collection detected in current firmware session");
                 }

@@ -1,0 +1,7 @@
+{
+  "source_revision": "efad90e5bb06c54fb99770396f71a13c47066e6d",
+  "source_path": "emulator/src/security/prompt.rs",
+  "source_repository": "OpenSAAB",
+  "sha256": "f504bc70156dd617369ab6f5253f41efbebc96048ac6b25f035857a64d758fa3",
+  "scope": "Exact parser bytes shared with the Apple silicon/iOS localized-security source; Android thin caller publishes a completion witness only after original guest SSA flash writes. Physical language checks remain separate."
+}

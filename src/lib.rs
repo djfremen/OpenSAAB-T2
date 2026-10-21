@@ -36,3 +36,5 @@ pub use adapters::vcx_nano::backend as nano_backend;
 pub mod native_menu;
 
 pub use opensaab_adapter_translation as adapter_translation;
+
+pub mod security_prompt;

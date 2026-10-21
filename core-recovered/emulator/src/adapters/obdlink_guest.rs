@@ -112,7 +112,7 @@ impl Link {
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
         let mut socket = SocketUsb(BufReader::new(socket));
-        let expected = match profile {Profile::Read=>"READY obdlink-native-read",Profile::ClearDtc=>"READY obdlink-native-clear-dtc",Profile::ResetEngineCounters=>"READY obdlink-native-reset-counters",Profile::Seeds=>return Err("MX+ seed profile unavailable".into())};
+        let expected = match profile {Profile::Read=>"READY obdlink-native-read",Profile::ClearDtc=>"READY obdlink-native-clear-dtc",Profile::ResetEngineCounters=>"READY obdlink-native-reset-counters",Profile::Seeds=>"READY obdlink-native-seeds",Profile::FullNative=>"READY obdlink-native-full-native"};
         if socket.command(&format!("HELLO {token}"))? != expected {
             return Err("Native MX+ ownership unavailable".into());
         }
@@ -531,7 +531,6 @@ impl Bridge {
         Self::start_with_profile(token, directory, if reset_counters {Profile::ResetEngineCounters} else {Profile::Read})
     }
     pub fn start_with_profile(token: &str, directory: &Path, profile: Profile) -> Result<Self, String> {
-        if profile==Profile::Seeds {return Err("MX+ seed profile unavailable".into());}
         if token.len() != 32 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("Invalid MX+ owner token".into());
         }
@@ -778,6 +777,24 @@ mod byte_peer_tests;
 mod profile_tests {
     use super::*;
     use crate::candi_cpu::{CanElectricalState, CanFrame};
+    #[test]
+    fn full_native_and_collection_keep_distinct_authorities_and_exact_guest_bytes() {
+        let frames = [
+            vec![2,0x27,1,0,0,0,0,0], // owner's blocked original seed read
+            vec![4,0x27,2,0x12,0x34,0,0,0], // key submission needs full authority
+            vec![3,0xae,0x14,1,0,0,0,0], // service-control example, unchanged original payload
+            vec![0x10,9,0x3b,0x90,1,2,3,4], // original segmented write; host never assembles/replays
+            vec![0x21,5,6,7,0,0,0,0],
+        ];
+        for (index,data) in frames.into_iter().enumerate(){
+            let tx=CanTransmission{frame:CanFrame{id:0x7e0,extended:false,rtr:false,dlc:8,data},ticket:31,btr0:0xc1,btr1:0x36,electrical:CanElectricalState::StandardCan};
+            let (mut read,queue)=guarded(Profile::Read);assert!(read.transmit(0,tx.clone()).is_err());assert!(queue.try_recv().is_err());
+            let (mut clear,queue)=guarded(Profile::ClearDtc);assert!(clear.transmit(0,tx.clone()).is_err());assert!(queue.try_recv().is_err());
+            let (mut seeds,queue)=guarded(Profile::Seeds);assert_eq!(seeds.transmit(0,tx.clone()).is_ok(),index==0);assert_eq!(queue.try_recv().is_ok(),index==0);
+            let (mut full,queue)=guarded(Profile::FullNative);full.transmit(0,tx.clone()).unwrap();let (controller,actual)=queue.try_recv().unwrap();assert_eq!(controller,0);assert_eq!(actual.frame.data,tx.frame.data);
+            let mut invalid=tx;invalid.frame.dlc=9;assert!(full.transmit(0,invalid).is_err());assert!(queue.try_recv().is_err());
+        }
+    }
     fn guarded(profile: Profile) -> (Bridge, Receiver<(usize, CanTransmission)>) {
         let (input, requests) = mpsc::sync_channel(32);
         let (_, output) = mpsc::sync_channel(1);

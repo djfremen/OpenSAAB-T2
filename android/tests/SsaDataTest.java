@@ -25,6 +25,15 @@ public final class SsaDataTest {
         byte[] partial=reply.clone();partial[0x138]=(byte)255;partial[0x139]=(byte)255;reject(()->SsaData.validateReply(input,partial));
         if(!SsaData.needsAccess("Help\nYou need Security Access from TIS2000\n1. Disconnect Tech 2 from Vehicle."))throw new AssertionError("Prompt missed");
         if(SsaData.needsAccess("F6: Get Security Access")||SsaData.needsAccess("No security access required"))throw new AssertionError("False prompt");
+        Path witness=Files.createTempDirectory("ssa-native-witness");
+        try{
+            String localized="TIS2000 · transfer instructions from the original diagnostic card";
+            if(SsaData.needsAccess(localized,witness.toFile()))throw new AssertionError("Missing native witness accepted");
+            Files.write(witness.resolve("collection-ssa.bin"),input);Files.write(witness.resolve("working-ssa.bin"),input);
+            if(!SsaData.needsAccess(localized,witness.toFile()))throw new AssertionError("Validated native witness ignored");
+            Files.write(witness.resolve("working-ssa.bin"),reply);
+            if(SsaData.needsAccess(localized,witness.toFile()))throw new AssertionError("Changed working SSA inherited completion");
+        }finally{try(var files=Files.walk(witness)){files.sorted(java.util.Comparator.reverseOrder()).forEach(f->f.toFile().delete());}}
         Path dir=Files.createTempDirectory("ssa-import-test");
         try{
             File card=dir.resolve("card.bin").toFile();

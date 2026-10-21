@@ -6,6 +6,8 @@ public final class SessionModes {
     public enum Mode {
         READ("Read-only", "Read supported diagnostic information. Code clearing, resets and programming stay blocked."),
         CLEAR("Read + clear codes", "Read diagnostics and allow supported code clearing. Clearing erases stored diagnostic information and may reset readiness monitors. Choose Clear Codes and confirm in the original firmware; selecting this mode does not clear anything."),
+        SEEDS("Security-data collection", "Collect security challenges through the original firmware. Processing and import remain separate; service writes and security-key submission stay blocked."),
+        RESET("Counter reset", "Allow the original T8 misfire and knock counter reset only. Follow the original confirmation."),
         FULL("Read + write", "Full native control through the original firmware. Supported clearing, adjustments and service operations can change the vehicle. Follow the original confirmations; unavailable operations remain unavailable.");
         public final String label, description;
         Mode(String label,String description){this.label=label;this.description=description;}
@@ -21,12 +23,21 @@ public final class SessionModes {
     public static Capabilities forAdapter(String family,boolean privateNano){
         if("chipsoft".equals(family))return new Capabilities("Chipsoft USB",true,Mode.FULL,"Full native control is available. The original firmware and adapter enforce their supported operations.");
         if("mdi".equals(family))return new Capabilities("MDI USB",false,Mode.FULL,"Read-only enforcement is unavailable for MDI in this build. Connect only if you want full native control.");
-        if("nano".equals(family))return new Capabilities("VCX Nano USB",true,privateNano?Mode.FULL:Mode.CLEAR,privateNano?"Full native control is available in this private build.":"Write access is limited to supported code clearing in this build. Full native control is unavailable.");
-        if("mxplus".equals(family))return new Capabilities("OBDLink MX+ Bluetooth",true,Mode.CLEAR,"Write access is limited to supported code clearing. Full native control, security access and programming are unavailable. Counter reset is a separate maintenance operation.");
+        if("nano".equals(family))return new Capabilities("VCX Nano USB",true,Mode.FULL,"Full native control is available through the original firmware; security collection and processing retain their own workflow.");
+        if("mxplus".equals(family))return new Capabilities("OBDLink MX+ Bluetooth",true,Mode.FULL,"Full native control is available on the supported HS-CAN and SW-CAN routes. Security access requires collection, processing and valid import; follow original firmware confirmations. Other buses and unavailable operations remain unavailable.");
         return new Capabilities("Bluetooth adapter",true,null,"Write access is unavailable for this adapter. Its model and supported connection are checked after connecting.");
     }
+    public static Mode bluetoothAction(String action){
+        if("native_seed".equals(action))return Mode.SEEDS;
+        if("native_reset_counters".equals(action))return Mode.RESET;
+        if("native_clear_dtc".equals(action))return Mode.CLEAR;
+        return null;
+    }
+    public static boolean bluetoothActionAvailable(String action,boolean normalConnect){
+        return normalConnect||bluetoothAction(action)!=null||"dtc_read".equals(action)||"native_ecu_info".equals(action)||"native_dtc".equals(action)||"native_engine_data".equals(action);
+    }
     public static String usbFlag(String family,Mode mode,boolean privateNano){
-        if(!forAdapter(family,privateNano).allows(mode))throw new IllegalArgumentException("Unavailable session mode");
+        if(!forAdapter(family,privateNano).allows(mode) && !("nano".equals(family)&&mode==Mode.CLEAR))throw new IllegalArgumentException("Unavailable session mode");
         if("chipsoft".equals(family))return mode==Mode.READ?"native_firmware":"full_native";
         if("nano".equals(family))return mode==Mode.READ?"native_dtc":mode==Mode.CLEAR?"native_clear_dtc":"nano_full_native";
         throw new IllegalArgumentException("Adapter uses a different native binding");
