@@ -23,6 +23,22 @@ public final class SessionModePickerInstrumentedTest extends Instrumentation {
    home.available(false);check(!read.isEnabled()&&!full.isEnabled(),"Busy mode control remains interactive");check(home.selected()==SessionModes.Mode.FULL,"Busy mode control changed authority");
    home.available(true);read.performClick();check(home.selected()==SessionModes.Mode.READ,"Home read choice failed");
   });
+  ui(()->{
+   for(int[] size:new int[][]{{360,660},{393,780},{800,480},{1024,600}}){
+    ScrollView log=new ScrollView(activity);log.addView(new TextView(activity));
+    Tech2Controls controls=new Tech2Controls(activity,new ImageView(activity),log,key->{throw new AssertionError("Mode selection sent a firmware key");});
+    SessionWorkspace workspace=new SessionWorkspace(activity,"Preview",controls,()->{},()->{});
+    SessionModeControl mode=new SessionModeControl(activity);workspace.addLaunchContent(mode);
+    Button connect=new Button(activity);connect.setText("Connect and start");workspace.addLaunch(connect);
+    workspace.addLaunch(new Button(activity));workspace.addLaunch(new Button(activity));
+    int width=SessionStyle.dp(activity,size[0]),height=SessionStyle.dp(activity,size[1]);
+    workspace.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));workspace.layout(0,0,width,height);
+    android.graphics.Rect control=new android.graphics.Rect(),launch=new android.graphics.Rect();mode.getDrawingRect(control);connect.getDrawingRect(launch);workspace.offsetDescendantRectToMyCoords(mode,control);workspace.offsetDescendantRectToMyCoords(connect,launch);
+    View viewport=workspace.findViewWithTag("session-header-scroll");
+    check(control.top>=0&&launch.bottom<=viewport.getBottom(),"Primary mode or Connect requires scrolling: "+size[0]+"x"+size[1]);
+    check(controls.getHeight()>=SessionStyle.dp(activity,size[0]>size[1]?260:280),"Primary chooser squeezes firmware controls: "+size[0]+"x"+size[1]);
+   }
+  });
   final int[] calls={0};final SessionModes.Mode[] chosen={null};AtomicBoolean ready=new AtomicBoolean(true);
   for(String family:new String[]{"chipsoft","mxplus","nano","mdi","bluetooth"}){
    SessionModes.Capabilities caps=SessionModes.forAdapter(family,false);final AlertDialog[] picker={null};
@@ -42,6 +58,6 @@ public final class SessionModePickerInstrumentedTest extends Instrumentation {
     ui(()->{picker[0].getButton(-1).performClick();check(calls[0]==readBefore+1&&chosen[0]==SessionModes.Mode.READ,"Default read selection changed authority");});
    }
   }
-  result.putString("stream","PASS: main-screen Read-only / Full session selection with locked busy authority; same USB/Bluetooth capability validation; enforced read defaults, explicit MDI write choice, explicit MX+/Nano full control, unsupported modes disabled, Cancel/stale/once-only selection; zero adapter or firmware operations");finish(-1,result);
+  result.putString("stream","PASS: main-screen Read-only / Full session selection, 360/393 portrait and 800/1024 landscape primary controls visible, locked busy authority; same USB/Bluetooth capability validation; enforced read defaults, explicit MDI write choice, explicit MX+/Nano full control, unsupported modes disabled, Cancel/stale/once-only selection; zero adapter or firmware operations");finish(-1,result);
  }catch(Throwable error){result.putString("stream","FAIL: "+error);finish(0,result);}finally{if(host!=null){final Activity activity=host;runOnMainSync(activity::finish);}}}
 }
