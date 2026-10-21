@@ -578,7 +578,7 @@ public final class MainActivity extends Activity {
             session=new File(runs,UUID.randomUUID().toString());
             if(!session.mkdir()) throw new IOException("Cannot create session directory");
             String engine=mxDevice==null?"libtech2_recovered.so":"libtech2_mx.so";
-            offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,engine),firmware,mxDevice==null?"offline_native":mxModeName());
+            offlineEvidence.begin(session,new File(getApplicationInfo().nativeLibraryDir,engine),firmware,mxDevice==null?"offline_native":com.opensaab.usb.SessionModes.emulationProfile(mxMode));
             if(mxDevice!=null){
                 publish(new File(session,"mx-session-access.json"),new org.json.JSONObject().put("schema",1).put("code_clearing_enabled",(mxMode==com.opensaab.usb.SessionModes.Mode.CLEAR)).put("counter_reset_enabled",(mxMode==com.opensaab.usb.SessionModes.Mode.RESET)).put("full_native_enabled",mxMode==com.opensaab.usb.SessionModes.Mode.FULL).put("security_collection",mxMode==com.opensaab.usb.SessionModes.Mode.SEEDS).put("mode",mxModeName()).put("consent_utc",mxConsentUtc==null?org.json.JSONObject.NULL:mxConsentUtc).put("automatic_request_replay",false).toString()+"\n");
                 if((mxMode==com.opensaab.usb.SessionModes.Mode.CLEAR))com.opensaab.usb.SessionDiagnostics.record(session,com.opensaab.usb.SessionDiagnostics.Event.WRITE_SESSION_STARTED);

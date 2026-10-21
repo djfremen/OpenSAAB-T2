@@ -27,6 +27,9 @@ public final class SessionModesTest {
   check(SessionModes.nativeInstructionLimit(SessionModes.Mode.FULL,300)==Long.MAX_VALUE,"Full operation inherited offline instruction cutoff");
   check(SessionModes.nativeDeadline(SessionModes.Mode.READ,100,300)==400,"Bounded read deadline changed");
   check(SessionModes.stopGraceSeconds(SessionModes.Mode.FULL)==15,"Full cleanup has no time to release");
+  check(SessionModes.emulationProfile(SessionModes.Mode.READ).equals("mxp_native_read"),"Read context schema changed");
+  check(SessionModes.emulationProfile(SessionModes.Mode.FULL).equals("mxp_full_native"),"Full context authority lost");
+  check(SessionModes.emulationProfile(SessionModes.Mode.SEEDS).equals("mxp_seeds"),"Collection context lost");
   System.out.println("SESSION_MODES PASS: enforced read versus native authority, explicit MX+/Nano full native, separate collection and unknown adapter rejection");
  }
 }
