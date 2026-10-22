@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 """MCP stdio bridge to an explicitly enabled Android endpoint on one paired device."""
 import argparse,json,os,re,socket,subprocess,sys,time
-VERSION='0.1.1-preview.14'
+VERSION='0.1.1-preview.28'
 
 class Bridge:
     def __init__(self,serial,token_file,adb):
@@ -80,6 +80,10 @@ def schemas():
         ('opensaab_android_get_state','Read the foreground session and original guest LCD menus.',{}),
         ('opensaab_android_get_health','Read current UI/guest liveness without interpreting a static LCD as a hang.',{}),
         ('opensaab_android_get_crash_details','Read bounded OS exit history separately from current health.',{}),
+        ('opensaab_android_get_security_card','Inspect the stopped emulator working card state/hash before an explicit reset; no raw security bytes.',{}),
+        ('opensaab_android_reset_security_card','Explicitly reset only the stopped working-card SSA region, with verified backup and asynchronous readback. Retain request_id; never replay a lost reply with a new ID.',{'expected_card_sha256':{'type':'string'},'manual_generation':{'type':'integer'},'request_id':{'type':'string'},'confirmation':{'type':'string','enum':['RESET_TO_INIT_AUTH']}}),
+        ('opensaab_android_get_security_reset','Read one reset request outcome and retained receipt; does not repeat the reset.',{'request_id':{'type':'string'}}),
+        ('opensaab_android_cancel_security_reset','Cancel a pending reset before its atomic replacement; read card_changed and final status.',{'request_id':{'type':'string'}}),
         ('opensaab_android_send_key','Send one packaged canonical key against current session/menu state.',{'key':{'type':'string'}}),
         ('opensaab_android_select_entry','Select one exact visible label, stopping on ambiguity or manual takeover.',{'label':{'type':'string'}}),
         ('opensaab_android_navigate','Follow at most twelve exact menu labels; stop at prompts and unrecognized screens.',{'labels':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':12}}),
@@ -98,6 +102,10 @@ def _execute(bridge,name,args):
     if name.endswith('get_state'):return bridge.state()
     if name.endswith('get_health'):return bridge.request('health')
     if name.endswith('get_crash_details'):return bridge.request('crash_details')
+    if name.endswith('get_security_card'):return bridge.request('security_card')
+    if name.endswith('reset_security_card'):return bridge.request('security_card_reset',**args)
+    if name.endswith('get_security_reset'):return bridge.request('security_card_status',**args)
+    if name.endswith('cancel_security_reset'):return bridge.request('security_card_cancel',**args)
     if name.endswith('send_key'):return bridge.key(args['key'])
     if name.endswith('select_entry'):return bridge.select(args['label'])
     if name.endswith('navigate'):

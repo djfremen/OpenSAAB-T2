@@ -18,8 +18,8 @@ public final class AndroidMcp {
         default void close(){}
         boolean key(int code);void startOffline();void stop();
     }
-    private static Owner owner;
-    private static Activity activity;
+    private static volatile Owner owner;
+    private static volatile Activity activity;
     private static android.content.Context application;
     private static volatile LocalServerSocket server;
     private static Thread listener;
@@ -29,7 +29,7 @@ public final class AndroidMcp {
     private static final Semaphore waiter=new Semaphore(1);
     private static final Object signal=new Object();
     private static long changeSequence;
-    private static long uiHeartbeat,manualGeneration;
+    private static long uiHeartbeat;private static volatile long manualGeneration;
     private static String admittedSession="";private static long admittedSequence=-1;
     private static final Handler ui=new Handler(Looper.getMainLooper());
     private static final Runnable beat=new Runnable(){public void run(){uiHeartbeat=SystemClock.elapsedRealtime();if(server!=null)ui.postDelayed(this,1000);}};
@@ -142,8 +142,16 @@ public final class AndroidMcp {
     }
     private static JSONObject dispatch(JSONObject request)throws Exception {
         if(owner==null||activity==null||activity.isFinishing())throw new IOException("Foreground owner unavailable");
-        String op=request.optString("op");JSONObject state=(op.equals("state")||op.equals("health")||op.equals("crash_details"))?owner.inspect():owner.state();state.put("enabled",true).put("app_version",AppBuildProfile.installedVersion(activity)).put("architecture",AppBuildProfile.abi(activity)).put("app_pid",android.os.Process.myPid()).put("manual_generation",manualGeneration).put("mcp_features",new JSONArray().put("wait_state_v1"));
+        String op=request.optString("op");JSONObject state=(op.equals("state")||op.equals("health")||op.equals("crash_details")||op.startsWith("security_card"))?owner.inspect():owner.state();state.put("enabled",true).put("app_version",AppBuildProfile.installedVersion(activity)).put("architecture",AppBuildProfile.abi(activity)).put("app_pid",android.os.Process.myPid()).put("manual_generation",manualGeneration).put("mcp_features",new JSONArray().put("wait_state_v1").put("security_card_reset_v1"));
         if(op.equals("state"))return state;
+        if(op.equals("security_card_status"))return McpSecurityCard.status(activity,request.optString("request_id"),false);
+        if(op.equals("security_card_cancel"))return McpSecurityCard.status(activity,request.optString("request_id"),true);
+        boolean cardIdle=!state.optBoolean("busy")&&!state.optBoolean("session_running");
+        if(op.equals("security_card"))return McpSecurityCard.inspect(activity,manualGeneration,cardIdle);
+        if(op.equals("security_card_reset")){
+            final Activity admittedActivity=activity;final Owner admittedOwner=owner;final LocalServerSocket admittedEndpoint=server;final long generation=manualGeneration;
+            return McpSecurityCard.start(activity,request,generation,cardIdle,()->server==admittedEndpoint&&activity==admittedActivity&&owner==admittedOwner&&manualGeneration==generation);
+        }
         if(op.equals("health")||op.equals("crash_details")){
             long now=SystemClock.elapsedRealtime();JSONObject facts=new JSONObject().put("app_alive",true).put("ui_heartbeat_age_ms",now-uiHeartbeat).put("session_running",state.optBoolean("session_running")).put("emulator_alive",state.optBoolean("emulator_alive")).put("emulator_heartbeat_age_ms",state.opt("emulator_heartbeat_age_ms")).put("session_age_ms",state.opt("session_age_ms"));
             long guestAge=state.optLong("emulator_heartbeat_age_ms",-1),sessionAge=state.optLong("session_age_ms",0);

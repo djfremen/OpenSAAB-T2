@@ -48,6 +48,8 @@ public final class SsaDataTest {
             File reset=Files.createDirectory(dir.resolve("reset")).toFile();
             try{SsaCardReset.clear(card,reset,()->false);throw new AssertionError("Active/cancelled reset applied");}catch(IOException expected){}
             if(!SsaCardImport.hash(card).equals(after))throw new AssertionError("Cancelled reset modified card");
+            try{SsaCardReset.clear(card,reset,()->true,before);throw new AssertionError("Changed card accepted inspected hash");}catch(IOException expected){}
+            if(!SsaCardImport.hash(card).equals(after))throw new AssertionError("Stale reset modified card");
             SsaCardReset.clear(card,reset,()->true);
             try(InputStream current=new BufferedInputStream(new FileInputStream(card));InputStream original=new BufferedInputStream(new FileInputStream(new File(reset,"card-before-security.bin")))){
                 for(int i=0;i<33554432;i++){int value=current.read(),old=original.read();if(value!=(i>=SsaData.OFFSET&&i<SsaData.OFFSET+SsaData.SIZE?255:old))throw new AssertionError("Clear changed wrong byte: "+i);}

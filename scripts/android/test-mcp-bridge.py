@@ -56,6 +56,22 @@ class Endpoint:
     def __exit__(self,*args):self.close()
 
 class BridgeTests(unittest.TestCase):
+    def test_card_reset_is_explicit_and_not_retried(self):
+        b=mock.Mock();b.request_count=0;b.request_elapsed_ms=0
+        b.request.return_value={'request_id':'test-reset-123','status':'running','card_changed':False}
+        args={'expected_card_sha256':'a'*64,'manual_generation':7,'request_id':'test-reset-123','confirmation':'RESET_TO_INIT_AUTH'}
+        result=bridge_module.execute(b,'opensaab_android_reset_security_card',args)
+        b.request.assert_called_once_with('security_card_reset',**args)
+        self.assertEqual(result['status'],'running')
+        b.request.reset_mock();b.request.side_effect=RuntimeError('reply lost')
+        with self.assertRaisesRegex(RuntimeError,'reply lost'):bridge_module.execute(b,'opensaab_android_reset_security_card',args)
+        self.assertEqual(b.request.call_count,1)
+    def test_card_status_and_cancel_never_issue_another_reset(self):
+        b=mock.Mock();b.request_count=0;b.request_elapsed_ms=0;b.request.return_value={'status':'running'}
+        bridge_module.execute(b,'opensaab_android_get_security_card',{})
+        bridge_module.execute(b,'opensaab_android_get_security_reset',{'request_id':'test-reset-123'})
+        bridge_module.execute(b,'opensaab_android_cancel_security_reset',{'request_id':'test-reset-123'})
+        self.assertEqual(b.request.call_args_list,[mock.call('security_card'),mock.call('security_card_status',request_id='test-reset-123'),mock.call('security_card_cancel',request_id='test-reset-123')])
     def test_navigation_reuses_observed_states(self):
         with Endpoint() as e:
             result=bridge_module.execute(e.bridge(),'opensaab_android_navigate',{'labels':['Next 0','Next 1','Next 2']})
