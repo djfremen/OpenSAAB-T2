@@ -136,7 +136,9 @@ public class VlinkerVehicleConnection {
         JSONObject acquired=protocol(claim);if(!acquired.optString("state").equals("idle"))throw new IOException(acquired.optString("error"));
         if(cancelled.get())throw new IOException("Connection cancelled");
         link=linkFactory.create();if(cancelled.get())throw new IOException("Connection cancelled");
-        link.open();if(cancelled.get())throw new IOException("Connection cancelled");
+        if(link instanceof VlinkerSppTransport)record("bluetooth_connect_started",((VlinkerSppTransport)link).connectionEvidence());
+        try{link.open();}finally{if(link instanceof VlinkerSppTransport)record("bluetooth_connect_finished",((VlinkerSppTransport)link).connectionEvidence());}
+        if(cancelled.get())throw new IOException("Connection cancelled");
         long deadline=SystemClock.elapsedRealtime()+30000;
         JSONObject ready=packet(deadline,true);transportIdentity=ready;
         boolean macSpp=transportKind.equals("android-emulator-local-m4-bluetooth")&&SimulatorVehicleConnection.available(context)
@@ -239,6 +241,7 @@ public class VlinkerVehicleConnection {
             if(success)report.put("result",result);
             if(retained)report.put("native_transport_handoff",new JSONObject().put("attempt_id",ownerToken).put("target","mxplus-native").put("retained",true));
             startupReport=report;
+            if(link instanceof VlinkerSppTransport)report.put("bluetooth_connection",((VlinkerSppTransport)link).connectionEvidence());
             Files.write(new File(traceDirectory,"result.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
             if(cancelled.get()){
                 snapshot=connection(op("cancel"));snapshot=connection(op("transport_closed").put("bluetooth_closed",closed));
