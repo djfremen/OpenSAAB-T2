@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a clean, versioned ARM64 preview and retain all source/input/native receipts.
 
-This recipe rebuilds the root/MX, recovered and MDI firmware engines and MDI carrier. Only the
+This recipe rebuilds the root/MX, recovered and MDI firmware engines, connection
+worker and MDI carrier. Only the
 explicit historical workers in preview-build.json may be retained. It neither
 installs the result nor claims an independent byte-for-byte rebuild.
 """
@@ -73,7 +74,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True, help='New directory outside the source checkout')
     retained = parser.add_mutually_exclusive_group(required=True)
     retained.add_argument('--retained-apk', type=Path, help='Exact historical APK pinned by preview-build.json')
-    retained.add_argument('--retained-native-dir', type=Path, help='Directory containing the exact three pinned native members under lib/arm64-v8a')
+    retained.add_argument('--retained-native-dir', type=Path, help='Directory containing the exact two pinned native members under lib/arm64-v8a')
     parser.add_argument('--support-root', type=Path, help='Optional authorized support files; default output is firmware-free')
     args = parser.parse_args()
     commit = source_revision()
@@ -200,20 +201,25 @@ def main():
         dependencies.append({'engine': role, 'cargo_lock_sha256': sha(manifest.with_name('Cargo.lock')),
                              'packages': packages})
         cargo_output = ['--lib'] if role=='mdi-carrier' else ['--bin','tech2-emu']
+        if role=='recovered':cargo_output.extend(['--bin','opensaab-connection'])
         run('build-' + role, ['cargo', 'build', '--manifest-path', manifest, '--locked', '--release',
                              '--no-default-features', '--target', TARGET, *cargo_output], build_env)
-        source = output / 'cargo' / role / TARGET / 'release' / ('libopensaab_mdi_android.so' if role=='mdi-carrier' else 'tech2-emu')
-        names = {'root': ['libtech2_emu.so', 'libtech2_mx.so'],
-                 'recovered': ['libtech2_recovered.so'], 'mdi': ['libtech2_mdi.so'],
-                 'mdi-carrier':['libopensaab_mdi_android.so']}[role]
-        for basename in names:
+        outputs = {'root': {'libtech2_emu.so':'tech2-emu', 'libtech2_mx.so':'tech2-emu'},
+                   'recovered': {'libtech2_recovered.so':'tech2-emu', 'libopensaab_connection.so':'opensaab-connection'},
+                   'mdi': {'libtech2_mdi.so':'tech2-emu'},
+                   'mdi-carrier': {'libopensaab_mdi_android.so':'libopensaab_mdi_android.so'}}[role]
+        for basename,executable in outputs.items():
+            source = output / 'cargo' / role / TARGET / 'release' / executable
             name = 'lib/arm64-v8a/' + basename
             destination = output / 'native-components' / name
             shutil.copy2(source, destination)
             native['components'][name] = {'kind': 'built', 'sha256': sha(destination),
                 'path': str(destination.relative_to(output)), 'source_revision': commit,
                 'source_application_version': version, 'source_manifest': str(manifest.relative_to(REPO)),
-                'capabilities': ('Rebuilt MDI carrier with strict child-status reporting' if role=='mdi-carrier' else 'Rebuilt firmware engine') + '; installed and physical adapter verification pending'}
+                'source_binary':executable,
+                'capabilities': ('Rebuilt MDI carrier with strict child-status reporting' if role=='mdi-carrier' else
+                                 'Rebuilt shared connection worker with owned MX+ readiness' if executable=='opensaab-connection' else
+                                 'Rebuilt firmware engine') + '; installed and physical adapter verification pending'}
     write_json(output / 'cargo-dependency-receipt.json', {'schema': 1, 'engines': dependencies})
     dependency_archive=output/('OpenSAAB-'+version+'-cargo-source-inputs.tar.gz')
     with tarfile.open(dependency_archive,'w:gz') as archive:
@@ -252,8 +258,8 @@ def main():
                 'platform': 'android', 'artifact_sha256': sha(apk),
                 'security_access': {'policy': 'security-access-password-1', 'mode': 'no_operator_password'},
                 'capabilities': ['Android session lifecycle and outcome reporting source fixes',
-                                 'Rebuilt common/MX, recovered and MDI firmware engines plus MDI carrier',
-                                 'Explicit unchanged Nano/Chipsoft probes and connection worker'],
+                                 'Rebuilt common/MX, recovered and MDI firmware engines plus MDI carrier and shared connection worker',
+                                 'Explicit unchanged Nano/Chipsoft probes'],
                 'architecture': 'arm64-v8a', 'source_revision': commit, 'source_dirty': False,
                 'build_spec_sha256': sha(spec_path), 'installed_name': 'OpenSAAB ' + version + ' ARM64',
                 'session_lifecycle_contract_sha256': sha(REPO/'android/tech2-app/session-lifecycle-contract.json'),
@@ -265,7 +271,7 @@ def main():
                 'receipts': {p: sha(output / p) for p in receipt_paths},
                 'logs': {str(p.relative_to(output)): sha(p) for p in sorted((output/'logs').glob('*.txt'))},
                 'verification': {'source_and_all_native_hashes': 'verified',
-                                 'signature': 'verified', 'java_three_native_engines_and_mdi_carrier': 'built',
+                                 'signature': 'verified', 'java_three_native_engines_mdi_carrier_and_connection': 'built',
                                  'independent_byte_for_byte_rebuild': 'not performed',
                                  'installed_target': 'not performed', 'physical_adapters': 'not performed'}}
     write_json(output / 'candidate-manifest.json', manifest)

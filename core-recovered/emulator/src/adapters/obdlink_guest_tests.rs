@@ -291,7 +291,23 @@ fn native_start_restores_defaults_without_rebooting_the_connected_radio() {
         assert!(commands.contains(&format!("WRITE {command}")), "missing startup check: {command}");
     }
     assert!(setup_log.contains("setup_complete"));
+    assert!(setup_log.contains("active_session_keepawake"));
+    assert!(setup_log.contains("original guest Tester Present only"));
     assert!(!commands.iter().any(|s| s.starts_with("WRITE STPX")));
+}
+
+#[test]
+fn active_idle_monitor_keeps_adapter_awake_without_extra_probe_or_vehicle_sender() {
+    let (peer, link) = Peer::open(Mode::Success);
+    let mut bridge = Bridge::from_link(link);
+    std::thread::sleep(Duration::from_millis(700));
+    assert!(bridge.poll().is_ok());
+    drop(bridge);
+    let commands = peer.close();
+    assert_eq!(commands.iter().filter(|s| s.as_str() == "WRITE STM").count(),1);
+    assert_eq!(commands.iter().filter(|s| s.as_str() == "WRITE ATI").count(),1);
+    assert!(!commands.iter().any(|s| s.starts_with("WRITE STPX")));
+    assert_eq!(commands.last().map(String::as_str),Some("CLOSE"));
 }
 
 #[test]

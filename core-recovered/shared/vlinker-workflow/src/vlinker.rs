@@ -12,7 +12,8 @@ pub use crate::adapters::mic::VIN_REQUEST;
 pub const COMMANDS: [&str; 13] = crate::adapters::mic::STARTUP;
 pub fn allowed(command: &str) -> bool {
     [crate::adapter_identity::Model::VlinkerMcPlus, crate::adapter_identity::Model::CaristaEvo, crate::adapter_identity::Model::ObdlinkMxp]
-        .iter().any(|model| model.profile().startup.contains(&command))
+        .iter().any(|model| model.profile().startup.contains(&command)
+            && command != crate::adapters::obdlink_mxp::REPEAT_READY_AT)
         || PROBE_COMMANDS.contains(&command)
 }
 
@@ -290,7 +291,9 @@ impl Session {
     }
     fn select_obdlink(&mut self) -> Result<(), String> {
         if self.started { return Err("Cannot change an active adapter profile".into()); }
-        self.commands = crate::adapters::obdlink_mxp::STARTUP[..if self.read_vin {22} else {5}].to_vec();
+        let startup = crate::adapters::obdlink_mxp::STARTUP;
+        let end = startup.iter().position(|c| *c == if self.read_vin {"STPC"} else {"ATRV"}).unwrap();
+        self.commands = startup[..end + usize::from(!self.read_vin)].to_vec();
         if self.mode == "ecm_dtc" {
             self.commands.extend(["ATCFC0", "ATCF5E8", "ATCM5FF", "ATSTFF", SESSION_START, DTC_READ, SESSION_STOP]);
         } else if self.mode == "ecm_info" { self.commands.extend(INFO_READS.iter().map(|r|r.0)); }
@@ -298,7 +301,10 @@ impl Session {
         Ok(())
     }
     fn fail(&mut self, reason: impl Into<String>) -> Value {
-        let reason = reason.into();
+        let mut reason = reason.into();
+        if self.commands.first() == Some(&"AT") && self.index < 4 {
+            reason = format!("MX+ wake/readiness failed: {reason}; no vehicle requests sent");
+        }
         // When a report fails while the diagnostic operation is active, stop once,
         // then close the adapter protocol. A failed cleanup can never publish codes.
         if self.mode == "ecm_dtc" && self.diagnostic_active && self.cleanup_error.is_none() {
@@ -330,12 +336,21 @@ impl Session {
             self.diagnostic_active = true;
         }
         self.prompt = Prompt::default();
-        json!({"state":"send", "command":self.commands[self.index]})
+        if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_AT {
+            json!({"state":"send", "command":"", "transport_op":"repeat_ready_at", "repeated_command":"AT"})
+        } else {
+            json!({"state":"send", "command":self.commands[self.index]})
+        }
     }
     fn validate(&mut self, reply: &str) -> Result<(), String> {
         let command = self.commands[self.index];
         match command {
             "ATZ" => {}
+            "ATI" => {
+                if !reply.starts_with("ELM327 v") || reply.lines().count() != 1 {
+                    return Err("MX+ readiness identity was not confirmed".into());
+                }
+            }
             "VTI" => {
                 let model = crate::adapter_identity::Model::from_product(reply)?;
                 if model == crate::adapter_identity::Model::ObdlinkMxp { return Err("MX+ requires its explicit STN profile".into()); }
@@ -433,7 +448,7 @@ impl Session {
         let op = event["op"].as_str().unwrap_or("");
         if op == "select_profile" {
             return if event["model"] == "obdlink_mxp" {
-                match self.select_obdlink() {Ok(()) => json!({"state":"idle"}), Err(e) => self.fail(e)}
+                match self.select_obdlink() {Ok(()) => json!({"state":"idle", "startup_quiet_ms":300, "startup_settle_deadline_ms":2000}), Err(e) => self.fail(e)}
             } else {self.fail("Unknown explicit adapter profile")};
         }
         if op == "claim" {
@@ -481,7 +496,8 @@ impl Session {
                     return json!({"state":"waiting"});
                 }
                 let raw = String::from_utf8_lossy(&self.prompt.bytes);
-                let reply = match checked(self.commands[self.index], &raw) {
+                let checked_command = if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_AT { "AT" } else { self.commands[self.index] };
+                let reply = match checked(checked_command, &raw) {
                     Ok(reply) => reply,
                     Err(error) => return self.fail(error),
                 };
@@ -530,6 +546,7 @@ impl Session {
                         "result":{"mode":self.mode,"ecm_identifiers":self.ecm,"dtc_report":self.dtc,"display":display,"diagnostic_session_stopped":!self.diagnostic_active,"adapter_model":self.model.unwrap().id(),"adapter_label":self.model.unwrap().label(),"command_family":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {"STN"} else {"MIC"},"profile_id":if self.mode == "vin" { self.model.unwrap().vin_profile_id() } else { self.model.unwrap().probe_profile_id(self.mode == "ecm_dtc") },"product":self.product,"chip_firmware":self.firmware,"voltage":self.voltage,
                             "vin":if self.read_vin {Some(&self.vin)} else {None},
                             "request_origin":self.origin, "firmware_emulation":false,
+                            "wake_readiness":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {json!({"initial_AT_confirmed":true,"confirmed_AT_CR_repeats":2,"ATI_validated":true,"adapter_rebooted":false,"sleep_state":"unverified"})} else {Value::Null},
                             "flow_control_owner":if self.read_vin {"adapter"} else {"none"}}});
                     self.terminal = Some(result.clone());
                     result

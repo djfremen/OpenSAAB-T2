@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "application_version": "0.1.1-preview.32",
-  "version_code": 101032,
+  "application_version": "0.1.1-preview.33",
+  "version_code": 101033,
   "architecture": "arm64-v8a",
   "release_date": "2026-10-22",
   "retained_package": {
@@ -20,12 +20,6 @@
       "source_revision": "d18faaa3c59eace58b61983988abdd218067a1d6",
       "source_application_version": "0.1.1-preview.1",
       "capabilities": "Unchanged Chipsoft USB probe; firmware workflow uses the rebuilt common engine"
-    },
-    "lib/arm64-v8a/libopensaab_connection.so": {
-      "sha256": "03a8855f1052b38866800188f885fbcce35e72a0a9a26e1cb6b1a16d8762336b",
-      "source_revision": "043c1bd4967ecb40c8b6798f786f4b4e3b7c5190",
-      "source_application_version": "0.1.1-preview.26",
-      "capabilities": "Unchanged connection discovery worker; shared Java transport/session fixes are rebuilt"
     }
   }
 }

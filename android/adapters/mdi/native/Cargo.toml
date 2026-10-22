@@ -1,6 +1,6 @@
 [package]
 name = "opensaab-mdi-android"
-version = "0.1.1-preview.32"
+version = "0.1.1-preview.33"
 edition = "2021"
 license = "MPL-2.0"
 

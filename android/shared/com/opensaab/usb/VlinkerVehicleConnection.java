@@ -129,7 +129,26 @@ public class VlinkerVehicleConnection {
     }
     private void dispatchSend(JSONObject state)throws Exception{
         currentCommand=state.getString("command");if(currentCommand.equals("021A900000000000"))attempts++;
-        send(op("write").put("command",currentCommand));
+        if(state.optString("transport_op").equals("repeat_ready_at")){
+            if(!currentCommand.isEmpty()||!state.optString("repeated_command").equals("AT"))throw new IOException("Invalid readiness repeat effect");
+            send(op("interrupt").put("purpose","repeat_confirmed_ready_AT"));
+        }else send(op("write").put("command",currentCommand));
+    }
+    private void settleStartup(JSONObject policy)throws Exception{
+        int quietMs=policy.getInt("startup_quiet_ms"),maximumMs=policy.getInt("startup_settle_deadline_ms");
+        if(quietMs!=300||maximumMs!=2000)throw new IOException("Unsupported shared startup settling policy");
+        long end=SystemClock.elapsedRealtime()+maximumMs,quietUntil=SystemClock.elapsedRealtime()+quietMs;int bytes=0;
+        while(SystemClock.elapsedRealtime()<quietUntil){
+            if(cancelled.get())throw new IOException("Connection cancelled");
+            if(SystemClock.elapsedRealtime()>=end)throw new IOException("MX+ wake bytes did not settle; no vehicle requests sent");
+            try{
+                JSONObject p=link.receive((int)Math.max(1,Math.min(100,quietUntil-SystemClock.elapsedRealtime())));
+                if(!p.optString("type").equals("rx"))throw new IOException("Unexpected packet during MX+ wake settling");
+                bytes+=p.getJSONArray("bytes").length();if(bytes>16384)throw new IOException("MX+ wake bytes exceeded limit");
+                record("startup_bytes_drained",p);quietUntil=SystemClock.elapsedRealtime()+quietMs;
+            }catch(SocketTimeoutException waiting){}
+        }
+        record("wake_settled",new JSONObject().put("bytes_drained",bytes).put("quiet_ms",quietMs).put("sleep_state","unverified").put("vehicle_requests_sent",0));
     }
     private JSONObject discover()throws Exception{
         JSONObject claim=op("claim");if(!ownerToken.isEmpty())claim.put("owner",ownerToken);
@@ -147,7 +166,7 @@ public class VlinkerVehicleConnection {
             ?ready.optString("transport").equals("android-classic-spp")&&ready.optString("uuid").equals(VlinkerSppTransport.SPP_UUID.toString())
             :macSpp||(ready.optString("service").equals("18F0")&&ready.optString("write").equals("2AF1")&&ready.optString("notify").equals("2AF0")&&ready.optString("write_type").equals("withResponse"));
         if(!ready.optString("type").equals("ready")||!profile)throw new IOException("Selected Bluetooth transport unavailable");
-        if(ready.optString("device_name").trim().toLowerCase(java.util.Locale.ROOT).startsWith("obdlink mx")){JSONObject selected=protocol(op("select_profile").put("model","obdlink_mxp"));if(!selected.optString("state").equals("idle"))throw new IOException(selected.optString("error","MX+ profile unavailable"));}
+        if(ready.optString("device_name").trim().toLowerCase(java.util.Locale.ROOT).startsWith("obdlink mx")){JSONObject selected=protocol(op("select_profile").put("model","obdlink_mxp"));if(!selected.optString("state").equals("idle"))throw new IOException(selected.optString("error","MX+ profile unavailable"));settleStartup(selected);}
         JSONObject state=protocol(op("start"));protocolStarted=true;
         while(true){
             if(cancelled.get())throw new IOException("Connection cancelled");

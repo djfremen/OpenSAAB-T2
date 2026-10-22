@@ -18,7 +18,7 @@ p.add_argument('--guided-context',action='store_true')
 p.add_argument('--android-rounds',action='store_true',help='October 13 security handoff and session-end regressions')
 p.add_argument('--session-safety',action='store_true',help='Bounded Stop and security continuation Java regressions')
 p.add_argument('--direct-bluetooth',action='store_true',help='Production SPP binding against synthetic endpoints only')
-p.add_argument('--connection-core',type=Path,help='Exact retained Android connection worker for direct-bluetooth fixtures')
+p.add_argument('--connection-core',type=Path,help='Exact Android connection worker for direct-bluetooth fixtures; preview.33 requires the rebuilt matching worker')
 a=p.parse_args()
 if not a.serial.startswith('emulator-'):raise SystemExit('Disposable Android emulator required')
 if a.direct_bluetooth and (a.connection_core is None or not a.connection_core.is_file()):raise SystemExit('--direct-bluetooth requires --connection-core')
@@ -49,7 +49,7 @@ tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();roo
 test_version='0.1.0-guided-context-tests.2' if a.guided_context else '0.1.0-nano-reboot-tests.1' if a.nano_reboot else '0.1.0-security-tests.4' if a.security_only else '0.1.0-chipsoft-guidance-tests.1' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
 if a.android_rounds:test_version='0.1.0-android-rounds-tests.3'
 if a.session_safety:test_version='0.1.0-session-safety-tests.6'
-if a.direct_bluetooth:test_version='0.1.0-direct-bluetooth-tests.1'
+if a.direct_bluetooth:test_version='0.1.0-direct-bluetooth-tests.4'
 root.set('{'+ns+'}versionName',test_version);root.set('{'+ns+'}versionCode','1')
 app=root.find('application');
 if a.nano_reboot or a.android_rounds:app.set('{'+ns+'}debuggable','false')

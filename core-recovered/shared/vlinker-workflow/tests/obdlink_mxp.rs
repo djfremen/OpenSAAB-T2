@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 const VIN: &str = "7E8 10 13 5A 90 59 53 33 46\r7E8 21 44 34 39 59 58 34 31\r7E8 22 30 30 30 30 30 31 00";
 fn response(command: &str) -> String {
     match command {
-        "ATZ" => "ELM327 v1.4b".into(),
+        "ATZ" | "ATI" => "ELM327 v1.4b".into(),
         "STDI" => "OBDLink MX+ r3.1.3".into(),
         "STI" => "STN2255 v5.12.4".into(),
         "ATRV" => "13.0V".into(),
@@ -42,10 +42,36 @@ fn run(mode: &str, changed: Option<(&str,&str)>) -> (Value,Vec<String>) {
     }
 }
 #[test] fn rejected_identity_firmware_or_readback_sends_no_vehicle_request() {
-    for bad in [("STDI","OBDLink LX"),("STI","STN2256 v5.13.1"),("STPR","31"),("STPBRR","125000")] {
+    for bad in [("AT","?"),("ATI","garbage"),("ATD","?"),("STDI","OBDLink LX"),("STI","STN2256 v5.13.1"),("STPR","31"),("STPBRR","125000")] {
         let (v,commands)=run("vin",Some(bad));assert_eq!(v["state"],"failed");
         assert!(!commands.iter().any(|c|c.as_str()==VIN_REQUEST));assert!(v["result"].is_null());
     }
+}
+#[test] fn wake_repeats_only_a_confirmed_benign_probe_without_reboot_or_vehicle_replay() {
+    let (v,c)=run("vin",None);
+    assert_eq!(v["state"],"complete");
+    assert_eq!(&c[..5], &["AT", "", "", "ATI", "ATD"]);
+    assert!(!c.iter().any(|c| matches!(c.as_str(),"ATZ"|"ATWS")));
+    assert!(!opensaab_vlinker_workflow::vlinker::allowed(""));
+    assert!(!opensaab_vlinker_workflow::vlinker::allowed(opensaab_vlinker_workflow::adapters::obdlink_mxp::REPEAT_READY_AT));
+    let mut s=Session::startup();
+    s.event(&json!({"op":"select_profile","model":"obdlink_mxp"}));
+    assert_eq!(s.event(&json!({"op":"start"}))["command"],"AT");
+    let repeat=s.event(&json!({"op":"rx","bytes":b"AT\rOK\r>"}));
+    assert_eq!(repeat["transport_op"],"repeat_ready_at");
+    let failed=s.event(&json!({"op":"rx","bytes":b"AT\r?\r>"}));
+    assert_eq!(failed["state"],"failed");
+    assert_eq!(s.event(&json!({"op":"tick"})),failed);
+}
+#[test] fn cancel_or_ambiguous_wake_never_advances_to_repeat_or_vehicle_commands() {
+    for raw in [b"AT\rOK\r>garbage".as_slice(),b"AT\rELM327 v1.4b\r>".as_slice(),b"AT\rOK\rOK\r>".as_slice()] {
+        let mut s=Session::startup();s.event(&json!({"op":"select_profile","model":"obdlink_mxp"}));s.event(&json!({"op":"start"}));
+        assert_eq!(s.event(&json!({"op":"rx","bytes":raw}))["state"],"failed");
+    }
+    let mut s=Session::startup();s.event(&json!({"op":"select_profile","model":"obdlink_mxp"}));s.event(&json!({"op":"start"}));
+    let stopped=s.event(&json!({"op":"cancel"}));
+    assert_eq!(stopped["state"],"failed");
+    assert_eq!(s.event(&json!({"op":"rx","bytes":b"AT\rOK\r>"})),stopped);
 }
 #[test] fn incomplete_codes_are_not_published_and_session_is_stopped_once() {
     let (v,c)=run("ecm_dtc",Some((DTC_READ,"5E8 81 01 07 00 6F 00 00 00")));

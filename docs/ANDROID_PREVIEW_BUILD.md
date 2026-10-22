@@ -3,14 +3,15 @@
 `scripts/android/build-preview.py` is the tracked build and retention entry point
 for the candidate declared in `android/tech2-app/preview-build.json`. It requires
 a clean committed checkout and creates a new output directory outside the source
-tree. It builds the root/MX, recovered and MDI firmware engines plus the MDI
+tree. It builds the root/MX, recovered and MDI firmware engines plus the shared connection worker and MDI
 JNI/USB carrier from that exact commit, with matching Cargo/lockfile/runtime
-identities. These four crate builds provide five native entries. Root and MX role names
+identities. These four crate builds provide six native entries. Root and MX role names
 deliberately carry identical common-engine bytes.
 
-Three unchanged workers have explicit byte/source pins: Nano and Chipsoft probes
-retain their preview.1 source identity; the connection
-worker retains its preview.26 source identity. Their original provenance is
+Two unchanged probe workers have explicit byte/source pins: Nano and Chipsoft
+retain their preview.1 source identity. The connection worker is rebuilt from the
+recovered crate with `--bin opensaab-connection`; the older retained connection
+worker is not substituted. Original retained probe provenance is
 separate from the new application's version. The source-pinned preview.30 APK
 can supply these inputs, or supply their exact bytes from a retained native
 companion under `lib/arm64-v8a/`. The builder rejects any substituted worker.
@@ -27,7 +28,7 @@ non-debuggable private developer preview; this command does not install or publi
 ```sh
 python3 scripts/android/build-preview.py \
   --retained-apk /absolute/path/to/the-pinned-preview.30.apk \
-  --output /absolute/path/outside/the-checkout/preview32
+  --output /absolute/path/outside/the-checkout/preview33
 ```
 
 The default package is firmware-free. `--support-root /authorized/private/inputs`

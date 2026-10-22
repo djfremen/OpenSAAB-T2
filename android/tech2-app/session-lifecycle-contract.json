@@ -1,7 +1,7 @@
 {
   "id": "session-lifecycle-outcomes-1",
   "date": "2026-10-22",
-  "candidate": "0.1.1-preview.32",
+  "candidate": "0.1.1-preview.33",
   "scope": "Android ARM64 candidate; other target binding, installed and physical verification pending",
   "rules": [
     "Operator Stop requests native stop, rejects new diagnostic work, and keeps the existing bridge available for bounded adapter cleanup. Forced termination is explicit; the card lease is not released before actual process death.",
@@ -11,7 +11,11 @@
     "Imported security data shows Firmware running while already active, Waiting for cleanup while ownership remains, and Continue firmware only for an admissible stopped session. Same-run data survives retry/import/reconnect.",
     "Hide new-connection actions during an active session; retain working original-firmware menu navigation. No shortcut, resume, retry or reconnect replays a vehicle change request or physical confirmation.",
     "Radio sleep and Bluetooth failure layer are not inferred from elapsed time. Retain platform error, attempt timing, write attempts and cleanup; no automatic connection retry or adapter reboot.",
-    "Original POST failures and UART timeouts remain observable. Do not fabricate a POST pass or classify all timeouts as harmless. Manual screen images retain the latest, final and fault captures while console text retains navigation history."
+    "Original POST failures and UART timeouts remain observable. Do not fabricate a POST pass or classify all timeouts as harmless. Manual screen images retain the latest, final and fault captures while console text retains navigation history.",
+    "MX+ shared startup drains only bounded pre-session bytes, confirms nonempty AT before two separately prompt-gated bare CR repeats of that confirmed AT, validates ATI, and restores runtime defaults using ATD without ATZ/ATWS. Uncertain readiness fails closed before vehicle requests; unknown prior commands are never repeated.",
+    "Active MX+ firmware sessions keep the UART awake through continuous STM and original guest Tester Present. There is no extra host vehicle sender or keepalive monitor interruption, and this active-session policy ends on Stop.",
+    "Confirmed SPP release requires the socket and both streams to close, the owned reader thread to terminate, and connect/write calls to finish. A socket-close return alone is not complete transport release.",
+    "Physical SPP admission retains the prior transport owner across workflow failure until its actual confirmed-release predicate succeeds. A pending reader/writer or sticky socket/stream close failure blocks another physical session; failed cleanup requires a full Android force stop and reopen. Synthetic transport fixtures do not establish a hardware pass."
   ],
   "security": "No operator password; internal authentication, operation consent, exact VIN, authority profiles, firmware ownership and validated atomic SSA import remain required.",
   "qualification": "Source/software checks do not establish hardware protection or a vehicle workflow pass. All four adapters require exact-candidate common golden-path qualification.",

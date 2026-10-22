@@ -365,6 +365,7 @@ impl Link {
         for cmd in ["STFAC", "STFPA400,400", "STPO"] {
             self.exact(cmd, "OK")?;
         }
+        self.record(serde_json::json!({"active_session_keepawake":{"adapter":"continuous STM while idle; FRPM F 15.2.2 inhibits UART inactivity sleep during an executing command","vehicle":"original guest Tester Present only","extra_host_CAN_sender":false,"monitor_interrupted_for_keepalive":false,"ends_on_session_stop":true}}))?;
         self.record(serde_json::json!({"setup_complete":true,"bus":"HS-CAN; serialized SW-CAN preview","bitrate":500000,"raw_frames":true,"host_flow_control":false,"host_ISOTP_assembly":false}))
     }
     fn select_bus(&mut self, controller: usize) -> Result<(), String> {
@@ -602,6 +603,9 @@ impl Bridge {
                         }
                         let command = encode(controller, &tx)?;
                         link.record(serde_json::json!({"guest_tx":{"controller":controller,"ticket":tx.ticket,"id":tx.frame.id,"dlc":tx.frame.dlc,"data":tx.frame.data}}))?;
+                        if functional_tester_present(&tx) {
+                            link.record(serde_json::json!({"tester_present":{"source":"original_guest","controller":controller,"ticket":tx.ticket,"synthetic":false}}))?;
+                        }
                         link.active_tx.as_mut().unwrap().phase = "can-request";
                         if route.mode == ElectricalMode::SingleWireWake {
                             let lines = link.reply(&command)?;
