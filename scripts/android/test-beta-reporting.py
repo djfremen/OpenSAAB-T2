@@ -40,7 +40,7 @@ if a.security_only or a.nano_reboot or a.guided_context:suites=['SecurityAccessI
 if a.nano_reboot:suites.append('NanoRebootInstrumentedTest')
 if a.guided_context:suites.append('SecurityGuidedContextInstrumentedTest')
 if a.android_rounds:suites=['SecurityAccessInstrumentedTest','SecuritySessionInstrumentedTest','SecurityCollectionInstrumentedTest','SecurityGuidedContextInstrumentedTest','NanoSecurityResumeInstrumentedTest','NanoRebootInstrumentedTest','SessionEndInstrumentedTest','DiagnosticEvidenceInstrumentedTest']
-if a.session_safety:suites=['SessionSafetyInstrumentedTest','SecurityAccessInstrumentedTest','SecuritySessionInstrumentedTest','NanoSecurityResumeInstrumentedTest']
+if a.session_safety:suites=['SessionSafetyInstrumentedTest','SecurityAccessInstrumentedTest']
 if a.direct_bluetooth:suites=['DirectBluetoothInstrumentedTest']
 sources=[r/'android/tech2-app/com/opensaab/tech2/MainActivity.java',*sorted((r/'android/shared').rglob('*.java')),*sorted((r/'android/adapters').rglob('*.java')),*[r/'android/tests'/(n+'.java') for n in suites+['DiagnosticFailureTest','ChipsoftIdentityTest']]]
 deps=ReportDependencies(r,out,env)
@@ -48,7 +48,7 @@ ns='http://schemas.android.com/apk/res/android';ET.register_namespace('android',
 tree=ET.parse(r/'android/tech2-app/AndroidManifest.xml');root=tree.getroot();root.set('package',package)
 test_version='0.1.0-guided-context-tests.2' if a.guided_context else '0.1.0-nano-reboot-tests.1' if a.nano_reboot else '0.1.0-security-tests.4' if a.security_only else '0.1.0-chipsoft-guidance-tests.1' if a.crash_details_only else '0.1.0-evidence-tests.2' if a.evidence_only else '0.1.0-report-tests.2'
 if a.android_rounds:test_version='0.1.0-android-rounds-tests.3'
-if a.session_safety:test_version='0.1.0-session-safety-tests.5'
+if a.session_safety:test_version='0.1.0-session-safety-tests.6'
 if a.direct_bluetooth:test_version='0.1.0-direct-bluetooth-tests.1'
 root.set('{'+ns+'}versionName',test_version);root.set('{'+ns+'}versionCode','1')
 app=root.find('application');

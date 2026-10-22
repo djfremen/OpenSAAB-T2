@@ -6,10 +6,10 @@ exact installed/tested OpenSAAB 0.1.1-preview.1 ARM64 APK, SHA-256
 source commit `d18faaa3c59eace58b61983988abdd218067a1d6`.
 This directory preserves historical inputs. Current unchanged Nano/Chipsoft
 probe hashes remain pinned in
-`android/tech2-app/native-payload-baseline.json`. The preview.31 build deliberately
+`android/tech2-app/native-payload-baseline.json`. The preview.32 build deliberately
 rebuilds the main/MX, recovered and MDI firmware engines and MDI carrier; the
 historical MDI files here are not silently substituted for rebuilt components. The retained
-connection worker used by preview.31 comes from its explicitly pinned preview.30
+connection worker used by preview.32 comes from its explicitly pinned preview.30
 input and has original preview.26 source provenance. It differs from the older
 connection file in this directory. See `android/tech2-app/preview-build.json`
 and `docs/ANDROID_PREVIEW_BUILD.md` for the complete current input policy.
