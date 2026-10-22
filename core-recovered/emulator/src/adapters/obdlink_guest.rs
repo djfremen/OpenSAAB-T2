@@ -308,7 +308,7 @@ impl Link {
     }
     fn setup(&mut self) -> Result<(), String> {
         // A sleeping adapter may publish a reset banner when RFCOMM opens.
-        // Drain only pre-session startup bytes before issuing the first reset.
+        // Drain only pre-session startup bytes before restoring runtime defaults.
         let end = Instant::now() + Duration::from_secs(2);
         let mut quiet = Instant::now();
         while quiet.elapsed() < Duration::from_millis(300) {
@@ -324,7 +324,8 @@ impl Link {
         self.parser = Parser::default();
         self.receiving = false;
         // FRPM F, ATD: restore every runtime setting without rebooting OBDLink.
-        // Discovery already reset/identified the adapter and closed its protocol.
+        // Discovery already confirmed readiness, restored runtime defaults,
+        // identified the adapter and closed its protocol without rebooting it.
         // A second ATZ on the newly opened RFCOMM stream can expose radio boot
         // traffic instead of a command prompt (captured Fire/MX+ failure).
         // Never retry that reset or treat radio text as a successful response.
