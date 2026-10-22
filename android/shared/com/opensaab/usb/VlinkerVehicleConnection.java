@@ -35,7 +35,7 @@ public class VlinkerVehicleConnection {
     private BufferedWriter transcript;
     private String currentCommand="";
     private String probeMode="",ownerToken="";
-    private JSONObject commandAttempts,commandWrites,workflowManifest,transportIdentity;
+    private JSONObject commandAttempts,commandWrites,workflowManifest,transportIdentity,failureReadiness;
     private boolean retainForNative;
     private MxNativeBridge.PreparedTransport preparedTransport;
     private String preparedAttempt="";
@@ -91,13 +91,13 @@ public class VlinkerVehicleConnection {
     }
     public static boolean available(Context c){return new File(c.getApplicationInfo().nativeLibraryDir,"libopensaab_connection.so").canExecute();}
     public void startProbe(String mode){
-        if(!mode.equals("ecm_info")&&!mode.equals("ecm_dtc"))return;
+        if(!mode.equals("identity")&&!mode.equals("ecm_info")&&!mode.equals("ecm_dtc"))return;
         if(busy||(!enabled||!available(context)))return;probeMode=mode;ownerToken="";start();
     }
     public void start(){
         if(busy)return;if(!enabled||!available(context)){discardSupplied();return;}
         if(!OWNER.compareAndSet(null,this)){discardSupplied();publish(blockedSnapshot());return;}
-        busy=true;cancelled.set(false);closed=false;protocolStarted=false;ownerToken="";attempts=0;written=0;commandAttempts=new JSONObject();commandWrites=new JSONObject();transportIdentity=new JSONObject();
+        busy=true;cancelled.set(false);closed=false;protocolStarted=false;ownerToken="";attempts=0;written=0;commandAttempts=new JSONObject();commandWrites=new JSONObject();transportIdentity=new JSONObject();failureReadiness=null;
         new Thread(this::run,"opensaab-vlinker-effects").start();
     }
     private static JSONObject blockedSnapshot(){try{return new JSONObject().put("state","blocked").put("message","Finish the active workflow before connecting");}catch(JSONException e){throw new AssertionError(e);}}
@@ -118,7 +118,14 @@ public class VlinkerVehicleConnection {
         transcript.write(new JSONObject().put("event",type).put("elapsed_realtime_ms",SystemClock.elapsedRealtime()).put("data",value).toString());transcript.newLine();transcript.flush();
     }
     private void send(JSONObject value)throws Exception{
-        if(value.optString("op").equals("write")){String command=value.getString("command");commandAttempts.put(command,commandAttempts.optInt(command)+1);}
+        if(value.optString("op").equals("write")){
+            String command=value.getString("command");
+            if(probeMode.equals("identity")&&!java.util.Arrays.asList("AT","ATI","ATD","ATE0","STDI","STI","ATRV").contains(command))
+                throw new IOException("Adapter identity check blocked a command outside its adapter-only scope");
+            commandAttempts.put(command,commandAttempts.optInt(command)+1);
+        }
+        if(probeMode.equals("identity")&&value.optString("op").equals("interrupt")&&!value.optString("purpose").equals("repeat_confirmed_ready_ATI"))
+            throw new IOException("Adapter identity check blocked an unknown command repeat");
         record("tx",value);link.send(value);
     }
     private JSONObject packet(long deadline,boolean honorCancel)throws Exception{
@@ -129,7 +136,7 @@ public class VlinkerVehicleConnection {
                 if(p.optString("type").equals("closed"))closed=p.optBoolean("bluetooth_closed",false);
                 return p;
             }catch(SocketTimeoutException timeout){
-                if(honorCancel&&protocolStarted){JSONObject tick=protocol(op("tick"));if(tick.optString("state").equals("send"))dispatchSend(tick);if(tick.optString("state").equals("failed"))throw new IOException(tick.optString("error"));}
+                if(honorCancel&&protocolStarted){JSONObject tick=protocol(op("tick"));if(tick.optString("state").equals("send"))dispatchSend(tick);if(tick.optString("state").equals("failed")){failureReadiness=tick.optJSONObject("wake_readiness");throw new IOException(tick.optString("error"));}}
             }
         }
         throw new IOException("Bluetooth transport timed out");
@@ -142,9 +149,9 @@ public class VlinkerVehicleConnection {
     }
     private void dispatchSend(JSONObject state)throws Exception{
         currentCommand=state.getString("command");if(currentCommand.equals("021A900000000000"))attempts++;
-        if(state.optString("transport_op").equals("repeat_ready_at")){
-            if(!currentCommand.isEmpty()||!state.optString("repeated_command").equals("AT"))throw new IOException("Invalid readiness repeat effect");
-            send(op("interrupt").put("purpose","repeat_confirmed_ready_AT"));
+        if(state.optString("transport_op").equals("repeat_ready_ati")){
+            if(!currentCommand.isEmpty()||!state.optString("repeated_command").equals("ATI"))throw new IOException("Invalid readiness repeat effect");
+            send(op("interrupt").put("purpose","repeat_confirmed_ready_ATI"));
         }else send(op("write").put("command",currentCommand));
     }
     private void settleStartup(JSONObject policy)throws Exception{
@@ -194,7 +201,7 @@ public class VlinkerVehicleConnection {
         while(true){
             if(cancelled.get())throw new IOException("Connection cancelled");
             String phase=state.optString("state");
-            if(phase.equals("failed"))throw new IOException(state.optString("error"));
+            if(phase.equals("failed")){failureReadiness=state.optJSONObject("wake_readiness");throw new IOException(state.optString("error"));}
             if(phase.equals("complete"))return state.getJSONObject("result");
             if(phase.equals("send")){
                 dispatchSend(state);state=new JSONObject().put("state","waiting");
@@ -247,12 +254,12 @@ public class VlinkerVehicleConnection {
     private void runProbe(){
         JSONObject snapshot=null,result=null;String error="";
         try{
-            traceDirectory=new File(context.getFilesDir(),(evidenceKind.equals("android-classic-spp")?"vlinker-hscan-tests/":"simulator-hscan-tests/")+java.util.UUID.randomUUID());if(!traceDirectory.mkdirs())throw new IOException("Cannot save probe evidence");
+            traceDirectory=new File(context.getFilesDir(),(probeMode.equals("identity")?"vlinker-identity-tests/":evidenceKind.equals("android-classic-spp")?"vlinker-hscan-tests/":"simulator-hscan-tests/")+java.util.UUID.randomUUID());if(!traceDirectory.mkdirs())throw new IOException("Cannot save probe evidence");
             transcript=new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(traceDirectory,"transcript.jsonl")),StandardCharsets.UTF_8));
             core=new ProcessBuilder(new File(context.getApplicationInfo().nativeLibraryDir,"libopensaab_connection.so").toString(),context.getFilesDir().toString()).redirectError(new File(traceDirectory,"core-stderr.log")).start();
             coreInput=core.getOutputStream();coreOutput=core.getInputStream();workflowManifest=event("manifest",op("read"));
-            JSONObject configured=protocol(op("configure").put("mode",probeMode));if(!configured.optString("state").equals("idle"))throw new IOException("Unsupported ECM probe");
-            publish(new JSONObject().put("state","reading").put("message","Reading a fresh ECM VIN and "+(probeMode.equals("ecm_info")?"software identifiers":"current/history engine codes")+"…"));
+            JSONObject configured=protocol(op("configure").put("mode",probeMode));if(!configured.optString("state").equals("idle"))throw new IOException("Unsupported adapter probe");
+            publish(new JSONObject().put("state","reading").put("message",probeMode.equals("identity")?"Checking adapter identity…":"Reading a fresh ECM VIN and "+(probeMode.equals("ecm_info")?"software identifiers":"current/history engine codes")+"…"));
             try{result=discover();}catch(Exception failure){error=failure.getMessage();}
             finally{
                 // A cancelled/failed diagnostic operation gets one shared stop attempt.
@@ -264,14 +271,16 @@ public class VlinkerVehicleConnection {
             JSONObject report=new JSONObject().put("schema",1).put("shared_workflow",workflowManifest).put("selected_device",transportIdentity).put("mode",probeMode).put("transport",evidenceKind).put("app_version",AppBuildProfile.installedVersion(context))
                 .put("status",success?"complete":"failed").put("bluetooth_closed",closed).put("host_vehicle_request_attempts",attempts).put("host_vehicle_requests_written",written).put("automatic_replay",false).put("command_attempts",commandAttempts).put("command_writes",commandWrites).put("error",error);
             if(success)report.put("result",result);
-            if(success&&!probeMode.isEmpty()){
+            if(failureReadiness!=null)report.put("wake_readiness",failureReadiness);
+            if(link instanceof VlinkerSppTransport)report.put("bluetooth_connection",((VlinkerSppTransport)link).connectionEvidence());
+            if(success&&!probeMode.equals("identity")){
                 JSONObject saved=new JSONObject(report.toString()).put("op","save").put("observed_utc",java.time.Instant.now().toString()).put("app_build",String.valueOf(context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionCode));
                 try{JSONObject receipt=event("reports",saved);if(receipt.has("error"))report.put("report_save_error",receipt.getString("error"));else report.put("saved_report_id",receipt.getString("id"));}
                 catch(Exception storage){report.put("report_save_error","Diagnostic report could not be saved");}
             }
             Files.write(new File(traceDirectory,"result.json").toPath(),report.toString(2).getBytes(StandardCharsets.UTF_8));
-            snapshot=new JSONObject().put("state",success?"complete":"failed").put("message",success?result.optString("display"):"ECM probe failed · "+error).put("report",report);
-        }catch(Exception failure){try{snapshot=new JSONObject().put("state","failed").put("message","ECM probe unavailable · "+failure.getMessage());}catch(Exception impossible){throw new AssertionError(impossible);}}
+            snapshot=new JSONObject().put("state",success?"complete":"failed").put("message",success?result.optString("display"):(probeMode.equals("identity")?"Adapter check failed · ":"ECM probe failed · ")+error).put("report",report);
+        }catch(Exception failure){try{snapshot=new JSONObject().put("state","failed").put("message",(probeMode.equals("identity")?"Adapter check unavailable · ":"ECM probe unavailable · ")+failure.getMessage());}catch(Exception impossible){throw new AssertionError(impossible);}}
         finally{
             if(!finishCore())try{snapshot=new JSONObject().put("state","failed").put("message","Shared workflow worker did not exit cleanly");}catch(Exception ignored){}
             discardSupplied();if(link!=null){link.shutdown();link=null;}try{if(transcript!=null)transcript.close();}catch(Exception ignored){}
@@ -302,6 +311,7 @@ public class VlinkerVehicleConnection {
             JSONObject report=new JSONObject().put("schema",1).put("shared_workflow",workflowManifest).put("selected_device",transportIdentity).put("transport",evidenceKind).put("app_version",AppBuildProfile.installedVersion(context))
                 .put("status",success?"vin_received":"failed").put("bluetooth_closed",closed).put("host_vehicle_request_attempts",attempts).put("host_vehicle_requests_written",written).put("automatic_replay",false).put("command_attempts",commandAttempts).put("command_writes",commandWrites).put("error",error);
             if(success)report.put("result",result);
+            if(failureReadiness!=null)report.put("wake_readiness",failureReadiness);
             if(retained)report.put("native_transport_handoff",new JSONObject().put("attempt_id",ownerToken).put("target","mxplus-native").put("retained",true));
             startupReport=report;
             if(link instanceof VlinkerSppTransport)report.put("bluetooth_connection",((VlinkerSppTransport)link).connectionEvidence());

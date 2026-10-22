@@ -819,6 +819,15 @@
       "engine_report": "The separate Trionic8 engine-code startup report is Chipsoft-only. Main Connect and start permits either recognized USB candidate through its existing shared native route.",
       "original_menus": "Actions -> Original menus retains cancellation of an automatic shortcut; it is not a connection acceptance label.",
       "qualification": "New discovery and chooser require installed Intel/ARM hardware UI qualification. Existing adapter receipts and gates are unchanged."
+    },
+    "mxplus_readiness_preview35_candidate": {
+      "candidate": "Android ARM64 0.1.1-preview.35",
+      "channel_probe": "A completed bounded AT rejection prompt proves channel liveness only; advance to explicit ATI, without requiring AT/OK.",
+      "identity_probe": "Require validated ELM327 identification from ATI; permit one explicit ATI retry for bounded completed STOPPED/? residue.",
+      "repeat_policy": "Two prompt-gated CRs only after confirmed ATI, repeating ATI; no unknown-command or vehicle replay.",
+      "adapter_only_check": "Identity mode permits AT/ATI/ATD/ATE0/STDI/STI/ATRV and confirmed ATI repeats; no VIN, CAN setup, card or firmware operation.",
+      "limits": "No repair or diagnosis of pre-write socket.connect failure. No inferred sleep, no-button reliability, hardware protection or cross-platform physical pass.",
+      "adoption": "Candidate workflow source and Android binding; canonical Apple/iOS/Windows/Linux bindings, packages and physical checks remain separately pending."
     }
   },
   "hscan_saved_reports": {

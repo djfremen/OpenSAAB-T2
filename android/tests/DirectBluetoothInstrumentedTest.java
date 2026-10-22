@@ -23,7 +23,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   final BlockingQueue<Integer> bytes=new LinkedBlockingQueue<>();final CountDownLatch entered=new CountDownLatch(1),requested=new CountDownLatch(1),closedLatch=new CountDownLatch(1);
   final AtomicInteger socketCloses=new AtomicInteger(),inputCloses=new AtomicInteger(),outputCloses=new AtomicInteger();
   final AtomicInteger opens=new AtomicInteger();
-  String lastCommand="03A9811200000000";int readyRepeats,atAttempts;
+  String lastCommand="03A9811200000000";int readyRepeats,atAttempts,atiAttempts;
   volatile boolean closed;final ByteArrayOutputStream wire=new ByteArrayOutputStream(),command=new ByteArrayOutputStream();
   Endpoint(String mode){this.mode=mode;}
   public void connect()throws IOException{if(opens.incrementAndGet()!=1)throw new IOException("Fixture socket was opened twice");entered.countDown();if(mode.equals("blocked-connect"))waitUntilClosed();}
@@ -39,25 +39,35 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    if(b!=13){if(b==10||b<32||b>126)throw new IOException("SPP received non-ASCII/CR framing");command.write(b);return;}
    String raw=command.toString("US-ASCII");command.reset();commands.add(raw);
    // A bare CR repeats the previous adapter command, which is deliberately a vehicle request initially.
-   String cmd=raw.isEmpty()?lastCommand:raw;if(raw.isEmpty())readyRepeats++;else if(raw.equals("AT"))atAttempts++;
-   boolean monitorConsumesAt=mode.startsWith("mxp-stm-")&&cmd.equals("AT")&&(atAttempts==1||mode.equals("mxp-stm-twice"));
+   String cmd=raw.isEmpty()?lastCommand:raw;if(raw.isEmpty()){if(!lastCommand.equals("ATI"))throw new IOException("CR repeated an unverified/vehicle command");readyRepeats++;}else if(raw.equals("AT"))atAttempts++;else if(raw.equals("ATI"))atiAttempts++;
+   boolean monitorConsumesAt=mode.startsWith("mxp-stm-")&&cmd.equals("AT")&&atAttempts==1;
    if(!raw.isEmpty()&&!monitorConsumesAt)lastCommand=raw;
    if(monitorConsumesAt){String residual=mode.equals("mxp-stm-one")?"STOPPED\r>":mode.equals("mxp-stm-noise")?"STOPPED\r>garbage":mode.equals("mxp-stm-incomplete")?"STOPPED\r>?":"STOPPED\r>?\r>";for(byte value:residual.getBytes(StandardCharsets.US_ASCII))bytes.offer(value&255);return;}
    if(cmd.equals("03A9811200000000")){requested.countDown();if(mode.equals("timeout")||mode.equals("cancel"))return;if(mode.equals("disconnect")){bytes.offer(-1);return;}}
-   String reply=cmd.equals("ATZ")?"ELM327":cmd.equals("ATI")?"ELM327 v1.4b":cmd.equals("STDI")?"OBDLink MX+ r3.1.3":cmd.equals("STI")?"STN2255 v5.12.4":cmd.equals("STPR")?"6":cmd.equals("STPBRR")?"500000":cmd.equals("VTI")?(mode.equals("wrong-adapter")?"Unknown adapter":mode.startsWith("evo-")?"Carista EVO v2.2.84":"vLinker MC+ fixture"):cmd.equals("VTVERS")?(mode.startsWith("evo-")?"MIC3413 V2.0.84":"MIC3313 V2.0.92"):cmd.equals("VTPRON")?"6 [AT]":cmd.equals("VTPBRD")?"500000":cmd.equals("ATRV")?"12.0V":cmd.equals("021A900000000000")?frames(("Z\u0090YS3FD49YX41000001").getBytes(StandardCharsets.ISO_8859_1)):cmd.equals("0210020000000000")?"7E8 01 50 00 00 00 00 00 00":cmd.equals("0120000000000000")?"7E8 01 60 00 00 00 00 00 00":cmd.equals("03A9811200000000")?"5E8 81 01 07 00 6F 00 00 00"+((mode.equals("truncated")||mode.equals("evo-truncated"))?"":"\r5E8 81 00 00 00 FF 00 00 00"):"OK";
+   String reply=cmd.equals("ATZ")?"ELM327":cmd.equals("ATI")?"ELM327 v1.4b":cmd.equals("STDI")?"OBDLink MX+ r3.1.3":cmd.equals("STI")?"STN2255 v5.12.4":cmd.equals("STPR")?"6":cmd.equals("STPBRR")?"500000":cmd.equals("VTI")?(mode.equals("wrong-adapter")?"Unknown adapter":mode.startsWith("evo-")?"Carista EVO v2.2.84":"vLinker MC+ fixture"):cmd.equals("VTVERS")?(mode.startsWith("evo-")?"MIC3413 V2.0.84":"MIC3313 V2.0.92"):cmd.equals("VTPRON")?"6 [AT]":cmd.equals("VTPBRD")?"500000":cmd.equals("ATRV")?"12.0V":cmd.equals("021A900000000000")?frames(("Z\u0090YS3FD49YX41000001").getBytes(StandardCharsets.ISO_8859_1)):cmd.equals("0210020000000000")?"7E8 01 50 00 00 00 00 00 00":cmd.equals("0120000000000000")?"7E8 01 60 00 00 00 00 00 00":cmd.equals("03A9811200000000")?"5E8 81 01 07 00 6F 00 00 00"+((mode.equals("truncated")||mode.equals("evo-truncated"))?"":"\r5E8 81 00 00 00 FF 00 00 00"):fixtureOkay(cmd);
    if(cmd.equals("AT")){
-    if(mode.equals("mxp-cancel-repeat")&&readyRepeats==1){requested.countDown();return;}
-    if(mode.equals("mxp-fail-at")&&readyRepeats==0)reply="?";
-    if(mode.equals("mxp-fail-repeat")&&readyRepeats==2)reply="?";
-    if(mode.equals("mxp-busy-banner")&&readyRepeats==0)reply="BUS BUSY";
-    reply="AT\r"+reply; // Echo is enabled before ATE0, including repeated AT.
+    // Exact Fire preview.34 response; ? plus prompt is alive, not an identity.
+    reply="AT\r?\r";
+    if(mode.equals("mxp-fail-at"))reply="AT\r?\r>garbage";
+    if(mode.equals("mxp-busy-banner"))reply="AT\rBUS BUSY";
    }
-   if(cmd.equals("ATI")&&mode.equals("mxp-fail-ati"))reply="Unknown adapter";
+   if(cmd.equals("ATI")){
+    if(mode.equals("mxp-cancel-repeat")&&readyRepeats==1){requested.countDown();return;}
+    reply="ATI\rELM327 v1.4b\r";
+    if((mode.equals("mxp-ati-once")&&atiAttempts==1&&readyRepeats==0)||mode.equals("mxp-stm-twice"))reply="TI\r?\r";
+    if(mode.equals("mxp-fail-ati"))reply="ATI\rUnknown adapter";
+    if(mode.equals("mxp-fail-repeat")&&readyRepeats==2)reply="ATI\r?";
+   }
    if(cmd.startsWith("021A")&&!cmd.equals("021A900000000000")){
     int pid=Integer.parseInt(cmd.substring(4,6),16);byte[] data=pid==0x95?new byte[]{0,11}:pid==0x7c?new byte[]{0,1,2,3}:"FA5B_C_FMEP_46_FIEF_82d\0".getBytes(StandardCharsets.US_ASCII);byte[] payload=new byte[data.length+2];payload[0]=0x5a;payload[1]=(byte)pid;System.arraycopy(data,0,payload,2,data.length);reply=frames(payload);
    }
-   for(byte value:(reply+(mode.equals("mxp-repeat-no-prompt")&&readyRepeats==2&&cmd.equals("AT")?"\r":"\r>")).getBytes(StandardCharsets.US_ASCII))bytes.offer(value&255);
+   for(byte value:(reply+(mode.equals("mxp-repeat-no-prompt")&&readyRepeats==2&&cmd.equals("ATI")?"\r":"\r>")).getBytes(StandardCharsets.US_ASCII))bytes.offer(value&255);
   }public void close(){outputCloses.incrementAndGet();}};}
+  private static String fixtureOkay(String command)throws IOException{
+   if(Arrays.asList("AT","ATD","ATE0","ATSP6","ATL0","ATS1","ATH1","ATD0","ATCAF0","ATCFC1","ATAT0","ATST32","ATSH7E0","ATCRA7E8","ATFCSH7E0","ATFCSD300000","ATFCSM1","ATCFC0","ATCF5E8","ATCM5FF","ATSTFF","STPC","VTPC","VTSWGP CAF0,CFC1,H1,S1,D0,L0,AT0,GR0","VTSET_HD 7E0,7E8,FF","VTSET_CAN_FC 300000,1,7E0").contains(command))return "OK";
+   if(Arrays.asList("021A080000000000","021A710000000000","021A720000000000","021A730000000000","021A740000000000","021A950000000000","021A7C0000000000").contains(command))return "IDENTIFIER_PLACEHOLDER"; // Filled explicitly below.
+   throw new IOException("Unmodelled fixture command: "+command);
+  }
   public void close()throws IOException{socketCloses.incrementAndGet();closed=true;closedLatch.countDown();bytes.offer(-1);if(mode.equals("unconfirmed-close"))throw new IOException("Synthetic release failure");}
  }
  /** Independent stream/socket closures and a reader that can outlive close, unlike a socket-only mock. */
@@ -146,7 +156,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   check(outcome[0] instanceof IOException&&cancelled.closeConfirmed()&&late.sockets.get()==1&&late.outputs.get()==1&&late.inputRequests.get()==0,"Late stream leaked or cancelled startup acquired input");
  }
  private void wakePrefix(Endpoint endpoint,boolean complete){
-  List<String> wanted=endpoint.atAttempts==2?Arrays.asList("AT","AT","","","ATI","ATD"):Arrays.asList("AT","","","ATI","ATD");
+  List<String> wanted=endpoint.atiAttempts==2?Arrays.asList("AT","ATI","ATI","","","ATD"):Arrays.asList("AT","ATI","","","ATD");
   check(!endpoint.commands.contains("ATZ")&&!endpoint.commands.contains("ATWS"),"MX+ wake rebooted adapter");
   int count=complete?wanted.size():Math.min(wanted.size(),endpoint.commands.size());
   check(endpoint.commands.size()>=count&&endpoint.commands.subList(0,count).equals(wanted.subList(0,count)),"Unsafe MX+ wake/repeat prefix: "+endpoint.commands);
@@ -156,16 +166,16 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   Endpoint endpoint=new Endpoint(mode);final JSONObject[] terminal={null};
   VlinkerVehicleConnection client=new VlinkerVehicleConnection(context,v->{if(!VlinkerVehicleConnection.active())terminal[0]=v;},()->new VlinkerSppTransport(endpoint,"OBDLink MX+ 63988"),"android-classic-spp",true,true);
   main(()->client.startProbe("ecm_dtc"));
-  if(mode.equals("mxp-cancel-repeat")){check(endpoint.requested.await(5,TimeUnit.SECONDS),"First confirmed AT did not reach repeat");main(client::stop);}
+  if(mode.equals("mxp-cancel-repeat")){check(endpoint.requested.await(5,TimeUnit.SECONDS),"Confirmed ATI did not reach repeat");main(client::stop);}
   long limit=SystemClock.elapsedRealtime()+10000;while(client.busy&&SystemClock.elapsedRealtime()<limit)SystemClock.sleep(25);waitForIdleSync();
   check(!client.busy&&!VlinkerVehicleConnection.active()&&terminal[0]!=null,"Failed wake retained native owner: "+mode);
   JSONObject report=terminal[0].getJSONObject("report");check(report.optString("status").equals("failed")&&!report.has("result")&&!report.has("saved_report_id")&&report.getBoolean("bluetooth_closed"),"Wake failure published success or omitted cleanup: "+mode);
   check(!endpoint.commands.contains("021A900000000000")&&!endpoint.commands.contains("03A9811200000000")&&!endpoint.commands.contains("ATD"),"Failed readiness advanced to setup/vehicle request: "+endpoint.commands);
   wakePrefix(endpoint,false);check(endpoint.socketCloses.get()==1&&endpoint.inputCloses.get()==1&&endpoint.outputCloses.get()==1,"Wake failure leaked or duplicated stream close");
-  int expected=mode.equals("mxp-fail-at")||mode.equals("mxp-stm-twice")?2:mode.equals("mxp-busy-banner")||mode.startsWith("mxp-stm-")?1:mode.equals("mxp-fail-ati")?4:mode.equals("mxp-cancel-repeat")?2:3;
+  int expected=mode.equals("mxp-fail-at")||mode.equals("mxp-busy-banner")||mode.equals("mxp-stm-noise")||mode.equals("mxp-stm-incomplete")?1:mode.equals("mxp-fail-ati")?2:mode.equals("mxp-cancel-repeat")||mode.equals("mxp-stm-twice")?3:4;
   check(endpoint.commands.size()==expected,"Readiness advanced/replayed after its failure: "+mode+" "+endpoint.commands);
   if(mode.equals("mxp-repeat-no-prompt"))check(report.optString("error").contains("timeout"),"Missing prompt failed for the wrong reason: "+report);
-  if(mode.equals("mxp-cancel-repeat"))check(endpoint.commands.equals(Arrays.asList("AT","")),"Cancellation after confirmed AT advanced/replayed readiness: "+endpoint.commands);
+  if(mode.equals("mxp-cancel-repeat"))check(endpoint.commands.equals(Arrays.asList("AT","ATI","")),"Cancellation after confirmed ATI advanced/replayed readiness: "+endpoint.commands);
  }
  private JSONObject run(Context context,String mode,boolean info)throws Exception{
   Endpoint endpoint=new Endpoint(mode);final JSONObject[] terminal={null};
@@ -177,7 +187,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   check(!client.busy&&!VlinkerVehicleConnection.active(),"Native owner retained: "+mode);check(endpoint.closed,"Socket not closed: "+mode);check(terminal[0]!=null,"Missing native terminal result: "+mode);
   check(endpoint.socketCloses.get()==1&&endpoint.inputCloses.get()==(mode.equals("blocked-connect")?0:1)&&endpoint.outputCloses.get()==(mode.equals("blocked-connect")?0:1),"Socket/stream ownership mismatch: "+mode);
   if(mode.startsWith("mxp-"))wakePrefix(endpoint,true);
-  JSONObject report=terminal[0].getJSONObject("report");boolean success=mode.equals("complete")||mode.equals("evo-complete")||mode.equals("mxp-complete")||mode.equals("mxp-stm-one")||mode.equals("mxp-stm-two");
+  JSONObject report=terminal[0].getJSONObject("report");boolean success=mode.equals("complete")||mode.equals("evo-complete")||mode.equals("mxp-complete")||mode.equals("mxp-stm-one")||mode.equals("mxp-stm-two")||mode.equals("mxp-ati-once");
   check(report.getString("transport").equals("synthetic-fixture"),"Fixture mislabeled as hardware");check(report.getString("status").equals(success?"complete":"failed"),"Wrong terminal outcome: "+mode+" "+report);
   check(!report.getBoolean("automatic_replay"),"Automatic replay enabled");
   check(report.getBoolean("bluetooth_closed")!=mode.equals("unconfirmed-close"),"Incorrect release receipt: "+mode);
@@ -187,7 +197,8 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   if(mode.equals("wrong-adapter"))check(!endpoint.commands.contains("ATSP6")&&!endpoint.commands.contains("021A900000000000"),"Unverified adapter reached vehicle commands");
   if(success){check(report.getInt("host_vehicle_request_attempts")==1&&report.getInt("host_vehicle_requests_written")==1,"VIN count mismatch");JSONObject result=report.getJSONObject("result");if(mode.startsWith("evo-")){check(result.getString("adapter_model").equals("carista_evo"),"EVO probe lost model");check(result.getString("profile_id").equals(info?"carista_evo_mic3413_hscan_ecm_info_v1":"carista_evo_mic3413_hscan_ecm_dtc_v1"),"EVO probe lost operation profile");}if(mode.startsWith("mxp-")){check(result.getString("adapter_model").equals("obdlink_mxp"),"MX+ probe lost model");check(result.getString("command_family").equals("STN"),"MX+ probe lost STN command family");check(Collections.frequency(endpoint.commands,"STPC")==1,"MX+ probe missing STPC");}check(result.getString("vin").equals("YS3FD49YX41000001"),"Chunked VIN decode failed");if(info)check(result.getJSONObject("ecm_identifiers").length()==7,"Identifier suite incomplete");else check(result.getJSONObject("dtc_report").getJSONArray("records").length()==1,"Raw DTC decode failed");String id=report.getString("saved_report_id");File text=new File(context.getFilesDir(),"dtc-reports/"+id+".txt"),json=new File(context.getFilesDir(),"dtc-reports/"+id+".json");check(new String(Files.readAllBytes(text.toPath()),StandardCharsets.UTF_8).contains("Synthetic fixture replay"),"Saved report omitted fixture scope");text.delete();json.delete();}
   else check(!report.has("result")&&!report.has("saved_report_id"),"Partial result saved as complete");
-  if(mode.equals("mxp-stm-one")||mode.equals("mxp-stm-two")){JSONObject wake=report.getJSONObject("result").getJSONObject("wake_readiness");check(wake.getInt("adapter_only_resync_count")==1&&wake.getInt("initial_AT_attempts")==2&&wake.getInt("residual_prompt_count")== (mode.equals("mxp-stm-one")?1:2),"Residual recovery evidence missing");check(Collections.frequency(endpoint.commands,"AT")==2,"Residual STM was flushed/replayed instead of explicit AT resync");}
+  if(mode.startsWith("mxp-")){JSONObject wake=report.getJSONObject("result").getJSONObject("wake_readiness");check(!wake.getBoolean("initial_AT_OK")&&wake.getBoolean("ATI_validated")&&wake.getInt("initial_AT_attempts")==1&&wake.getInt("confirmed_ATI_CR_repeats")==2,"Channel prompt confused with readiness identity");check(Collections.frequency(endpoint.commands,"AT")==1,"Bare AT was replayed");if(mode.equals("mxp-ati-once"))check(wake.getInt("adapter_only_ATI_retry_count")==1&&wake.getInt("initial_ATI_attempts")==2,"Lost-character ATI retry missing");}
+
   return report;
  }
  private void startup(Context context,String mode)throws Exception{
@@ -199,6 +210,24 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    check(!client.busy&&!VlinkerVehicleConnection.active()&&endpoint.closed,"Normal startup did not release SPP");check(terminal[0]!=null&&terminal[0].optString("state").equals("identified"),"Normal startup failed: "+terminal[0]);check(terminal[0].optBoolean("startup_terminal")&&terminal[0].getJSONObject("startup_report").getBoolean("bluetooth_closed"),"No released terminal discovery receipt");check(terminal[0].getJSONObject("vehicle").getString("vin").equals("YS3FD49YX41000001"),"Startup did not use fresh fixture VIN");check(!terminal[0].getBoolean("vehicle_connected")&&!terminal[0].getBoolean("firmware_running")&&!terminal[0].getBoolean("firmware_transport_available"),"Identification claimed a firmware connection");check(Collections.frequency(endpoint.commands,"021A900000000000")==1&&Collections.frequency(endpoint.commands,mode.startsWith("mxp-")?"STPC":"VTPC")==1,"Normal startup replay or missing cleanup");
    if(mode.startsWith("mxp-"))wakePrefix(endpoint,true);
   }finally{if(client.busy)main(client::stop);if(prior==null)history.delete();else Files.write(history.toPath(),prior);}
+ }
+ private void identityBoundary(Context context)throws Exception{
+  Endpoint endpoint=new Endpoint("mxp-identity");VlinkerVehicleConnection client=new VlinkerVehicleConnection(context,v->{},()->new VlinkerSppTransport(endpoint,"OBDLink MX+ fixture"),"android-classic-spp",true,true);
+  java.lang.reflect.Field mode=VlinkerVehicleConnection.class.getDeclaredField("probeMode");mode.setAccessible(true);mode.set(client,"identity");
+  java.lang.reflect.Method send=VlinkerVehicleConnection.class.getDeclaredMethod("send",JSONObject.class);send.setAccessible(true);
+  for(JSONObject effect:new JSONObject[]{new JSONObject().put("op","write").put("command","021A900000000000"),new JSONObject().put("op","write").put("command","ATZ"),new JSONObject().put("op","interrupt").put("purpose","unknown")}){
+   try{send.invoke(client,effect);throw new AssertionError("Identity boundary accepted out-of-scope effect");}catch(java.lang.reflect.InvocationTargetException blocked){check(blocked.getCause() instanceof IOException&&blocked.getCause().getMessage().contains("Adapter identity check blocked"),"Wrong scope rejection: "+blocked.getCause());}
+  }
+  check(endpoint.commands.isEmpty()&&endpoint.opens.get()==0,"Scope check opened or wrote a physical transport");
+ }
+ private void adapterOnlyIdentity(Context context)throws Exception{
+  Endpoint endpoint=new Endpoint("mxp-identity");final JSONObject[] terminal={null};
+  VlinkerVehicleConnection client=new VlinkerVehicleConnection(context,v->{if(!VlinkerVehicleConnection.active())terminal[0]=v;},()->new VlinkerSppTransport(endpoint,"OBDLink MX+ 63988"),"android-classic-spp",true,true);
+  main(()->client.startProbe("identity"));long limit=SystemClock.elapsedRealtime()+10000;while(client.busy&&SystemClock.elapsedRealtime()<limit)SystemClock.sleep(25);waitForIdleSync();
+  check(!client.busy&&!VlinkerVehicleConnection.active()&&endpoint.closed&&terminal[0]!=null,"Adapter-only identity retained ownership");
+  JSONObject report=terminal[0].getJSONObject("report");check(report.getString("status").equals("complete")&&report.getString("mode").equals("identity")&&report.getJSONObject("result").getString("mode").equals("identity"),"Adapter-only identity mislabeled or failed: "+report);
+  check(report.getInt("host_vehicle_request_attempts")==0&&report.getInt("host_vehicle_requests_written")==0&&!report.has("saved_report_id"),"Identity sent VIN or saved an ECM report");
+  check(endpoint.commands.equals(Arrays.asList("AT","ATI","","","ATD","ATE0","STDI","STI","ATRV")),"Identity changed CAN/probed VIN: "+endpoint.commands);
  }
  private void retainedFreshVin(Context context)throws Exception{
   Endpoint endpoint=new Endpoint("mxp-complete");VlinkerSppTransport transport=new VlinkerSppTransport(endpoint,"OBDLink MX+ fixture");String address="00:04:3E:00:00:01";
@@ -221,12 +250,15 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
  }
  public void onStart(){Bundle result=new Bundle();int code=-1;
   try{Context context=getTargetContext();check(SimulatorVehicleConnection.available(context),"Debug emulator required; never use phone fixtures");
+   try{Endpoint.fixtureOkay("AT_UNMODELLED");throw new AssertionError("Unknown fixture command silently accepted");}catch(IOException expected){check(expected.getMessage().contains("Unmodelled fixture command"),"Wrong unknown-command rejection");}
    cleanupOwnership();
    releaseTiming();
    for(String mode:new String[]{"complete","timeout","cancel","truncated","disconnect","wrong-adapter","blocked-connect","blocked-write","unconfirmed-close","complete"})run(context,mode,false);
    run(context,"complete",true);run(context,"evo-complete",true);run(context,"evo-complete",false);run(context,"evo-truncated",false);run(context,"mxp-complete",true);run(context,"mxp-complete",false);
-   run(context,"mxp-stm-one",false);run(context,"mxp-stm-two",false);
+   run(context,"mxp-stm-one",false);run(context,"mxp-stm-two",false);run(context,"mxp-ati-once",false);
    startup(context,"complete");startup(context,"evo-vin");startup(context,"mxp-vin");
+   identityBoundary(context);
+   adapterOnlyIdentity(context);
    retainedFreshVin(context);
    for(String mode:new String[]{"mxp-fail-at","mxp-fail-ati","mxp-fail-repeat","mxp-busy-banner","mxp-repeat-no-prompt","mxp-cancel-repeat"})failedWake(context,mode);
    for(String mode:new String[]{"mxp-stm-twice","mxp-stm-noise","mxp-stm-incomplete"})failedWake(context,mode);

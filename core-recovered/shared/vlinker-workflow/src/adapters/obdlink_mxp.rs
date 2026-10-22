@@ -3,10 +3,10 @@
 //! OBDLink FRPM revision F: AT flow-control mode 1, STPR/STPBRR readback.
 use super::{mic, Profile};
 // An empty CR repeats the last command (FRPM F section 6). Only emit the
-// typed repeat after AT has returned OK; never flush an unknown prior request.
-pub const REPEAT_READY_AT: &str = "<repeat-confirmed-ready-AT>";
+// typed repeat after ATI has returned a validated identification; never flush an unknown prior request.
+pub const REPEAT_READY_ATI: &str = "<repeat-confirmed-ready-ATI>";
 pub const STARTUP: &[&str] = &[
-    "AT", REPEAT_READY_AT, REPEAT_READY_AT, "ATI", "ATD", "ATE0", "STDI", "STI", "ATRV", "ATSP6", "STPR", "STPBRR",
+    "AT", "ATI", REPEAT_READY_ATI, REPEAT_READY_ATI, "ATD", "ATE0", "STDI", "STI", "ATRV", "ATSP6", "STPR", "STPBRR",
     "ATL0", "ATS1", "ATH1", "ATD0", "ATCAF0", "ATCFC1", "ATAT0", "ATST32",
     "ATSH7E0", "ATCRA7E8", "ATFCSH7E0", "ATFCSD300000", "ATFCSM1",
     mic::VIN_REQUEST, "STPC",

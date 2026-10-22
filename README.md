@@ -8,6 +8,8 @@ Original diagnostic menus on Android, powered by a Rust emulator and direct USB 
 
 [Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.92) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
 
+Private Android ARM64 **0.1.1-preview.35** corrects the MX+ startup gate using the actual preview.34 AT rejection, requires validated ATI before safe CR repeats, and adds a guarded adapter-only identity check. Bluetooth connect failures and no-button reliability remain separate unresolved hardware checks. [Change and verification scope](docs/ANDROID_MXPLUS_READINESS_PREVIEW35_2026-10-22.md).
+
 Private Android ARM64 **0.1.1-preview.9** fixes the original-firmware MX+ manual-session launch argument rejection. Its read/key-status policy remains; counter reset is unavailable. Exact vehicle checks are pending. [Startup failure and fix](docs/ANDROID_MXPLUS_STARTUP_2026-10-19.md).
 
 Previous private Android ARM64 **0.1.1-preview.8** changes MCP to start automatically in the foreground, retains local bridge pairing across restarts, and uses a generic Bluetooth chooser with detected candidates. Explicit Disable persists. [Behavior and validation scope](docs/ANDROID_MCP_DEFAULT_2026-10-19.md). This work is unpublished; it does not qualify a new adapter or replace the public download.

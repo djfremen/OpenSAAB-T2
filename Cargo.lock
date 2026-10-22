@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "tech2-emu"
-version = "0.1.1-preview.34"
+version = "0.1.1-preview.35"
 dependencies = [
  "libc",
  "m68k",

@@ -13,7 +13,7 @@ pub const COMMANDS: [&str; 13] = crate::adapters::mic::STARTUP;
 pub fn allowed(command: &str) -> bool {
     [crate::adapter_identity::Model::VlinkerMcPlus, crate::adapter_identity::Model::CaristaEvo, crate::adapter_identity::Model::ObdlinkMxp]
         .iter().any(|model| model.profile().startup.contains(&command)
-            && command != crate::adapters::obdlink_mxp::REPEAT_READY_AT)
+            && command != crate::adapters::obdlink_mxp::REPEAT_READY_ATI)
         || PROBE_COMMANDS.contains(&command)
 }
 
@@ -203,39 +203,40 @@ impl Prompt {
     }
 }
 
-const INITIAL_AT_MAX_BYTES: usize = 256;
+const INITIAL_PROBE_MAX_BYTES: usize = 256;
 const RESYNC_QUIET_MS: u64 = 300;
 #[derive(Debug, PartialEq)]
-enum InitialAtReply { Partial, Confirmed, Residual { prompts: usize, complete: bool } }
-// Residual STM can consume the first AT as monitor interruption followed by an
-// invalid command. Only complete, bounded STOPPED/? prompts justify resync.
-fn initial_at_reply(bytes: &[u8]) -> Result<InitialAtReply, String> {
-    if bytes.len() > INITIAL_AT_MAX_BYTES { return Err("Initial AT reply exceeded limit".into()); }
-    if !bytes.iter().all(|b|[10,13].contains(b)||(32..=126).contains(b)) { return Err("Non-ASCII initial AT reply".into()); }
+enum InitialProbeReply { Partial, Confirmed, Residual { prompts: usize, complete: bool } }
+// A completed ? prompt proves a live command channel, not adapter identity.
+// Initial AT residue advances to explicit ATI; ATI residue permits one ATI retry.
+// Neither response permits CR replay before a validated ATI identification.
+fn initial_probe_reply(bytes: &[u8], command: &str) -> Result<InitialProbeReply, String> {
+    if bytes.len() > INITIAL_PROBE_MAX_BYTES { return Err("Initial probe reply exceeded limit".into()); }
+    if !bytes.iter().all(|b|[10,13].contains(b)||(32..=126).contains(b)) { return Err("Non-ASCII initial probe reply".into()); }
     let raw = std::str::from_utf8(bytes).unwrap();
     let mut parts = raw.split('>').collect::<Vec<_>>();
     let tail = parts.pop().unwrap().trim();
-    if parts.is_empty() { return Ok(InitialAtReply::Partial); }
-    if parts.len() > 2 { return Err("Too many initial AT prompts".into()); }
+    if parts.is_empty() { return Ok(InitialProbeReply::Partial); }
+    if parts.len() > 2 { return Err("Too many initial probe prompts".into()); }
     let mut residual = Vec::new();
     for (index, part) in parts.iter().enumerate() {
         let mut lines = part.split(['\r','\n']).map(str::trim).filter(|s|!s.is_empty());
         let first = lines.next().unwrap_or("");
-        let reply = if index == 0 && first == "AT" { lines.next().unwrap_or("") } else { first };
-        if lines.next().is_some() { return Err("Ambiguous initial AT response".into()); }
-        if reply == "OK" {
-            return if parts.len() == 1 && tail.is_empty() { Ok(InitialAtReply::Confirmed) }
-                else { Err("Ambiguous bytes after initial AT confirmation".into()) };
+        let reply = if index == 0 && (first == command || command.strip_prefix('A') == Some(first)) { lines.next().unwrap_or("") } else { first };
+        if lines.next().is_some() { return Err("Ambiguous initial probe response".into()); }
+        if (command == "AT" && reply == "OK") || (command == "ATI" && reply.starts_with("ELM327 v")) {
+            return if parts.len() == 1 && tail.is_empty() { Ok(InitialProbeReply::Confirmed) }
+                else { Err("Ambiguous bytes after initial probe confirmation".into()) };
         }
-        if !["STOPPED","?"].contains(&reply) || residual.contains(&reply) {
-            return Err("Unexpected initial AT response".into());
+        if (!["STOPPED","?"].contains(&reply) && !(command == "AT" && reply.starts_with("ELM327 v"))) || residual.contains(&reply) {
+            return Err("Unexpected initial probe response".into());
         }
         residual.push(reply);
     }
     if !tail.is_empty() && !["STOPPED","?"].iter().any(|s|s.starts_with(tail)) {
-        return Err("Unexpected residual bytes after initial AT prompt".into());
+        return Err("Unexpected residual bytes after initial probe prompt".into());
     }
-    Ok(InitialAtReply::Residual { prompts: residual.len(), complete: tail.is_empty() })
+    Ok(InitialProbeReply::Residual { prompts: residual.len(), complete: tail.is_empty() })
 }
 
 pub struct Session {
@@ -261,8 +262,13 @@ pub struct Session {
     voltage: String,
     vin: String,
     mx_profile: bool,
-    initial_at_bytes: Vec<u8>,
+    initial_probe_bytes: Vec<u8>,
     initial_at_attempts: u8,
+    initial_ati_attempts: u8,
+    initial_at_ok: bool,
+    channel_prompt_observed: bool,
+    initial_at_response: String,
+    confirmed_ati_repeats: u8,
     resync_count: u8,
     residual_prompts: usize,
     residual_response: String,
@@ -288,7 +294,7 @@ impl Session {
             owned: false,
             lease: None,
             commands: COMMANDS[..if read_vin { 13 } else { 5 }].to_vec(),
-            mode: "vin",
+            mode: if read_vin { "vin" } else { "identity" },
             ecm: serde_json::Map::new(),
             dtc: None,
             diagnostic_active: false,
@@ -306,7 +312,8 @@ impl Session {
             voltage: String::new(),
             vin: String::new(),
             mx_profile: false,
-            initial_at_bytes: Vec::new(), initial_at_attempts: 0, resync_count: 0,
+            initial_probe_bytes: Vec::new(), initial_at_attempts: 0, initial_ati_attempts: 0,
+            initial_at_ok: false, channel_prompt_observed: false, initial_at_response: String::new(), confirmed_ati_repeats: 0, resync_count: 0,
             residual_prompts: 0, residual_response: String::new(), resync_last_input: None,
         }
     }
@@ -379,19 +386,25 @@ impl Session {
     }
     fn emit(&mut self) -> Value {
         self.command_at = Instant::now();
-        if self.mx_profile && self.index == 0 && self.commands[0] == "AT" { self.initial_at_attempts += 1; self.initial_at_bytes.clear(); }
+        if self.mx_profile && self.index <= 1 {
+            if self.index == 0 { self.initial_at_attempts += 1; } else { self.initial_ati_attempts += 1; }
+            self.initial_probe_bytes.clear();
+        }
         if self.commands[self.index] == SESSION_START {
             self.diagnostic_active = true;
         }
         self.prompt = Prompt::default();
-        if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_AT {
-            json!({"state":"send", "command":"", "transport_op":"repeat_ready_at", "repeated_command":"AT"})
+        if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_ATI {
+            json!({"state":"send", "command":"", "transport_op":"repeat_ready_ati", "repeated_command":"ATI"})
         } else {
             json!({"state":"send", "command":self.commands[self.index]})
         }
     }
     fn readiness_evidence(&self) -> Value {
-        json!({"initial_AT_attempts":self.initial_at_attempts,"adapter_only_resync_count":self.resync_count,
+        json!({"initial_AT_attempts":self.initial_at_attempts,"initial_AT_OK":self.initial_at_ok,
+            "initial_AT_response_ascii":self.initial_at_response,"channel_prompt_observed":self.channel_prompt_observed,
+            "initial_ATI_attempts":self.initial_ati_attempts,"adapter_only_ATI_retry_count":self.resync_count,
+            "adapter_only_resync_count":self.resync_count,"confirmed_ATI_CR_repeats":self.confirmed_ati_repeats,
             "residual_prompt_count":self.residual_prompts,"residual_response_ascii":self.residual_response,
             "adapter_rebooted":false,"vehicle_request_replay":false,"sleep_state":"unverified"})
     }
@@ -399,7 +412,7 @@ impl Session {
         let command = self.commands[self.index];
         match command {
             "ATZ" => {}
-            "ATI" => {
+            "ATI" | crate::adapters::obdlink_mxp::REPEAT_READY_ATI => {
                 if !reply.starts_with("ELM327 v") || reply.lines().count() != 1 {
                     return Err("MX+ readiness identity was not confirmed".into());
                 }
@@ -409,7 +422,7 @@ impl Session {
                 if model == crate::adapter_identity::Model::ObdlinkMxp { return Err("MX+ requires its explicit STN profile".into()); }
                 // Adopt the identified model's startup, preserving pending probe
                 // reads and cleanup. Identity-only sessions retain their five steps.
-                let count = if self.mode == "vin" { self.commands.len() } else { 12 };
+                let count = if self.mode == "vin" || !self.read_vin { self.commands.len() } else { 12 };
                 self.commands[..count].copy_from_slice(&model.profile().startup[..count]);
                 self.model = Some(model);
                 self.product = reply.into();
@@ -532,14 +545,15 @@ impl Session {
             }
             "tick" => {
                 if self.resync_last_input.is_some_and(|at|at.elapsed() >= Duration::from_millis(RESYNC_QUIET_MS)) {
-                    match initial_at_reply(&self.initial_at_bytes) {
-                        Ok(InitialAtReply::Residual { prompts, complete: true }) => {
+                    match initial_probe_reply(&self.initial_probe_bytes, self.commands[self.index]) {
+                        Ok(InitialProbeReply::Residual { prompts, complete: true }) => {
                             self.residual_prompts = prompts;
-                            self.residual_response = String::from_utf8_lossy(&self.initial_at_bytes).into_owned();
-                            self.resync_count = 1; self.resync_last_input = None;
+                            self.residual_response = String::from_utf8_lossy(&self.initial_probe_bytes).into_owned();
+                            if self.index == 0 { self.index = 1; } else { self.resync_count = 1; }
+                            self.resync_last_input = None;
                             let mut effect = self.emit(); effect["wake_readiness"] = self.readiness_evidence(); effect
                         }
-                        _ => self.fail("Incomplete or ambiguous initial AT residual prompt"),
+                        _ => self.fail("Incomplete or ambiguous initial probe residual prompt"),
                     }
                 } else { json!({"state":"waiting"}) }
             },
@@ -554,21 +568,25 @@ impl Session {
                 let Some(bytes) = bytes else {
                     return self.fail("Invalid response byte");
                 };
-                if self.mx_profile && self.index == 0 && self.commands[0] == "AT" {
-                    if bytes.len() > INITIAL_AT_MAX_BYTES.saturating_sub(self.initial_at_bytes.len()) { return self.fail("Initial AT reply exceeded limit"); }
-                    self.initial_at_bytes.extend_from_slice(&bytes);
-                    match initial_at_reply(&self.initial_at_bytes) {
-                        Ok(InitialAtReply::Partial) => return json!({"state":"waiting"}),
-                        Ok(InitialAtReply::Residual { prompts, .. }) => {
-                            if self.resync_count != 0 { return self.fail("Initial AT resync did not confirm readiness; no further retry"); }
+                if self.mx_profile && self.index <= 1 {
+                    if bytes.len() > INITIAL_PROBE_MAX_BYTES.saturating_sub(self.initial_probe_bytes.len()) { return self.fail("Initial probe reply exceeded limit"); }
+                    self.initial_probe_bytes.extend_from_slice(&bytes);
+                    match initial_probe_reply(&self.initial_probe_bytes, self.commands[self.index]) {
+                        Ok(InitialProbeReply::Partial) => return json!({"state":"waiting"}),
+                        Ok(InitialProbeReply::Residual { prompts, .. }) => {
+                            if self.index == 1 && self.resync_count != 0 { return self.fail("ATI identity retry did not confirm readiness; no further retry"); }
+                            self.channel_prompt_observed = true;
+                            if self.index == 0 { self.initial_at_response = String::from_utf8_lossy(&self.initial_probe_bytes).into_owned(); }
                             self.residual_prompts = prompts;
-                            self.residual_response = String::from_utf8_lossy(&self.initial_at_bytes).into_owned();
+                            self.residual_response = String::from_utf8_lossy(&self.initial_probe_bytes).into_owned();
                             self.resync_last_input = Some(Instant::now());
                             return json!({"state":"waiting","resync_quiet_ms":RESYNC_QUIET_MS,"wake_readiness":self.readiness_evidence()});
                         }
-                        Ok(InitialAtReply::Confirmed) => {
+                        Ok(InitialProbeReply::Confirmed) => {
+                            self.channel_prompt_observed = true;
+                            if self.index == 0 { self.initial_at_ok = true; self.initial_at_response = String::from_utf8_lossy(&self.initial_probe_bytes).into_owned(); }
                             self.resync_last_input = None;
-                            if let Err(error) = self.prompt.feed(&self.initial_at_bytes) { return self.fail(error); }
+                            if let Err(error) = self.prompt.feed(&self.initial_probe_bytes) { return self.fail(error); }
                         }
                         Err(error) => return self.fail(error),
                     }
@@ -577,7 +595,7 @@ impl Session {
                     return json!({"state":"waiting"});
                 }
                 let raw = String::from_utf8_lossy(&self.prompt.bytes);
-                let checked_command = if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_AT { "AT" } else { self.commands[self.index] };
+                let checked_command = if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_ATI { "ATI" } else { self.commands[self.index] };
                 let reply = match checked(checked_command, &raw) {
                     Ok(reply) => reply,
                     Err(error) => return self.fail(error),
@@ -585,6 +603,7 @@ impl Session {
                 if let Err(error) = self.validate(&reply) {
                     return self.fail(error);
                 }
+                if self.commands[self.index] == crate::adapters::obdlink_mxp::REPEAT_READY_ATI { self.confirmed_ati_repeats += 1; }
                 let completed = json!({"command":self.commands[self.index], "reply":reply});
                 self.index += 1;
                 if self.index == self.commands.len() {
@@ -624,10 +643,10 @@ impl Session {
                         self.firmware, self.voltage
                     );
                     let result = json!({"state":"complete", "completed":completed,
-                        "result":{"mode":self.mode,"ecm_identifiers":self.ecm,"dtc_report":self.dtc,"display":display,"diagnostic_session_stopped":!self.diagnostic_active,"adapter_model":self.model.unwrap().id(),"adapter_label":self.model.unwrap().label(),"command_family":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {"STN"} else {"MIC"},"profile_id":if self.mode == "vin" { self.model.unwrap().vin_profile_id() } else { self.model.unwrap().probe_profile_id(self.mode == "ecm_dtc") },"product":self.product,"chip_firmware":self.firmware,"voltage":self.voltage,
+                        "result":{"mode":self.mode,"ecm_identifiers":self.ecm,"dtc_report":self.dtc,"display":display,"diagnostic_session_stopped":!self.diagnostic_active,"adapter_model":self.model.unwrap().id(),"adapter_label":self.model.unwrap().label(),"command_family":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {"STN"} else {"MIC"},"profile_id":if !self.read_vin { "adapter_identity_v1" } else if self.mode == "vin" { self.model.unwrap().vin_profile_id() } else { self.model.unwrap().probe_profile_id(self.mode == "ecm_dtc") },"product":self.product,"chip_firmware":self.firmware,"voltage":self.voltage,
                             "vin":if self.read_vin {Some(&self.vin)} else {None},
                             "request_origin":self.origin, "firmware_emulation":false,
-                            "wake_readiness":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {let mut evidence=self.readiness_evidence();evidence["initial_AT_confirmed"]=json!(true);evidence["confirmed_AT_CR_repeats"]=json!(2);evidence["ATI_validated"]=json!(true);evidence} else {Value::Null},
+                            "wake_readiness":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {let mut evidence=self.readiness_evidence();evidence["ATI_validated"]=json!(true);evidence} else {Value::Null},
                             "flow_control_owner":if self.read_vin {"adapter"} else {"none"}}});
                     self.terminal = Some(result.clone());
                     result
@@ -1189,27 +1208,31 @@ mod tests {
         s.resync_last_input=Some(Instant::now()-Duration::from_millis(301));
         s.event(&json!({"op":"tick"}))
     }
-    #[test] fn residual_monitor_prompts_allow_one_nonempty_adapter_resync() {
-        for raw in ["STOPPED\r>","?\r>","AT\rSTOPPED\r>?\r>","STOPPED\r>?\r>"] {
+    #[test] fn channel_prompts_advance_to_ati_then_allow_one_identity_retry() {
+        for raw in ["STOPPED\r>","?\r>","AT\r?\r\r>","ELM327 v1.4b\r>","AT\rSTOPPED\r>?\r>","STOPPED\r>?\r>"] {
             let mut s=mx_start();
             for part in raw.as_bytes().chunks(2) {assert_eq!(s.event(&json!({"op":"rx","bytes":part}))["state"],"waiting");}
-            let waiting=s.event(&json!({"op":"tick"}));assert_eq!(waiting["state"],"waiting");
-            let retry=resync_tick(&mut s);assert_eq!(retry["command"],"AT");assert!(retry.get("transport_op").is_none());
-            assert_eq!(retry["wake_readiness"]["adapter_only_resync_count"],1);
-            let repeat=feed(&mut s,"AT\rOK\r>");assert_eq!(repeat["transport_op"],"repeat_ready_at");
-            assert_eq!(s.initial_at_attempts,2);assert_eq!(s.residual_response,raw);
-            assert_eq!(feed(&mut s,"AT\rOK\r>")["transport_op"],"repeat_ready_at");
-            assert_eq!(feed(&mut s,"AT\rOK\r>")["command"],"ATI");
+            let identify=resync_tick(&mut s);assert_eq!(identify["command"],"ATI");assert!(identify.get("transport_op").is_none());
+            assert_eq!(s.initial_at_attempts,1);assert_eq!(s.residual_response,raw);
+            assert_eq!(identify["wake_readiness"]["adapter_only_ATI_retry_count"],0);
+            feed(&mut s,"TI\r?\r\r>");let retry=resync_tick(&mut s);assert_eq!(retry["command"],"ATI");
+            assert_eq!(retry["wake_readiness"]["adapter_only_ATI_retry_count"],1);
+            let repeat=feed(&mut s,"ATI\rELM327 v1.4b\r\r>");assert_eq!(repeat["transport_op"],"repeat_ready_ati");
+            assert_eq!(s.initial_ati_attempts,2);
+            assert_eq!(feed(&mut s,"ATI\rELM327 v1.4b\r\r>")["transport_op"],"repeat_ready_ati");
+            assert_eq!(feed(&mut s,"ATI\rELM327 v1.4b\r\r>")["command"],"ATD");
         }
     }
-    #[test] fn residual_resync_rejects_noise_incomplete_duplicate_and_repeated_failure() {
+    #[test] fn identity_retry_rejects_noise_incomplete_duplicate_and_repeated_failure() {
         for raw in ["STOPPED\r>garbage","STOPPED\r>STOPPED\r>","STOPPED\r>?\r>OK\r>","STOPPED\r>OK\r>","AT\rSTOPPED\rOK\r>","AT\rOK\r>?"] {
             let mut s=mx_start();assert_eq!(feed(&mut s,raw)["state"],"failed","{raw}");
         }
         let mut s=mx_start();feed(&mut s,"STOPPED\r>?");assert_eq!(resync_tick(&mut s)["state"],"failed");
-        let mut s=mx_start();feed(&mut s,"STOPPED\r>");resync_tick(&mut s);
-        let failed=feed(&mut s,"?\r>");assert_eq!(failed["state"],"failed");assert_eq!(failed["wake_readiness"]["adapter_only_resync_count"],1);
-        assert_eq!(feed(&mut s,"OK\r>"),failed);assert_eq!(s.event(&json!({"op":"tick"})),failed);
+        let mut s=mx_start();feed(&mut s,"AT\r?\r\r>");resync_tick(&mut s);
+        feed(&mut s,"TI\r?\r\r>");resync_tick(&mut s);
+        feed(&mut s,"ATI\r?\r\r>");let failed=resync_tick(&mut s);assert_eq!(failed["state"],"failed");
+        assert_eq!(failed["wake_readiness"]["adapter_only_ATI_retry_count"],1);
+        assert_eq!(feed(&mut s,"ELM327 v1.4b\r>"),failed);assert_eq!(s.event(&json!({"op":"tick"})),failed);
         let mut s=mx_start();feed(&mut s,"STOPPED\r>");let cancelled=s.event(&json!({"op":"cancel"}));assert_eq!(cancelled["state"],"failed");assert_eq!(resync_tick(&mut s),cancelled);
         let mut s=mx_start();feed(&mut s,"STOPPED\r>");s.command_at=Instant::now()-Duration::from_secs(4);assert_eq!(s.event(&json!({"op":"tick"}))["state"],"failed");
     }
