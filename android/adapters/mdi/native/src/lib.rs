@@ -995,6 +995,11 @@ fn validate_firmware(executable: &Path, firmware: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// Stop intent never overrides the actual process or cleanup result.
+fn firmware_session_end_ok(clean: bool, process_success: bool) -> bool {
+    clean && process_success
+}
+
 fn run_firmware(
     directory: &Path,
     executable: &Path,
@@ -1064,7 +1069,8 @@ fn run_firmware(
     let clean = !forced && cleanup["cleanup_ok"] == true;
     Ok(
         json!({"process_exit":status.code(),"forced_kill":forced,"elapsed_ms":start.elapsed().as_millis(),
-        "transport_cleanup_ok":clean,"session_end_ok":clean && (status.success() || expected_stop),
+        "transport_cleanup_ok":clean,"session_end_ok":firmware_session_end_ok(clean, status.success()),
+        "expected_stop_observed":expected_stop,
         "operator_stop_requested":directory.join("session-stop").exists(),"firmware_reason":report["reason"],
         "cleanup":cleanup,"original_result_requires_review":true}),
     )
@@ -1142,6 +1148,13 @@ pub extern "system" fn Java_com_opensaab_usb_MdiNative_nativeRun(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn expected_stop_does_not_hide_child_failure_or_failed_cleanup() {
+        assert!(super::firmware_session_end_ok(true, true));
+        assert!(!super::firmware_session_end_ok(true, false));
+        assert!(!super::firmware_session_end_ok(false, true));
+        assert!(!super::firmware_session_end_ok(false, false));
+    }
     use super::*;
     #[test]
     fn packet_roundtrip_and_bundle() {

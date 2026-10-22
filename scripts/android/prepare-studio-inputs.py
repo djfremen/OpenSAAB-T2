@@ -8,9 +8,16 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 from native_payload_baseline import verify_files
+from native_payload_inputs import load_inputs
+import subprocess
 
 repo = Path(__file__).resolve().parents[2]
 output = Path(sys.argv[1])
+build_spec=json.loads((repo/'android/tech2-app/preview-build.json').read_text())
+version=os.environ.get('OPENSAAB_VERSION_NAME',build_spec['application_version'])
+code=int(os.environ.get('OPENSAAB_VERSION_CODE',build_spec['version_code']))
+lifecycle_contract=repo/'android/tech2-app/session-lifecycle-contract.json'
+commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
 bundle_support = '--bundle-support' in sys.argv[2:]
 support_root = Path(os.environ.get('OPENSAAB_SUPPORT_ROOT', str(repo)))
 manifest_path = repo / 'android/tech2-app/support-files.json'
@@ -32,28 +39,28 @@ for name, spec in (support.items() if bundle_support else []):
     shutil.copy2(support_root / spec['source'], assets / name)
 native = output / 'jniLibs/arm64-v8a'
 native.mkdir(parents=True, exist_ok=True)
-for source, dest in [('tech2-emu', 'libtech2_emu.so'), ('nano-usb-probe', 'libnano_probe.so'), ('chipsoft-usb-probe', 'libchipsoft_probe.so')]:
-    shutil.copy2(repo / 'target/aarch64-linux-android/release' / source, native / dest)
-connection_core = os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or str(repo / 'retained-native/libopensaab_connection.so')
-if connection_core:
-    data = Path(connection_core).read_bytes()
-    if data[:5] != b'\x7fELF\x02':
-        raise SystemExit('vLinker connection core must be a locally built ELF64 executable')
+native_manifest=os.environ.get('OPENSAAB_NATIVE_INPUT_MANIFEST')
+if native_manifest:
+    inputs,provenance=load_inputs(native_manifest,version,commit)
+    for name,path in inputs.items():shutil.copy2(path,native/Path(name).name)
+    (output/'assets/native-components.json').write_text(json.dumps(provenance,sort_keys=True))
+else:
+    for source, dest in [('tech2-emu', 'libtech2_emu.so'), ('nano-usb-probe', 'libnano_probe.so'), ('chipsoft-usb-probe', 'libchipsoft_probe.so')]:
+        shutil.copy2(repo / 'target/aarch64-linux-android/release' / source, native / dest)
+    connection_core = os.environ.get('OPENSAAB_VLINKER_CONNECTION_CORE') or os.environ.get('OPENSAAB_SIMULATOR_CONNECTION_CORE') or str(repo / 'target/vlinker-workflow/aarch64-linux-android/release/opensaab-connection')
     shutil.copy2(connection_core, native / 'libopensaab_connection.so')
-shutil.copy2(repo/'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu', native/'libtech2_recovered.so')
-shutil.copy2(repo/'target/mx-native/aarch64-linux-android/release/tech2-emu', native/'libtech2_mx.so')
-shutil.copy2(repo/'retained-native/libopensaab_mdi_android.so',native/'libopensaab_mdi_android.so')
-shutil.copy2(repo/'retained-native/libtech2_mdi.so',native/'libtech2_mdi.so')
+    shutil.copy2(repo/'core-recovered/emulator/target/aarch64-linux-android/release/tech2-emu', native/'libtech2_recovered.so')
+    shutil.copy2(repo/'target/mx-native/aarch64-linux-android/release/tech2-emu', native/'libtech2_mx.so')
+    shutil.copy2(repo/'android/adapters/mdi/native/target/aarch64-linux-android/release/libopensaab_mdi_android.so',native/'libopensaab_mdi_android.so')
+    shutil.copy2(repo/'core-mdi/mdi-firmware-engine/OpenSAAB-T2/target/aarch64-linux-android/release/tech2-emu',native/'libtech2_mdi.so')
 baseline=repo/'android/tech2-app/native-payload-baseline.json'
 if baseline.is_file():
     verify_files(json.loads(baseline.read_text()),{'lib/arm64-v8a/'+p.name:p for p in native.iterdir() if p.is_file()})
     shutil.copy2(baseline,output/'assets/native-payload-baseline.json')
 shutil.copy2(repo/'android/adapters/mdi/MDI_NOTICES.txt',legal/'MDI_NOTICES.txt')
-import subprocess
 from release_metadata import preview_metadata
-version=os.environ.get('OPENSAAB_VERSION_NAME','0.1.1-preview.14')
-code=int(os.environ.get('OPENSAAB_VERSION_CODE','101014'))
-(output/'assets/build.json').write_text(json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'source_dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip()),'version_name':version,'version_code':code,'architecture':'arm64-v8a','source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':True,**preview_metadata(True)},sort_keys=True))
+(output/'assets/build.json').write_text(json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'source_dirty':bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip()),'version_name':version,'version_code':code,'architecture':'arm64-v8a','source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':True,'session_lifecycle_contract_sha256':hashlib.sha256(lifecycle_contract.read_bytes()).hexdigest(),**preview_metadata(True,version_name=version)},sort_keys=True))
+shutil.copy2(lifecycle_contract,output/'assets/session-lifecycle-contract.json')
 # Keep the existing manifest authoritative; SDK/debug attributes belong to AGP.
 ET.register_namespace('android', 'http://schemas.android.com/apk/res/android')
 tree = ET.parse(repo / 'android/tech2-app/AndroidManifest.xml')

@@ -10,10 +10,11 @@ from datetime import date
 from pathlib import PurePosixPath, Path
 from build_profiles import PROFILES, validate_elf
 from native_payload_baseline import verify_baseline
+from native_payload_inputs import load_inputs, validate_manifest
 
 KOTLIN_RESOURCES = json.loads((Path(__file__).resolve().parents[2] / 'android/shared/kotlin-runtime-resources.json').read_text())
 SUPPORT = json.loads((Path(__file__).resolve().parents[2] / 'android/tech2-app/support-files.json').read_text())
-def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None, native_baseline=None, mx_core_sha256=None):
+def check(path, allow_bundled_support=False, profile_name='arm64', connection_core_sha256=None, mdi_module_sha256=None, mdi_bridge_sha256=None, recovered_core_sha256=None, native_baseline=None, mx_core_sha256=None, native_input_manifest=None):
     profile = PROFILES[profile_name]
     native = {f'lib/{profile.abi}/{name}' for name in ('libtech2_emu.so', 'libnano_probe.so', 'libchipsoft_probe.so')}
     connection_core = 'lib/arm64-v8a/libopensaab_connection.so'
@@ -37,6 +38,19 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
         names = apk.namelist()
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK payload name')
+        provenance_asset='assets/native-components.json'
+        if native_input_manifest is not None and provenance_asset not in names:raise ValueError('Missing complete native input provenance')
+        if provenance_asset in names:
+            data=apk.read(provenance_asset)
+            if len(data)>32768:raise ValueError('Oversized native provenance')
+            build=json.loads(apk.read('assets/build.json'))
+            provenance=validate_manifest(json.loads(data),build['version_name'],build['source_commit'])
+            actual={n:hashlib.sha256(apk.read(n)).hexdigest() for n in names if n.startswith('lib/') and not n.endswith('/')}
+            if set(actual)!=set(provenance['components']) or any(actual[n]!=item['sha256'] for n,item in provenance['components'].items()):
+                raise ValueError('Packaged native components differ from complete provenance')
+            if native_input_manifest is not None:
+                _,expected=load_inputs(native_input_manifest,build['version_name'],build['source_commit'])
+                if provenance!=expected:raise ValueError('Packaged native provenance differs from checked build inputs')
         baseline_asset='assets/native-payload-baseline.json'
         if native_baseline is not None and baseline_asset not in names:raise ValueError('Missing approved native payload baseline')
         if baseline_asset in names:
@@ -60,7 +74,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
             name=info.filename
             if info.is_dir():
                 continue
-            if name==baseline_asset:continue
+            if name in (baseline_asset,provenance_asset):continue
             if name in required:
                 if name.endswith('/manifest.json'):
                     continue
@@ -87,7 +101,7 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                 if info.file_size > 4096:
                     raise ValueError('Oversized build metadata')
                 receipt = json.loads(apk.read(name))
-                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview','release_date','release_channel','security_access_mode'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
+                if not {'source_repository','source_commit','version_name','version_code','source_license'}.issubset(receipt) or set(receipt)-{'source_repository','source_commit','version_name','version_code','source_license','architecture','source_dirty','private_preview','release_date','release_channel','security_access_mode','session_lifecycle_contract_sha256'} or ('architecture' in receipt and receipt['architecture'] != profile.abi) or receipt['source_repository'] != 'https://github.com/djfremen/OpenSAAB-T2' or not re.fullmatch('[0-9a-f]{40}',receipt['source_commit']) or receipt['source_license'] != 'MPL-2.0 AND LGPL-3.0-only':
                     raise ValueError('Unexpected source metadata')
                 if any(key in receipt and type(receipt[key]) is not bool for key in ('source_dirty','private_preview')) or (receipt.get('source_dirty') is True and receipt.get('private_preview') is not True):
                     raise ValueError('Invalid preview source metadata')
@@ -96,6 +110,16 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
                     date.fromisoformat(receipt['release_date'])
                 if receipt.get('security_access_mode') != 'no_operator_password':
                     raise ValueError('New builds must declare the common no-operator-password policy')
+                expected_contract=Path(__file__).resolve().parents[2]/'android/tech2-app/session-lifecycle-contract.json'
+                if expected_contract.is_file():
+                    if ('assets/session-lifecycle-contract.json' not in names or
+                            receipt.get('session_lifecycle_contract_sha256')!=hashlib.sha256(apk.read('assets/session-lifecycle-contract.json')).hexdigest()):
+                        raise ValueError('Missing or mismatched packaged session lifecycle contract hash')
+                continue
+            if name == 'assets/session-lifecycle-contract.json':
+                expected=Path(__file__).resolve().parents[2]/'android/tech2-app/session-lifecycle-contract.json'
+                if info.file_size>128*1024 or apk.read(name)!=expected.read_bytes():
+                    raise ValueError('Packaged session lifecycle contract differs from matching source')
                 continue
             if name == 'assets/interface-contract.json':
                 expected = Path(__file__).resolve().parents[2] / 'android/tech2-app/interface-contract.json'
@@ -149,4 +173,4 @@ def check(path, allow_bundled_support=False, profile_name='arm64', connection_co
     print('PASS: ' + ('explicit development profile includes three pinned support files; no Saab card' if allow_bundled_support else 'APK contains our emulator/adapter executables and metadata; no OEM firmware or card archive'))
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('apk');parser.add_argument('--allow-bundled-support',action='store_true');parser.add_argument('--profile',choices=PROFILES,default='arm64');parser.add_argument('--connection-core-sha256');parser.add_argument('--mdi-module-sha256');parser.add_argument('--mdi-bridge-sha256')
-    parser.add_argument('--mx-core-sha256');parser.add_argument('--recovered-core-sha256');parser.add_argument('--native-baseline');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256,args.native_baseline,args.mx_core_sha256)
+    parser.add_argument('--mx-core-sha256');parser.add_argument('--recovered-core-sha256');parser.add_argument('--native-baseline');parser.add_argument('--native-input-manifest');args=parser.parse_args();check(args.apk,args.allow_bundled_support,args.profile,args.connection_core_sha256,args.mdi_module_sha256,args.mdi_bridge_sha256, args.recovered_core_sha256,args.native_baseline,args.mx_core_sha256,args.native_input_manifest)

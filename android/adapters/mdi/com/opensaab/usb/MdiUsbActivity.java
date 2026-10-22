@@ -170,7 +170,7 @@ public final class MdiUsbActivity extends Activity {
     private void execute(UsbDevice device){
         UsbDeviceConnection connection=null;UsbInterface control=null,data=null;boolean cc=false,dc=false;
         MdiUsbConfiguration.Trace configuration=new MdiUsbConfiguration.Trace();
-        FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false;String end="MDI connection failed",setup="";
+        FirmwareGate.Lease lease=null;boolean transportClean=false,usbClean=true,workflowSucceeded=false,executionFailed=false,forcedNative=false;Integer carrierResult=null,nativeExit=null;String end="MDI connection failed",setup="";
         try{
             lease=FirmwareGate.use();
             directory=new File(getFilesDir(),"mdi-sessions/"+UUID.randomUUID());Files.createDirectories(directory.toPath());if(attempt!=null)attempt.bind(directory,authority.equals("seeds")?"security_seeds":"full_native","connection");
@@ -241,16 +241,17 @@ public final class MdiUsbActivity extends Activity {
             boolean capture=(getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0&&getIntent().getBooleanExtra("mdi_capture",false);
             int result=MdiNative.nativeRun(connection.getFileDescriptor(),directory.getAbsolutePath(),
                 new File(getApplicationInfo().nativeLibraryDir,"libtech2_mdi.so").getAbsolutePath(),sessionFirmware.getAbsolutePath(),authority,capture);
-            workflowSucceeded=result==0;
+            carrierResult=result;
             JSONObject report=json(new File(directory,"result-private.json"),65536);
             transportClean=report.optBoolean("filter_disabled")&&report.optBoolean("halt_sent")&&report.optBoolean("USB_IN_cancel_reaped");
             JSONObject workflow=report.optJSONObject("workflow");JSONObject nativeResult=workflow==null?null:workflow.optJSONObject("native_firmware");
+            MdiSessionOutcome outcome=new MdiSessionOutcome(result,nativeResult);nativeExit=outcome.exitCode;forcedNative=outcome.forced;executionFailed=outcome.failed;workflowSucceeded=!executionFailed;
             setup=workflow==null?"":workflow.optString("setup_needed");
             if(nativeResult!=null)transportClean&=nativeResult.optBoolean("transport_cleanup_ok");
-            end=stopping?(detached?"MDI USB disconnected during the session":"Stopped by operator"):!setup.isEmpty()?"MDI identified · setup needed":result==0?"MDI session ended":workflow!=null&&workflow.has("error")?workflow.optString("error"):"MDI connection or session failed";
+            end=executionFailed?"MDI native session failed":stopping?(detached?"MDI USB disconnected during the session":"Stopped by operator"):!setup.isEmpty()?"MDI identified · setup needed":result==0?"MDI session ended":workflow!=null&&workflow.has("error")?workflow.optString("error"):"MDI connection or session failed";
             if(!transportClean)end+=" · transport cleanup unconfirmed";
-        }catch(Throwable error){end=stopping?(detached?"MDI USB disconnected during the session":"Stopped by operator"):error instanceof IOException?error.getMessage():"MDI connection failed";
-            if(attempt!=null&&!stopping)attempt.failure(error);
+        }catch(Throwable error){executionFailed=connection!=null||!stopping;end=executionFailed?(error instanceof IOException?error.getMessage():"MDI connection failed"):"Stopped before MDI transport started";
+            if(attempt!=null&&executionFailed)attempt.failure(error);
         }finally{
             if(attempt!=null)attempt.stage(ConnectionAttempt.Stage.CLEANUP);
             usbClean&=configuration.releasesOk;
@@ -260,15 +261,20 @@ public final class MdiUsbActivity extends Activity {
                 .put("configuration_selection_attempts",configuration.selectionAttempts).put("configuration_first_errno",configuration.firstError).put("configuration_last_errno",configuration.lastError).put("temporary_release_errno",configuration.releaseError));}catch(Exception ignored){}
             InteractiveKeyPump input=keyPump;if(input!=null)input.close();keyPump=null;
             if(lease!=null)lease.close();OWNED.set(false);running.set(false);
-            final String result=end+(usbClean?" · USB closed":" · USB cleanup incomplete");
+            String usbState=connection==null?"not_attempted":usbClean?"succeeded":"failed",protocolState=transportClean?"succeeded":carrierResult==null?"unknown":"failed";
+            final boolean finalFailure=executionFailed||forcedNative||detached||!usbClean||carrierResult!=null&&!transportClean||!stopping&&!workflowSucceeded;
+            final File completedOutput=nativeDirectory;
+            final String result=!setup.isEmpty()&&!finalFailure?end:NativeSessionEnd.message("MDI",nativeExit==null?carrierResult:nativeExit,forcedNative,stopping,usbState,protocolState);
             final String requiredSetup=setup;
             final boolean released=transportClean&&usbClean;
-            if(attempt!=null)attempt.cleanup(null,false,connection==null?"not_attempted":usbClean?"succeeded":"failed",transportClean?"succeeded":"unknown");
+            try{if(directory!=null)FirmwareStore.writeJson(new File(directory,"host-release.json"),new JSONObject().put("schema",1).put("adapter","mdi").put("native_run_result",carrierResult==null?JSONObject.NULL:carrierResult).put("child_exit_code",nativeExit==null?JSONObject.NULL:nativeExit).put("forced_termination",forcedNative).put("usb_release",usbState).put("protocol_cleanup",protocolState).put("workflow_qualified",false));}catch(Exception ignored){}
+            if(attempt!=null&&detached)attempt.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.DISCONNECTED);
+            if(attempt!=null)attempt.cleanup(nativeExit,forcedNative,usbState,protocolState);
             // A USB detach is a transport loss, not an operator stop.
-            if(attempt!=null)attempt.finish(stopping&&!detached?ConnectionAttempt.Outcome.CANCELLED:stopping?ConnectionAttempt.Outcome.FAILED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
-                stopping?(detached?ConnectionAttempt.Reason.DISCONNECTED:ConnectionAttempt.Reason.USER_STOP):!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
-            final String failureDetails=attempt!=null && attempt.failed()?"\n\n"+ConnectionAttempt.failureSummary(this,new File(directory,"native").isDirectory()?new File(directory,"native"):directory):"";
-            ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result+failureDetails);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
+            if(attempt!=null)attempt.finish(finalFailure?ConnectionAttempt.Outcome.FAILED:stopping?ConnectionAttempt.Outcome.CANCELLED:workflowSucceeded&&released?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
+                finalFailure?(!released?ConnectionAttempt.Reason.CLEANUP_FAILED:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR):stopping?ConnectionAttempt.Reason.USER_STOP:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
+            final String failureDetails=attempt!=null && attempt.failed()?"\n\n"+ConnectionAttempt.failureSummary(this,completedOutput==null?directory:completedOutput):"";
+            ui.post(()->{if(closed)return;if(finalFailure)health.endedFailure(completedOutput,result,"Session ended with a problem");else health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result+failureDetails);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
                 if(!stopping&&foreground&&released&&!requiredSetup.isEmpty())showSetup(requiredSetup);
                 if(pendingTool!=null){Runnable next=pendingTool;pendingTool=null;next.run();}});
         }
@@ -343,7 +349,7 @@ public final class MdiUsbActivity extends Activity {
             .add(workspace.expanded()?"Show header":"Expand screen",workspace::toggleExpanded)
             .add("App menu",this::appMenu).show("Actions");
     }
-    private void originalMenus(String name){new AlertDialog.Builder(this).setTitle(name).setMessage("Use the original firmware menus for this MDI operation. Automatic menu shortcuts are not available yet.").setPositiveButton("Continue firmware",null).show();}
+    private void originalMenus(String name){new AlertDialog.Builder(this).setTitle(name).setMessage("Use the original firmware menus for this MDI operation. Automatic menu shortcuts are not available yet. Close this message, then choose the operation in the firmware.").setPositiveButton("Done",null).show();}
     private void appMenu(){
         SessionSheet.Menu menu=new SessionSheet.Menu(this);
         menu.add("AI control (MCP)",()->AndroidMcp.show(this));

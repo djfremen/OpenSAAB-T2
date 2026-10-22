@@ -1,0 +1,17 @@
+{
+  "id": "session-lifecycle-outcomes-1",
+  "date": "2026-10-22",
+  "candidate": "0.1.1-preview.31",
+  "scope": "Android ARM64 candidate; other target binding, installed and physical verification pending",
+  "rules": [
+    "Operator Stop requests native stop, rejects new diagnostic work, and keeps the existing bridge available for bounded adapter cleanup. Forced termination is explicit; the card lease is not released before actual process death.",
+    "Process stopped, diagnostic operation completed, protocol cleanup, host transport release and qualification are separate facts. Operator Stop is not a diagnostic pass. Unknown changes or cleanup remain unknown; existing errors remain visible.",
+    "Final reporting follows native cleanup and merges actual host release evidence; early snapshots cannot override final failed cleanup.",
+    "Imported security data shows Firmware running while already active, Waiting for cleanup while ownership remains, and Continue firmware only for an admissible stopped session. Same-run data survives retry/import/reconnect.",
+    "Hide new-connection actions during an active session; retain working original-firmware menu navigation. No shortcut, resume, retry or reconnect replays a vehicle change request or physical confirmation.",
+    "Radio sleep and Bluetooth failure layer are not inferred from elapsed time. Retain platform error, attempt timing, write attempts and cleanup; no automatic connection retry or adapter reboot.",
+    "Original POST failures and UART timeouts remain observable. Do not fabricate a POST pass or classify all timeouts as harmless. Manual screen images retain the latest, final and fault captures while console text retains navigation history."
+  ],
+  "security": "No operator password; internal authentication, operation consent, exact VIN, authority profiles, firmware ownership and validated atomic SSA import remain required.",
+  "qualification": "Source/software checks do not establish hardware protection or a vehicle workflow pass. All four adapters require exact-candidate common golden-path qualification."
+}

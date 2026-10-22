@@ -15,16 +15,21 @@ public final class EmulatorHealthMonitor implements AutoCloseable,Application.Ac
     private final Handler ui=new Handler(Looper.getMainLooper());
     private final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor(r->new Thread(r,"emulator-health"));
     private final EmulatorHealthState state=new EmulatorHealthState();
-    private File directory; private long stamp, generation; private boolean foreground=true,closed,uiPending;
+    private File directory,lastDirectory; private long stamp, generation; private boolean foreground=true,closed,uiPending;
     private AlertDialog dialog;
     private int orientationStart,pauses,resumes;
     public EmulatorHealthMonitor(Activity a,Runnable stop){activity=a;this.stop=stop;a.getApplication().registerActivityLifecycleCallbacks(this);worker.scheduleWithFixedDelay(this::tick,1,1,TimeUnit.SECONDS);}
-    public synchronized void begin(File run){if(closed)return;directory=run;SessionDiagnostics.record(run,SessionDiagnostics.Event.START);stamp=0;generation++;orientationStart=activity.getResources().getConfiguration().orientation;pauses=resumes=0;state.reset(SystemClock.uptimeMillis());}
+    public synchronized void begin(File run){if(closed)return;directory=run;lastDirectory=run;SessionDiagnostics.record(run,SessionDiagnostics.Event.START);stamp=0;generation++;orientationStart=activity.getResources().getConfiguration().orientation;pauses=resumes=0;state.reset(SystemClock.uptimeMillis());}
     public synchronized void input(){if(directory!=null)state.input(SystemClock.uptimeMillis());}
     public synchronized void frame(){state.frame();}
     public synchronized void expectedStop(){SessionDiagnostics.record(directory,SessionDiagnostics.Event.EXPECTED_STOP);directory=null;generation++;}
     public synchronized void unsupportedOperation(){SessionDiagnostics.record(directory,SessionDiagnostics.Event.UNSUPPORTED_OPERATION);directory=null;generation++;}
     public synchronized void ended(){ended(null);}
+    /** Final process/cleanup evidence overrides an intended Stop, only for this exact last run. */
+    public synchronized void endedFailure(File run,String explanation,String title){
+        if(closed||run==null||lastDirectory!=run)return;
+        directory=run;ended(explanation,title);
+    }
     public synchronized void ended(String explanation){ended(explanation,explanation==null?null:"Single-wire CAN wake-up failed");}
     public synchronized void ended(String explanation,String title){if(directory==null)return;SessionDiagnostics.record(directory,SessionDiagnostics.Event.UNEXPECTED_EXIT);incident(explanation==null?"unexpected_emulator_exit":"vehicle_network_failure",explanation,title);directory=null;}
     public synchronized void endedCompatibility(AdapterCompatibilityNotice.Notice notice){if(directory==null)return;SessionDiagnostics.record(directory,SessionDiagnostics.Event.UNEXPECTED_EXIT);incident("unexpected_emulator_exit",notice.message,notice.title,notice);directory=null;}

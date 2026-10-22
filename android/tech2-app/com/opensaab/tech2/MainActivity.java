@@ -242,15 +242,14 @@ public final class MainActivity extends Activity {
     public android.app.Dialog showActions(){
         com.opensaab.usb.SessionSheet.Menu menu=new com.opensaab.usb.SessionSheet.Menu(this);
         if(com.opensaab.usb.NanoRebootAction.available(this))menu.add("Reboot Nano",()->{if(idleTool())com.opensaab.usb.NanoRebootAction.choose(this);});
-        return menu
-            .add("Get security access",this::chooseSecurityCollection)
-            .add("Read engine codes — HS-CAN",()->selectAdapter("dtc_read",false))
+        menu.add("Get security access",this::chooseSecurityCollection);
+        if(!running)menu.add("Read engine codes — HS-CAN",()->selectAdapter("dtc_read",false))
             .add("ECU information",()->selectAdapter("native_ecu_info",false))
             .add("Read DTC",()->selectAdapter("native_dtc",false))
             .add("Clear DTC",()->com.opensaab.usb.SessionSheet.confirmClear(this,()->selectAdapter("native_clear_dtc",false)))
             .add("Engine Data",()->selectAdapter("native_engine_data",false))
-            .add("Reset misfire and knock counters",()->com.opensaab.usb.SessionSheet.confirmResetCounters(this,()->selectAdapter("native_reset_counters",false)))
-            .add("Saved DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this))
+            .add("Reset misfire and knock counters",()->com.opensaab.usb.SessionSheet.confirmResetCounters(this,()->selectAdapter("native_reset_counters",false)));
+        return menu.add("Saved DTC reports",()->com.opensaab.usb.DtcReportView.showSavedReports(this))
             .add(workspace.expanded()?"Show header":"Expand screen",workspace::toggleExpanded)
             .add("App menu",this::showAppMenu).show("Actions");
     }
@@ -502,6 +501,7 @@ public final class MainActivity extends Activity {
             ()->running||!mxCleanupConfirmed,()->stopSession("Closing for security workflow"),
             ()->{if(modeSelectionReady()&&mxCleanupConfirmed){mxExpectedVin=mxVehicle==null?null:mxVehicle.vin;beginBluetoothStartup(mxDevice,mxCompatibility,com.opensaab.usb.SessionModes.Mode.SEEDS);}},this::resumeMxSecurity);
         mxSecurityAccess.manualResume();
+        mxSecurityAccess.setFirmwareRunning(()->running);
         mxSecurityAccess.setMenuKey(code->{com.opensaab.usb.InteractiveKeyPump pump=keyPump;return foreground&&running&&!stopping.get()&&pump!=null&&pump.offer(String.format(Locale.ROOT,"0x%02x",code));});
         details.addView(mxSecurityAccess);
     }
@@ -683,27 +683,34 @@ public final class MainActivity extends Activity {
             keyPump.close();keyPump=null;
             if(child.isAlive()) {
                 publish(mailbox,"stop\n");
-                if(!child.waitFor(com.opensaab.usb.SessionModes.stopGraceSeconds(mxDevice==null?null:mxMode),TimeUnit.SECONDS)) { forced=true;child.destroyForcibly(); child.waitFor(2,TimeUnit.SECONDS); }
+                forced=com.opensaab.usb.NativeProcessExit.await(child,1000L*com.opensaab.usb.SessionModes.stopGraceSeconds(mxDevice==null?null:mxMode)).forced;
             }
             reader.join(2000);
             // NativeLcdPump observes final frame publication as well.
             exitCode=child.exitValue();completed=exitCode==0;
-            end=com.opensaab.usb.MxSessionOutcome.unsupported(mxSession,policyRejected.get(),forced,launchFailed)?com.opensaab.usb.MxSessionOutcome.unavailableMessage():stopping.get()?(mxDevice==null?"Offline menus stopped":"MX+ session stopped"):completed?"Firmware session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
+            end=com.opensaab.usb.MxSessionOutcome.unsupported(mxSession,policyRejected.get(),forced,launchFailed)?com.opensaab.usb.MxSessionOutcome.unavailableMessage():stopping.get()&&exitCode==0?(mxDevice==null?"Offline menus stopped":"MX+ session stopped · Changes not verified; check saved session"):completed?"Firmware session ended":"Emulation stopped unexpectedly (exit "+child.exitValue()+")";
         } catch(Exception e) {
             end="Cannot run firmware: "+e.getMessage();
             if(launchFailed&&launchDirectory!=null)try{String detail=String.valueOf(e.getMessage());if(detail.length()>512)detail=detail.substring(0,512);publish(new File(launchDirectory,"startup-failure.json"),new org.json.JSONObject().put("schema",1).put("stage",launchStage).put("exception",e.getClass().getSimpleName()).put("message",detail).toString(2)+"\n");}catch(Exception ignored){}
         } finally {
             com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.close();keyPump=null;
             java.lang.Process child=process;
-            if(child!=null && child.isAlive()){forced=true;child.destroyForcibly();}
+            if(child!=null && child.isAlive())forced|=com.opensaab.usb.NativeProcessExit.await(child,0).forced;
             if(exitCode==null&&child!=null&&!child.isAlive())exitCode=child.exitValue();
             boolean unsupported=com.opensaab.usb.MxSessionOutcome.unsupported(mxSession,policyRejected.get(),forced,launchFailed);
             offlineEvidence.ended(exitCode,hostDeadline,forced,launchFailed,unsupported);
-            boolean cleanRelease=false;
+            boolean cleanRelease=false,bluetoothReleased=false,protocolReleased=false;
             if(mxPreparedTransport!=null){mxPreparedTransport.close();mxPreparedTransport=null;}
-            if(mxBridge!=null){mxBridge.close();cleanRelease=mxBridge.bluetoothClosed()&&mxProtocolCleanupConfirmed(session);mxBridge=null;}
+            if(mxBridge!=null){mxBridge.close();bluetoothReleased=mxBridge.bluetoothClosed();protocolReleased=mxProtocolCleanupConfirmed(session);cleanRelease=bluetoothReleased&&protocolReleased;mxBridge=null;}
+            if(mxSession){
+                try{if(session!=null)publish(new File(session,"host-release.json"),new org.json.JSONObject().put("schema",1).put("adapter","mxplus").put("process_dead",child==null||!child.isAlive()).put("forced_termination",forced).put("child_exit_code",exitCode==null?org.json.JSONObject.NULL:exitCode).put("bluetooth_release",bluetoothReleased?"succeeded":"unknown").put("protocol_cleanup",protocolReleased?"succeeded":"unknown").put("workflow_qualified",false).toString(2)+"\n");}catch(Exception ignored){}
+                if(!end.contains("Changes not verified"))end+=" · Changes not verified; check saved session";
+                end+=" · Bluetooth release "+(bluetoothReleased?"confirmed":"unconfirmed")+" · Protocol cleanup "+(protocolReleased?"confirmed":"unconfirmed");
+            }
             process=null;
-            if(unsupported)health.unsupportedOperation();else if(stopping.get()||completed)health.expectedStop();else health.ended();
+            if(unsupported)health.unsupportedOperation();
+            else if(forced||launchFailed||exitCode!=null&&exitCode!=0||mxSession&&!cleanRelease)health.endedFailure(launchDirectory,end,"Session ended with a problem");
+            else if(stopping.get()||completed)health.expectedStop();else health.ended();
             if(firmwareLease!=null)firmwareLease.close();
             final String message=end;final boolean releaseVerified=cleanRelease;
             ui.post(()->finishSession(message,releaseVerified));

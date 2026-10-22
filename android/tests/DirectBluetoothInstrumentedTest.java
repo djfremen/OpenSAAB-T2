@@ -17,7 +17,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    System.arraycopy(payload,p,f,start,count);p+=count;if(out.length()>0)out.append('\r');out.append("7E8");for(byte b:f)out.append(String.format(Locale.ROOT," %02X",b&255));
   }return out.toString();
  }
- private static final class Endpoint implements VlinkerSppTransport.Endpoint {
+ private static class Endpoint implements VlinkerSppTransport.Endpoint {
   final String mode;final List<String> commands=Collections.synchronizedList(new ArrayList<>());
   final BlockingQueue<Integer> bytes=new LinkedBlockingQueue<>();final CountDownLatch entered=new CountDownLatch(1),requested=new CountDownLatch(1),closedLatch=new CountDownLatch(1);
   volatile boolean closed;final ByteArrayOutputStream wire=new ByteArrayOutputStream(),command=new ByteArrayOutputStream();
@@ -76,6 +76,18 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    for(String mode:new String[]{"complete","timeout","cancel","truncated","disconnect","wrong-adapter","blocked-connect","blocked-write","unconfirmed-close","complete"})run(context,mode,false);
    run(context,"complete",true);run(context,"evo-complete",true);run(context,"evo-complete",false);run(context,"evo-truncated",false);run(context,"mxp-complete",true);run(context,"mxp-complete",false);
    startup(context,"complete");startup(context,"evo-vin");startup(context,"mxp-vin");
+   Endpoint refused=new Endpoint("platform-refusal"){
+    public void connect()throws IOException{throw new IOException("read failed, socket might closed or timeout, read ret: -1");}
+   };
+   VlinkerSppTransport refusal=new VlinkerSppTransport(refused);
+   try{refusal.open();throw new AssertionError("Refused RFCOMM connect accepted");}
+   catch(IOException expected){check(expected.getMessage().contains("No adapter or vehicle requests were sent"),"Connect failure claims an unknown cause");}
+   finally{refusal.shutdown();}
+   JSONObject failure=refusal.connectionEvidence();
+   check(failure.getString("phase").equals("connect_failed")&&failure.getBoolean("failed_before_commands"),"Connect failure layer lost");
+   check(failure.getLong("transport_write_attempts")==0&&refused.commands.isEmpty(),"Failed connect wrote/replayed commands");
+   check(failure.getString("radio_sleep_state").equals("unverified")&&failure.isNull("hci_failure_status"),"Timing guessed radio cause");
+   check(failure.getString("platform_error").contains("read ret: -1")&&!failure.getString("failure").isEmpty(),"Original platform error or explanation lost");
    Endpoint blocked=new Endpoint("blocked-connect");VlinkerSppTransport transport=new VlinkerSppTransport(blocked);long started=SystemClock.elapsedRealtime();boolean timedOut=false;try{transport.open();}catch(IOException expected){timedOut=expected.getMessage().equals("Bluetooth connect timed out");}finally{transport.shutdown();}long elapsed=SystemClock.elapsedRealtime()-started;check(timedOut&&blocked.closed&&elapsed>=20000&&elapsed<25000,"Connect deadline failed");
    result.putString("stream","PASS: direct production SPP binding, ASCII/CR and fragmented RX, VIN/7 identifiers/raw codes, timeout, Stop, disconnect, blocked connect/write, unconfirmed close, adapter rejection, single owner and fresh reconnect; 20 synthetic cases including MC+, EVO and MX+ VIN, identifiers and DTC profiles, no Bluetooth radio or helper\n");
   }catch(Throwable error){code=0;result.putString("stream","FAIL: "+error+"\n");}finish(code,result);

@@ -26,6 +26,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     public void returnedToFirmware(){refreshGeneration++;manualCollection=false;collection=false;navigator=null;manualNavigation=true;transferSeen=false;}
     private final Supplier<File> session;
     private final BooleanSupplier running;
+    private BooleanSupplier firmwareRunning;
     private final Runnable stop,collect,resume;
     private IntPredicate menuKey;
     private SecurityMenuNavigator navigator;
@@ -51,7 +52,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     public SecurityAccessView(Activity activity,boolean collection,Supplier<File> session,
             BooleanSupplier running,Runnable stop,Runnable collect,Runnable resume){
         super(activity);this.activity=activity;this.collection=collection;this.session=session;
-        this.running=running;this.stop=stop;this.collect=collect;this.resume=resume;
+        this.running=running;this.firmwareRunning=running;this.stop=stop;this.collect=collect;this.resume=resume;
         manualNavigation=SecurityCollectionMode.MANUAL.equals(SecurityCollectionMode.from(activity.getIntent()));
         setOrientation(VERTICAL);
         setPadding(SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10),SessionStyle.dp(activity,10));
@@ -74,6 +75,8 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private boolean autoResume=true;
     /** Bluetooth: never reconnect automatically after import; the operator taps Continue firmware. */
     public void manualResume(){autoResume=false;}
+    /** A binding may retain cleanup ownership after the firmware process has stopped. */
+    public void setFirmwareRunning(BooleanSupplier active){firmwareRunning=active;}
     public boolean busy(){return busy;}
     public boolean readyToProcess(){return collection&&transferSeen&&!imported&&!busy&&seedsReady();}
     private boolean seedsReady(){try{SsaData.validateInput(selectedSsa);return true;}catch(Exception invalid){return false;}}
@@ -143,9 +146,9 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 if(collection&&transferSeen){stateLabel.setText("Security status · Ready to process");stateLabel.setTextColor(SsaState.PRE_AUTH.color);}
                 setVisibility(VISIBLE);
                 imported=!collection&&!manualCollection&&cardState==SsaState.POST_AUTH&&receipt!=null&&receipt.imported()&&cardMatches;
-                if(imported){show(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches),"Continue firmware");message.setOnClickListener(v->showReceipt());return;}
+                if(imported){showImported(receipt==null?"Security data loaded.":receipt.summary(true,running.getAsBoolean(),cardMatches));message.setOnClickListener(v->showReceipt());return;}
                 if(failure!=null){show(failure,collection&&transferSeen?"Retry processing":"Retry collection");return;}
-                if(!collection&&!prompt&&cardState==SsaState.POST_AUTH){show(cardState.explanation+("Stale".equals(age)?"\nData age is a reminder; fresh collection remains available.":""),"Continue firmware");imported=true;return;}
+                if(!collection&&!prompt&&cardState==SsaState.POST_AUTH){showImported(cardState.explanation+("Stale".equals(age)?"\nData age is a reminder; fresh collection remains available.":""));imported=true;return;}
                 if(!collection&&!prompt&&receipt!=null){
                     show(receipt.summary(receipt.sameSession(run),running.getAsBoolean(),cardMatches),"Details");
                     detailsAction=true;return;
@@ -167,6 +170,13 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         });}catch(RejectedExecutionException e){polling.set(false);}
     }
     private void show(String text,String label){message.setText(text);message.setOnClickListener(null);action.setText(label);action.setEnabled(true);}
+    private void showImported(String text){
+        if(firmwareRunning.getAsBoolean()){
+            show(text+"\nFirmware is already running. Use Done to return to its original controls.","Firmware running");action.setEnabled(false);
+        }else if(running.getAsBoolean()){
+            show(text+"\nWaiting for the previous session to release its adapter.","Waiting for cleanup");action.setEnabled(false);
+        }else show(text,"Continue firmware");
+    }
     private void showReceipt(){new AlertDialog.Builder(activity).setTitle("Security status · "+cardState.label)
         .setMessage(cardState.explanation+"\n\n"+(receipt==null?"No processing history for this vehicle. Data age is unknown.":receipt.details(running.getAsBoolean(),receiptCardMatches)))
         .setPositiveButton("Done",null).show();}
@@ -186,7 +196,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private void activate(){
         if(closed||busy)return;
         if(detailsAction){showReceipt();return;}
-        if(imported){resume.run();return;}
+        if(imported){if(!running.getAsBoolean())resume.run();return;}
         if(!collection||!transferSeen){
             confirmCollection();
         }else{

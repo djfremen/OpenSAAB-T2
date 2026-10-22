@@ -32,6 +32,12 @@ public final class ConnectionAttempt {
     private JSONObject cleanupEvidence=new JSONObject();
     public synchronized void bind(File run,String mode,String operation){evidenceRun=run;evidenceMode=mode;this.operation=operation;save();}
     public synchronized void cleanup(Integer exit,boolean forced,String usb,String protocol){
+        // A Stop arriving after a real native failure must not erase that failure.
+        if(outcome==Outcome.CANCELLED||outcome==Outcome.IN_PROGRESS){
+            if(forced){outcome=Outcome.FAILED;reason=Reason.TIMEOUT;}
+            else if("failed".equals(usb)||"failed".equals(protocol)){outcome=Outcome.FAILED;reason=Reason.CLEANUP_FAILED;}
+            else if(exit!=null&&exit!=0){outcome=Outcome.FAILED;reason=Reason.PROTOCOL_OR_PROCESS_ERROR;}
+        }
         try{cleanupEvidence=new JSONObject().put("forced_termination",forced).put("usb_release",usb).put("protocol_cleanup",protocol);if(exit!=null)cleanupEvidence.put("child_exit_code",exit);}catch(JSONException ignored){}save();
     }
 

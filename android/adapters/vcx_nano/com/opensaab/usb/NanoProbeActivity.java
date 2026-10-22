@@ -23,7 +23,7 @@ import android.view.WindowManager;
  */
 public class NanoProbeActivity extends Activity {
     private volatile java.lang.Process mcpProcess;
-    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get()&&!this.cancelled,()->this.nativeKeyPump!=null&&this.nativeKeyPump.idle()&&this.nativeDirectory!=null&&!new File(this.nativeDirectory,"native-key.txt").exists(),()->this.mcpProcess!=null&&this.mcpProcess.isAlive(),this::sendMenuKey,this::cancel,"vcx_nano");
+    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get(),()->!this.nativeStop.pending()&&!this.cancelled&&this.nativeKeyPump!=null&&this.nativeKeyPump.idle()&&this.nativeDirectory!=null&&!new File(this.nativeDirectory,"native-key.txt").exists(),()->this.mcpProcess!=null&&this.mcpProcess.isAlive(),this::sendMenuKey,this::cancel,"vcx_nano");
 
     volatile ConnectionAttempt connectionAttempt;
     Button reportConnection;
@@ -523,9 +523,10 @@ public class NanoProbeActivity extends Activity {
             if(requestedQuit && out!=null)out.println(cleaned?"CLOSED":"ERROR cleanup");
             if(child!=null) {
                 try {
-                    if(!child.waitFor(2,TimeUnit.SECONDS)) { child.destroyForcibly();forcedTermination=true;if(!stoppedByUser)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.TIMEOUT);log("PROBE_EXIT timeout"); }
+                    NativeProcessExit.Result exited=NativeProcessExit.await(child,2000);
+                    if(exited.forced) { forcedTermination=true;if(!stoppedByUser)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.TIMEOUT);log("PROBE_EXIT timeout"); }
                     else { if(outputReader!=null)outputReader.join(1000);log("PROBE_EXIT "+child.exitValue()); if(!nativeFirmware() && resultFile.isFile())log("RESULT_FILE "+resultFile.getName());if(child.exitValue()!=0 && !stoppedByUser){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();} if(nativeFirmware()){
-                        final String message=(stoppedByUser?"Stopped":child.exitValue()==0?"Session ended":nativeFailure!=null?nativeFailure:"Connection/session failed (exit "+child.exitValue()+")")+" · "+(cleaned?"USB closed":"USB cleanup incomplete")+" · Retry or Back";
+                        final String message=NativeSessionEnd.message("Nano",child.exitValue(),false,stoppedByUser,cleaned?"succeeded":"failed",NativeCleanupEvidence.protocol(nativeDirectory));
                         resultPublished=true;resultSucceeded=!stoppedByUser && child.exitValue()==0;
                         runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(RESULT_CANCELED,new Intent().putExtra("summary",message));}});
                     } else if(child.exitValue()==0 && cleaned && requestedQuit){
@@ -565,14 +566,16 @@ public class NanoProbeActivity extends Activity {
                             runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(code,new Intent().putExtra("summary",message));}});
                         }catch(Exception e){failureReason=e.getMessage();log("Summary unavailable: "+e.getMessage());}
                     } }
-                }catch(InterruptedException e){child.destroyForcibly();forcedTermination=true;Thread.currentThread().interrupt();}
+                }catch(InterruptedException e){NativeProcessExit.Result exited=NativeProcessExit.await(child,0);forcedTermination|=exited.forced;Thread.currentThread().interrupt();}
             }
             if(!resultPublished) {
                 final String message=stoppedByUser?(rebootNano?"Reboot cancelled · Back returns to Ready":"Stopped — choose a test or Back"):(rebootNano?"Reboot not confirmed: ":"Unable to start: ")+(failureReason==null?"see console":failureReason)+" — retry or Back";
                 runOnUiThread(()->{if(activeSessionId==sessionId){summary.setText(message);setResult(RESULT_CANCELED,new Intent().putExtra("summary",message));}});
             }
             Integer childCode=null;try{if(child!=null)childCode=child.exitValue();}catch(IllegalThreadStateException stillRunning){}
-            progress.cleanup(childCode,forcedTermination,cleaned?"succeeded":"failed",nativeProtocolCleanupConfirmed?"succeeded":"unknown");
+            String finalProtocol=nativeFirmware()?NativeCleanupEvidence.protocol(nativeDirectory):"unknown";
+            if(!"unknown".equals(finalProtocol))nativeProtocolCleanupConfirmed="succeeded".equals(finalProtocol);
+            progress.cleanup(childCode,forcedTermination,cleaned?"succeeded":"failed",nativeProtocolCleanupConfirmed?"succeeded":finalProtocol);
             if(!cleaned && !stoppedByUser){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             else if(requestedQuit && cleaned && resultPublished && resultSucceeded)progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             else if(!stoppedByUser && !resultPublished){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);showConnectionReport();}
@@ -581,7 +584,7 @@ public class NanoProbeActivity extends Activity {
             final boolean startSecurityFirmware=securityVinProbe && requestedQuit && cleaned && resultSucceeded && !stoppedByUser && securityVehicle!=null;
             InteractiveKeyPump endedInput=nativeKeyPump;if(endedInput!=null)endedInput.close();nativeKeyPump=null;
             sessionCleanupConfirmed=cleaned&&!forcedTermination&&(!nativeFirmware()||nativeProtocolCleanupConfirmed);
-            closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null){if(stoppedByUser||requestedQuit&&cleaned)health.expectedStop();else health.ended();}running.set(false);
+            closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null){if(forcedTermination||childCode!=null&&childCode!=0||!sessionCleanupConfirmed)health.endedFailure(nativeDirectory,"The native process or adapter cleanup did not finish successfully. Changes not verified; check saved session.","Session ended with a problem");else if(stoppedByUser||requestedQuit&&cleaned)health.expectedStop();else health.ended();}running.set(false);
             if(securityVinProbe){securityVinProbe=false;if(!startSecurityFirmware){securityVehicle=null;securityDevice=null;}}
             if(readModeRejected && !stoppedByUser){
                 final PolicyBlock blocked=PolicyBlock.fromLine("Native USB command rejected by collection profile");

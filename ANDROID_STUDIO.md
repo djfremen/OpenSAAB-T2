@@ -19,6 +19,11 @@ regenerate the export and update its pins together.
 
 ## Rust + APK
 
+For the current versioned ARM64 candidate, use the tracked
+[preview build and retention recipe](docs/ANDROID_PREVIEW_BUILD.md). It rebuilds
+all changed firmware engines and verifies explicit retained native/dependency
+hashes; the older commands below describe the underlying general build tools.
+
 ```sh
 sh scripts/android/build-headless.sh
 OPENSAAB_BUNDLE_SUPPORT=0 python3 scripts/android/build-tech2-app.py

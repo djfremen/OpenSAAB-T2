@@ -286,7 +286,7 @@ mod tests {
     use super::*;
     use m68k::AddressBus;
     #[test]
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(all(feature = "load-test", any(target_os = "macos", target_os = "windows")))]
     fn deferred_serial_keeps_explicit_collection_profile() {
         for seeds in [false, true] {
             let mut args = vec!["--interactive-headless", "--research-harness",

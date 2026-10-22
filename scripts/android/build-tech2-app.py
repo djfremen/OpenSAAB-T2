@@ -14,18 +14,29 @@ from build_profiles import PROFILES, validate_elf
 from report_dependencies import ReportDependencies
 from release_metadata import preview_metadata
 from native_payload_baseline import verify_files
+from native_payload_inputs import load_inputs
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--release', action='store_true')
 parser.add_argument('--release-date', help='Actual publication date; required for published builds (YYYY-MM-DD)')
 parser.add_argument('--release-channel', choices=('developer_preview','qualified'), default='developer_preview')
 parser.add_argument('--private-release-signing', action='store_true', help='Sign a private debuggable build with the existing app certificate')
+parser.add_argument('--private-preview', action='store_true', help='Keep a non-debuggable locally signed preview explicitly private; does not publish it')
+parser.add_argument('--native-input-manifest', type=Path, help='Complete hash-pinned native inputs with per-component built/retained provenance')
+parser.add_argument('--output-dir', type=Path, help='Isolated packaging directory; defaults to the target-specific build directory')
 parser.add_argument('--version-name', default='0.1-dev')
 parser.add_argument('--version-code', type=int, default=1)
 parser.add_argument('--profile', choices=PROFILES, default='arm64')
 args = parser.parse_args()
-release_identity = preview_metadata(not args.release, args.release_date, args.version_name, args.release_channel)
-if args.profile == 'arm64':
+repo = Path(__file__).resolve().parents[2]
+source_commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+native_inputs = None
+native_provenance = None
+if args.native_input_manifest:
+    if args.profile != 'arm64':parser.error('Explicit native input manifests currently support ARM64 only')
+    native_inputs, native_provenance = load_inputs(args.native_input_manifest,args.version_name,source_commit)
+release_identity = preview_metadata(not args.release or args.private_preview, args.release_date, args.version_name, args.release_channel)
+if args.profile == 'arm64' and (native_provenance is None or native_provenance['components']['lib/arm64-v8a/libtech2_recovered.so']['kind']=='built'):
     identity = json.loads((Path(__file__).resolve().parents[2] / 'core-recovered/emulator/ui/recovered-core-identity.json').read_text())
     if identity['version'] != args.version_name:
         parser.error('Recovered-core packaged version must match the Android application version; rebuild it from the matching source.')
@@ -72,6 +83,7 @@ build = repo / ('target/android-tech2-release' if args.release else 'target/andr
 if experimental:
     build = repo / ('target/android-headunit-arm32-release' if args.release else 'target/android-headunit-arm32')
 if demand_test: build = repo / 'target/android-headunit32-interactive-test'
+if args.output_dir:build=args.output_dir.resolve()
 classes = build / 'classes'
 shutil.rmtree(classes, ignore_errors=True)
 classes.mkdir(parents=True, exist_ok=True)
@@ -79,6 +91,10 @@ native_root = repo / 'target' / profile.rust_target / 'release'
 emulator = native_root / 'tech2-emu'
 probe = native_root / 'nano-usb-probe'
 chipsoft = native_root / 'chipsoft-usb-probe'
+if native_inputs:
+    emulator=native_inputs['lib/arm64-v8a/libtech2_emu.so']
+    probe=native_inputs['lib/arm64-v8a/libnano_probe.so']
+    chipsoft=native_inputs['lib/arm64-v8a/libchipsoft_probe.so']
 if not emulator.is_file() or not probe.is_file() or not chipsoft.is_file():
     raise SystemExit('Build the Android Rust emulator with build-headless.sh first.')
 for executable in (emulator, probe, chipsoft):
@@ -99,7 +115,13 @@ if mdi_module is not None:
 connection_core = None
 recovered_core = None
 mx_core = None
-if profile.abi == 'arm64-v8a':
+if native_inputs:
+    connection_core=native_inputs['lib/arm64-v8a/libopensaab_connection.so']
+    recovered_core=native_inputs['lib/arm64-v8a/libtech2_recovered.so']
+    mx_core=native_inputs['lib/arm64-v8a/libtech2_mx.so']
+    mdi_module=native_inputs['lib/arm64-v8a/libopensaab_mdi_android.so']
+    mdi_bridge=native_inputs['lib/arm64-v8a/libtech2_mdi.so']
+elif profile.abi == 'arm64-v8a':
     # Private picker-only build reuses the exact preview.56 native payloads.
     if os.environ.get('OPENSAAB_PINNED_NATIVE') != 'preview56':
         run('sh', repo / 'scripts/android/build-vlinker-workflow.sh')
@@ -154,7 +176,10 @@ with zipfile.ZipFile(unsigned, 'a') as z:
             raise SystemExit('Official release builds require a clean source checkout')
     commit = subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
     dirty = bool(subprocess.check_output(['git','status','--porcelain'],cwd=repo,text=True).strip())
-    z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'source_dirty':dirty,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':not args.release,**release_identity},sort_keys=True))
+    lifecycle_contract=source/'session-lifecycle-contract.json'
+    z.writestr('assets/build.json', json.dumps({'source_repository':'https://github.com/djfremen/OpenSAAB-T2','source_commit':commit,'source_dirty':dirty,'version_name':args.version_name,'architecture':profile.abi,'version_code':args.version_code,'source_license':'MPL-2.0 AND LGPL-3.0-only','private_preview':not args.release or args.private_preview,'session_lifecycle_contract_sha256':hashlib.sha256(lifecycle_contract.read_bytes()).hexdigest(),**release_identity},sort_keys=True))
+    z.write(lifecycle_contract,'assets/session-lifecycle-contract.json',compress_type=zipfile.ZIP_DEFLATED)
+    if native_provenance:z.writestr('assets/native-components.json',json.dumps(native_provenance,sort_keys=True),compress_type=zipfile.ZIP_DEFLATED)
     for dex in sorted(build.glob('classes*.dex')):z.write(dex, dex.name)
     for name in ('LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'licenses/ANDROID_CARGO_NOTICES.txt', 'licenses/ANDROID_BLUETOOTH_CARGO_NOTICES.txt', 'licenses/ANDROIDX_APACHE_2_0.txt', 'licenses/OPENVCX_LGPL_3_0.txt', 'licenses/OPENVCX_GPL_3_0.txt', 'licenses/OPENVCX_SOURCE_ORIGIN.txt'):
         z.write(repo / name, 'assets/legal/' + Path(name).name, compress_type=zipfile.ZIP_DEFLATED)
@@ -196,5 +221,5 @@ else:
         run(bt / 'apksigner', 'sign', '--ks', Path.home() / '.android/debug.keystore',
             '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', apk, aligned)
 run(bt / 'apksigner', 'verify', apk)
-run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--native-baseline',native_baseline] if native_baseline else []), *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--mx-core-sha256', hashlib.sha256(mx_core.read_bytes()).hexdigest()] if mx_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
+run('python3', repo / 'scripts/android/check-apk-firmware.py', apk, '--profile', args.profile, *(['--native-input-manifest',args.native_input_manifest] if native_inputs else []), *(['--native-baseline',native_baseline] if native_baseline else []), *(['--allow-bundled-support'] if bundle_support else []), *(['--connection-core-sha256', hashlib.sha256(connection_core.read_bytes()).hexdigest()] if connection_core else []), *(['--mx-core-sha256', hashlib.sha256(mx_core.read_bytes()).hexdigest()] if mx_core else []), *(['--recovered-core-sha256', hashlib.sha256(recovered_core.read_bytes()).hexdigest()] if recovered_core else []), *(['--mdi-module-sha256', hashlib.sha256(mdi_module.read_bytes()).hexdigest(), '--mdi-bridge-sha256', hashlib.sha256(mdi_bridge.read_bytes()).hexdigest()] if mdi_module else []))
 print(apk)

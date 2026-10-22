@@ -960,6 +960,15 @@ mod cdc_tests {
         assert!(!p.test_harness);
         assert_eq!(p.target, HarnessTarget::NativeManual);
     }
+    #[cfg(not(feature = "load-test"))]
+    #[test]
+    fn serial_demand_collection_requires_explicit_build_support() {
+        let mut args = base();
+        args.extend(["--candi-on-demand", "--candi-chipsoft-seeds"].map(String::from));
+        let error = Options::parse(args, |_| None).unwrap_err();
+        assert!(error.contains("experimental load-test build"));
+    }
+    #[cfg(feature = "load-test")]
     #[test]
     fn serial_seed_collection_is_explicit_and_preserves_manual_navigation() {
         assert!(!Options::parse(base(), |_| None).unwrap().candi_chipsoft_seeds);

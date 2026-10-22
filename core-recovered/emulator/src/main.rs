@@ -3,6 +3,8 @@
 #![cfg_attr(all(windows, feature = "gui", not(test)), windows_subsystem = "windows")]
 
 mod artifacts;
+#[path = "../../../shared/native-session.rs"]
+mod session_lifecycle;
 mod bus;
 mod candi;
 mod communication;
@@ -157,6 +159,7 @@ pub fn run_headless(
                 }
                 if settings.output_dir.join("native-stop").is_file() {
                     stop = "Native Android session stopped by operator".into();
+                    outcome = Outcome::operator_stop(bus.candi_link.as_ref().is_some_and(|link| link.is_stopped()));
                     break;
                 }
             }
@@ -358,7 +361,8 @@ pub fn run_headless(
                         let command = command.trim();
                         if command == "stop" {
                             let _ = std::fs::remove_file(&path);
-                            stop = "native DTC operator stopped the session".into();
+                            stop = "Native Android session stopped by operator".into();
+                    outcome = Outcome::operator_stop(bus.candi_link.as_ref().is_some_and(|link| link.is_stopped()));
                             break;
                         }
                         let code = command
@@ -467,14 +471,12 @@ pub fn run_headless(
                         break;
                     }
                     Ok(Some(event)) => {
-                        let path =
-                            settings
-                                .output_dir
-                                .join(if event.capture == "native_dtc_screen" {
-                                    format!("native-dtc-{insns}.ppm")
-                                } else {
-                                    format!("{}.ppm", event.capture)
-                                });
+                        let manual_capture = settings.harness_target == Some(options::HarnessTarget::NativeManual);
+                        let path = settings.output_dir.join(if manual_capture {
+                            "native-manual-latest.ppm".to_owned()
+                        } else if event.capture == "native_dtc_screen" {
+                            format!("native-dtc-{insns}.ppm")
+                        } else { format!("{}.ppm",event.capture) });
                         if let Err(error) = artifacts::save_screen(bus, &path) {
                             stop = format!("capture {}: {error}", path.display());
                             outcome = Outcome::OutputFailure;
@@ -485,7 +487,7 @@ pub fn run_headless(
                                 settings.output_dir.join("native-dtc-screen.txt"),
                                 bus.screen_text(),
                             ) {
-                                stop = format!("native DTC screen text: {error}");
+                                stop = format!("native screen text: {error}");
                                 outcome = Outcome::OutputFailure;
                                 break;
                             }
@@ -540,7 +542,7 @@ pub fn run_headless(
             }
         }
     }
-    if outcome == Outcome::Incomplete {
+    if outcome == Outcome::Incomplete && settings.harness_target != Some(options::HarnessTarget::NativeManual) {
         if let Some(harness) = &harness {
             stop = format!(
                 "{stop}; waiting for {}; last verified: {}",
@@ -1314,6 +1316,11 @@ fn run(attempt: u64, retained: &mut Option<(tech2_emu::capture::CaptureStorage, 
     let candi_snapshot = candi_handle
         .and_then(|handle| handle.stop())
         .or_else(|| bus.candi_link.as_ref().map(|link| link.snapshot()));
+    // Join the protocol worker before final outcome/report; host release is separate.
+    if let Some(link) = &mut bus.candi_link { link.shutdown(); }
+    let cleanup_failures = session_lifecycle::cleanup_failures(&opts.output);
+    outcome = outcome.after_cleanup(!cleanup_failures.is_empty());
+    if !cleanup_failures.is_empty() { stop = format!("{stop}; native cleanup failed: {}", cleanup_failures.join(", ")); }
     if let Err(e) = logger::check_file() {
         outcome = Outcome::OutputFailure;
         stop = format!("{stop}; log persistence: {e}");
@@ -1347,6 +1354,8 @@ fn run(attempt: u64, retained: &mut Option<(tech2_emu::capture::CaptureStorage, 
     report["program_identity"] = serde_json::json!({"name":tech2_emu::product_identity::display_name(),"version":*tech2_emu::product_identity::VERSION,"architecture":tech2_emu::product_identity::architecture()});
     report["psos"] = bus.psos.snapshot();
     report["connection"] = bus.connection_snapshot(bus.candi_link.as_ref().is_some_and(|link|link.has_live_clock()));
+    report["observations"] = serde_json::json!({"uart_reply_timeouts":bus.trace.uart_reply_timeouts,"original_firmware_post_failures":bus.trace.observed_post_failures,"post_result_modified":false,"counter_scope":"single_native_trace_stream","timeouts_harmless":null,"manual_screen_capture":"latest_plus_final_and_faults; text_history_in_console"});
+    report["session_outcome"] = serde_json::json!({"process":outcome.name(),"operation":"not_evaluated","workflow_qualified":false,"native_cleanup_failures":cleanup_failures,"host_release":"reported_separately"});
     report["emulation_evidence"] = opensaab_session_evidence::snapshot(
         outcome.name(), &stop, &text, report.get("candi"));
     let report = serde_json::to_string_pretty(&report).expect("serializable runtime report");
@@ -1358,6 +1367,23 @@ fn run(attempt: u64, retained: &mut Option<(tech2_emu::capture::CaptureStorage, 
 #[cfg(test)]
 mod runtime_tests {
     use super::*;
+    #[test]
+    fn manual_operator_stop_is_stopped_without_a_script_verdict() {
+        let (mut cpu, mut bus) = machine();
+        let output = std::env::temp_dir().join(format!("manual-stop-runtime-{}",std::process::id()));
+        std::fs::create_dir_all(&output).unwrap();
+        std::fs::write(output.join("native-stop"), b"stop").unwrap();
+        let result = run_headless(&mut cpu, &mut bus, &[], 0, RunSettings {
+            limit_insns: 100_000, sample_hotspots: false, interactive: false,
+            android_live: true, harness_target: Some(options::HarnessTarget::NativeManual),
+            output_dir: &output, replay: &[],
+        }, &mut std::collections::HashMap::new());
+        assert_eq!(result.outcome, Outcome::Stopped);
+        assert!(!result.stop_reason.contains("AwaitDtc"));
+        assert_ne!(result.outcome, Outcome::Success);
+        std::fs::remove_dir_all(output).unwrap();
+    }
+
 
     fn machine() -> (CpuCore, Tech2Bus) {
         let mut boot = vec![0; 0x40000];

@@ -251,6 +251,10 @@ impl NativeLink {
     pub fn live_elapsed(&self) -> Option<std::time::Duration> {
         self.live_clock.map(|(start, _)| start.elapsed())
     }
+    /// Join backend cleanup before the final runtime report is written.
+    pub fn shutdown(&mut self) {
+        if let Some(bridge) = &mut self.bridge { bridge.close(); }
+    }
     pub fn is_stopped(&self) -> bool {
         self.stopped
     }

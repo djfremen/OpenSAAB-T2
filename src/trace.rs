@@ -46,6 +46,8 @@ pub struct Trace {
     pub calls: bool,
     pub navigation: u64,
     sequence: u64,
+    pub uart_reply_timeouts: u64,
+    pub observed_post_failures: std::collections::BTreeSet<String>,
     last_screen: Option<String>,
     last_navigation_state: Option<(u16, u8)>,
     live_console: bool,
@@ -81,6 +83,9 @@ impl Trace {
         self.last_highlight = None;
     }
     pub fn event(&mut self, insns: u64, pc: u32, kind: &str, detail: &str) {
+        if kind == "candi_uart_timer" && detail.starts_with("expired ") {
+            self.uart_reply_timeouts = self.uart_reply_timeouts.saturating_add(1);
+        }
         if !self.enabled() || (self.concise && low_level_detail(kind, detail)) {
             return;
         }
@@ -154,6 +159,17 @@ impl Trace {
         Ok(())
     }
     pub fn screen(&mut self, insns: u64, pc: u32, screen: String) {
+        // Retain what the original firmware displayed after the screen changes.
+        // This is an observation, never a rewritten POST result or hardware diagnosis.
+        for name in ["IRAM","ERAM","UART","MCU","QSPI","SCI","TPU","RTC","CLKMEM","KEYPAD"] {
+            for line in screen.lines() {
+                if let Some(at) = line.find(name) {
+                    if line[at+name.len()..].trim_start_matches(|c: char| c == '.' || c == ':' || c.is_ascii_whitespace()).starts_with("Fail") {
+                        self.observed_post_failures.insert(name.to_owned());
+                    }
+                }
+            }
+        }
         if self.enabled() && self.last_screen.as_ref() != Some(&screen) {
             let summary = crate::event_console::screen_summary(&screen);
             if !summary.is_empty() && summary != self.last_console_screen {
@@ -201,6 +217,23 @@ impl Trace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn post_failure_is_retained_after_menu_changes_without_fabricating_a_pass() {
+        let mut trace = Trace::default();
+        trace.screen(1,0,"ERAM.....Fail\nIRAM.....Pass MCU.....Fail".into());
+        trace.screen(2,0,"Main Menu".into());
+        assert!(trace.observed_post_failures.contains("ERAM"));
+        assert!(!trace.observed_post_failures.contains("IRAM"));
+    }
+    #[test]
+    fn timeout_counter_is_per_event_not_per_output_copy() {
+        let mut trace = Trace::default();
+        trace.event(1,0,"candi_uart_timer","expired channel=5");
+        trace.event(2,0,"candi_uart_timer","host_service=poll");
+        trace.event(3,0,"other","expired channel=5");
+        assert_eq!(trace.uart_reply_timeouts,1);
+    }
+
     #[test]
     fn rolling_trace_is_bounded_and_retains_ordered_complete_records() {
         let dir = std::env::temp_dir().join(format!("tech2-trace-rotation-{}", std::process::id()));

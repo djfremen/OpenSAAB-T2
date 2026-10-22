@@ -25,6 +25,7 @@ final class VlinkerSppTransport implements VlinkerTransport {
     private volatile String connectPhase="not_started";
     private volatile String connectError="";
     private volatile long connectElapsedMs=-1;
+    private final java.util.concurrent.atomic.AtomicLong writeAttempts=new java.util.concurrent.atomic.AtomicLong();
     private int bondState=-1;
     private Boolean discoveryBeforeConnect;
     private OutputStream output;
@@ -54,7 +55,8 @@ final class VlinkerSppTransport implements VlinkerTransport {
                 if(failure!=null)throw failure;
                 if(stopped){connectPhase="cancelled";throw new IOException("Bluetooth connection cancelled",refused);}
                 connectPhase="connect_failed";
-                throw new IOException("Adapter not reachable over Bluetooth ("+refused.getMessage()+"). Check that it is plugged in with ignition ON, then retry.",refused);
+                failure=new IOException("Bluetooth connection was not established. No adapter or vehicle requests were sent. Check adapter power and pairing, then retry.",refused);
+                throw failure;
             }
             limit.close();connectElapsedMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
             if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth connection cancelled"):failure;output=endpoint.output();InputStream input=endpoint.input();
@@ -66,7 +68,7 @@ final class VlinkerSppTransport implements VlinkerTransport {
             },"vlinker-spp-reader");reader.setDaemon(true);reader.start();
         }finally{connecting=false;limit.close();if(stopped&&connectPhase.equals("connecting"))connectPhase="cancelled";if(connectElapsedMs<0)connectElapsedMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);}
     }
-    JSONObject connectionEvidence()throws JSONException{return new JSONObject().put("phase",connectPhase).put("connect_elapsed_ms",connectElapsedMs).put("connect_deadline_ms",BluetoothConnectDeadline.TIMEOUT_MS).put("device_name",deviceName).put("device_address",deviceAddress).put("connection_mode",connectionMode).put("bond_state",bondState).put("discovery_before_connect",discoveryBeforeConnect==null?JSONObject.NULL:discoveryBeforeConnect).put("bluetooth_closed",closeConfirmed).put("automatic_replay",false).put("platform_error",connectError).put("failure",failure==null?"":failure.getMessage());}
+    JSONObject connectionEvidence()throws JSONException{return new JSONObject().put("phase",connectPhase).put("connect_elapsed_ms",connectElapsedMs).put("connect_deadline_ms",BluetoothConnectDeadline.TIMEOUT_MS).put("device_name",deviceName).put("device_address",deviceAddress).put("connection_mode",connectionMode).put("bond_state",bondState).put("discovery_before_connect",discoveryBeforeConnect==null?JSONObject.NULL:discoveryBeforeConnect).put("bluetooth_closed",closeConfirmed).put("automatic_replay",false).put("platform_error",connectError).put("transport_write_attempts",writeAttempts.get()).put("failed_before_commands",connectPhase.equals("connect_failed")||connectPhase.equals("connect_timeout")).put("radio_sleep_state","unverified").put("hci_failure_status",JSONObject.NULL).put("failure",failure==null?"":failure.getMessage());}
     public void send(JSONObject request)throws Exception{
         if(request.optString("op").equals("close")){closeEndpoint();packets.clear();enqueue(new JSONObject().put("type","closed").put("bluetooth_closed",closeConfirmed));return;}
         boolean interrupt=request.optString("op").equals("interrupt");
@@ -74,7 +76,7 @@ final class VlinkerSppTransport implements VlinkerTransport {
         if(!interrupt && (!request.optString("op").equals("write")||command.isEmpty()||command.length()>128||!command.matches("[ -~]+")))throw new IOException("Invalid native transport write");
         if(stopped||failure!=null||output==null)throw failure==null?new IOException("Bluetooth connection is closed"):failure;
         writing=true;ScheduledFuture<?> limit=watchdog.schedule(()->{failure=new IOException("Bluetooth write timed out");closeEndpoint();},2000,TimeUnit.MILLISECONDS);
-        try{synchronized(delivery){output.write((interrupt?"\r":command+"\r").getBytes(StandardCharsets.US_ASCII));output.flush();if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth write cancelled"):failure;enqueue(new JSONObject().put("type","write_completed").put("command",command));}}
+        try{synchronized(delivery){writeAttempts.incrementAndGet();output.write((interrupt?"\r":command+"\r").getBytes(StandardCharsets.US_ASCII));output.flush();if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth write cancelled"):failure;enqueue(new JSONObject().put("type","write_completed").put("command",command));}}
         finally{writing=false;limit.cancel(false);}
     }
     public JSONObject receive(int timeoutMs)throws Exception{

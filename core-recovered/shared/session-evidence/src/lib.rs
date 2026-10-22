@@ -4,6 +4,7 @@ pub mod bounded_capture;
 use serde_json::{json, Map, Value};
 
 pub fn stop_code(status: &str, reason: &str) -> &'static str {
+    if status == "cleanup_failure" { return "cleanup_failure"; }
     if status == "output_failure" {
         return "output_failure";
     }

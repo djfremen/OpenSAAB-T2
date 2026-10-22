@@ -3,31 +3,7 @@
 use crate::bus::Tech2Bus;
 use std::{fs, io, path::Path};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
-    Success,
-    GuestFailure,
-    Incomplete,
-    OutputFailure,
-}
-impl Outcome {
-    pub fn code(self) -> u8 {
-        match self {
-            Self::Success => 0,
-            Self::GuestFailure => 1,
-            Self::Incomplete => 3,
-            Self::OutputFailure => 4,
-        }
-    }
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Success => "success",
-            Self::GuestFailure => "guest_failure",
-            Self::Incomplete => "incomplete",
-            Self::OutputFailure => "output_failure",
-        }
-    }
-}
+pub use crate::session_lifecycle::Outcome;
 
 pub fn save_screen(bus: &Tech2Bus, path: &Path) -> io::Result<()> {
     let mut pixels = vec![0; 320 * 240];
@@ -36,7 +12,9 @@ pub fn save_screen(bus: &Tech2Bus, path: &Path) -> io::Result<()> {
     for pixel in pixels {
         ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
     }
-    fs::write(path, ppm)
+    let pending = path.with_extension("ppm.tmp");
+    fs::write(&pending, ppm)?;
+    fs::rename(pending, path)
 }
 
 /// Reuses capture buffers and publishes only changed pixels by atomic rename.

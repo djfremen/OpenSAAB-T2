@@ -26,7 +26,7 @@ public final class ChipsoftUsbActivity extends Activity {
     final Object identityLock=new Object();
     AlertDialog vehicleStartPrompt;
     private volatile java.lang.Process mcpProcess;
-    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get()&&!this.cancelled,()->!this.keyPending.get()&&this.nativeDirectory!=null&&!new File(this.nativeDirectory,"native-key.txt").exists(),()->this.mcpProcess!=null&&this.mcpProcess.isAlive(),this::sendMenuKey,this::stop,"chipsoft");
+    private final AndroidMcp.Owner mcpOwner=new AndroidMcpSession(()->this.nativeDirectory,()->this.running.get(),()->!this.nativeStop.pending()&&!this.cancelled&&!this.keyPending.get()&&this.nativeDirectory!=null&&!new File(this.nativeDirectory,"native-key.txt").exists(),()->this.mcpProcess!=null&&this.mcpProcess.isAlive(),this::sendMenuKey,this::stop,"chipsoft");
     NativeLcdPump lcdPump;
     EmulatorHealthMonitor health;
     SecurityAccessView securityAccess;
@@ -41,6 +41,8 @@ public final class ChipsoftUsbActivity extends Activity {
     IgnitionStatusView ignitionStatus;
     UsbManager manager; UsbDevice selected; TextView status,console;
     final AtomicBoolean running=new AtomicBoolean();
+    final ChipsoftNativeStopGate nativeStop=new ChipsoftNativeStopGate();
+    volatile boolean sessionCleanupConfirmed;
     boolean dtcRead;
     TextView engineCodes;
     Button continueDiagnostics;
@@ -131,7 +133,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void runShortcut(FirmwareMenuNavigator.Target target){
             if(target==FirmwareMenuNavigator.Target.SECURITY&&securityAccess!=null&&securityAccess.readyToProcess()){securityAccess.processCollected();return;}
-            if(!running.get()||nativeDirectory==null||cancelled){status.setText("Start firmware before choosing a shortcut");Toast.makeText(this,"Start firmware before choosing a shortcut",Toast.LENGTH_LONG).show();return;}
+            if(!running.get()||nativeDirectory==null||cancelled||nativeStop.pending()){status.setText("Start firmware before choosing a shortcut");Toast.makeText(this,"Start firmware before choosing a shortcut",Toast.LENGTH_LONG).show();return;}
             if(securityAccess!=null&&(securityAccess.busy()||securityAccess.collecting())){
                 Toast.makeText(this,"Finish security collection first; the firmware controls remain available",Toast.LENGTH_LONG).show();return;
             }
@@ -203,7 +205,7 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     boolean sendMenuKey(int code){
         File run=nativeDirectory;
-        if(!foreground||!running.get()||cancelled||run==null||keyPending.get()||new File(run,"native-key.txt").exists())return false;
+        if(!foreground||!running.get()||cancelled||nativeStop.pending()||run==null||keyPending.get()||new File(run,"native-key.txt").exists())return false;
         nativeKey(String.format(java.util.Locale.ROOT,"0x%02x",code));return true;
     }
     void openSecuritySession(boolean collect){
@@ -228,7 +230,14 @@ public final class ChipsoftUsbActivity extends Activity {
         else SessionModeBadge.apply(modeLabel,fullNative?SessionModes.Mode.FULL:seeds?SessionModes.Mode.SEEDS:SessionModes.Mode.READ,false);
     }
     void resumeSecurityFirmware(){
-        if(running.get()||cancelled||isFinishing()||isDestroyed())return;
+        if(running.get()||isFinishing()||isDestroyed())return;
+        if(cancelled||!sessionCleanupConfirmed){
+            status.setText("Security data imported · previous Chipsoft cleanup not confirmed");
+            if(foreground)new AlertDialog.Builder(this).setTitle("Connect again in Full session?")
+                .setMessage("The previous session cannot be continued. Start a new Full session and identify the VIN again. Vehicle changes are possible; follow the original confirmations. If the adapter stays busy, reconnect it first.")
+                .setNegativeButton("Not now",null).setPositiveButton("Connect in Full session",(d,w)->restartInFullSession()).show();
+            return;
+        }
         final UsbDevice device=selected;
         final VehicleIdentity identity=vehicle;
         final long generation=vehicleGeneration;
@@ -301,7 +310,7 @@ public final class ChipsoftUsbActivity extends Activity {
         long epoch=requests.begin();if(manager.hasPermission(selected))start(selected,epoch);
         else {pending=true;permissionEpoch=epoch;Intent i=new Intent(permission).setPackage(getPackageName()).putExtra("epoch",epoch);manager.requestPermission(selected,PendingIntent.getBroadcast(this,(int)epoch,i,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT));log("Waiting for Android USB permission");}
     }
-    void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;unexpectedDisconnect=false;long generation=vehicleGeneration;
+    void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;mcpProcess=null;nativeStop.reset();sessionCleanupConfirmed=false;unexpectedDisconnect=false;long generation=vehicleGeneration;
         if(vinSummary!=null)vinSummary.setText("Reading VIN from vehicle…");
         if(engineCodes!=null)engineCodes.setText("Reading fresh VIN, then engine codes…");
         new Thread(()->probe(d,nativeFirmware || dtcRead,null,generation),"chipsoft-usb").start();}
@@ -320,7 +329,7 @@ public final class ChipsoftUsbActivity extends Activity {
         VehicleIdentity identified=null;
         ChipsoftIdentity adapterIdentity=new ChipsoftIdentity();
         UsbDeviceConnection conn=null;UsbInterface ctl=null,data=null;UsbEndpoint rx=null,tx=null;
-        boolean ctlClaim=false,dataClaim=false,quit=false,clean=true; boolean forcedTermination=false; Integer childExit=null; String usbRelease="not_attempted";
+        boolean ctlClaim=false,dataClaim=false,quit=false,clean=true; boolean forcedTermination=false; Integer childExit=null; String usbRelease="not_attempted",protocolCleanup="unknown";
         UsbRequest read=null;boolean queued=false;PrintWriter out=null;java.lang.Process child=null;
         File run=new File(getFilesDir(),"chipsoft-"+java.util.UUID.randomUUID());
         FirmwareGate.Lease firmwareLease=null;
@@ -378,8 +387,14 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(!UsbBridgeCodec.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(dtcRead?"READY chipsoft-dtc":fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
                 long until=fullNative?Long.MAX_VALUE:SystemClock.elapsedRealtime()+(nativeFirmware?330000:receiveTest?45000:8000);boolean sent=false;long received=0,transmits=0,diagnosticTransmits=0;
                 while(!cancelled && SystemClock.elapsedRealtime()<until){
-                    String cmd=UsbBridgeCodec.readLine(in);if(cmd.equals("QUIT")){quit=true;break;}
+                    String cmd=UsbBridgeCodec.readLine(in);if(cmd.equals("QUIT")){quit=true;nativeStop.quitReceived();break;}
                     if(cmd.startsWith("TX ")){
+                        boolean stopping=nativeStop.pending();
+                        if(stopping&&!nativeStop.cleanupAllowed(cmd.substring(3),SystemClock.elapsedRealtime())){
+                            if(!nativeStop.rejectQueued(SystemClock.elapsedRealtime()))throw new IOException("Native Stop rejection/deadline budget exceeded");
+                            out.println("ERROR stopped");if(out.checkError())throw new IOException("Stop controller disconnected");
+                            log("NATIVE_STOP_REJECTED queued_request=true usb_write=false");continue;
+                        }
                         byte[] bytes=UsbBridgeCodec.unhex(cmd.substring(3));
                         if(++transmits>(nativeFirmware?250000:5000) && !fullNative)throw new IOException("USB command budget exhausted (includes receive polling)");
                         if(bytes.length>1 && bytes[0]==15 && bytes[1]==0 && ++diagnosticTransmits>5000 && !fullNative)throw new IOException("Diagnostic transmission budget exhausted");
@@ -410,28 +425,35 @@ public final class ChipsoftUsbActivity extends Activity {
                 }
                 if(!quit)throw new IOException("Session cancelled or expired");
             }
-        }catch(Exception e){if(cancelled)progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}if(!cancelled)SupportReports.recordError(this,e,false,run);log("ERROR "+e.getMessage());}
+        }catch(Exception e){if(cancelled||nativeStop.pending())progress.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);else {progress.failure(e);showConnectionReport();}if(!cancelled)SupportReports.recordError(this,e,false,run);log("ERROR "+e.getMessage());}
         finally{
             if(conn!=null){
-                if(read!=null && queued){try{if(!read.cancel())clean=false;UsbRequest done=conn.requestWait(300);if(done!=read)clean=false;}catch(Exception e){clean=false;}}
+                boolean usbClean=true;
+                if(read!=null && queued){try{if(!read.cancel())usbClean=false;UsbRequest done=conn.requestWait(300);if(done!=read)usbClean=false;}catch(Exception e){usbClean=false;}}
                 if(receiveTest && !quit && tx!=null){clean=false;for(String hex:new String[]{"050004000000880008800000","050004000000050005000000","2000000000000000"})try{byte[] b=UsbBridgeCodec.unhex(hex);conn.bulkTransfer(tx,b,b.length,200);}catch(Exception ignored){}log("Emergency channel close sent; replies unverified");}
-                if(dataClaim)clean&=conn.releaseInterface(data);if(ctlClaim)clean&=conn.releaseInterface(ctl);conn.close();if(read!=null)read.close();usbRelease=clean?"succeeded":"failed";
+                if(dataClaim)usbClean&=conn.releaseInterface(data);if(ctlClaim)usbClean&=conn.releaseInterface(ctl);conn.close();if(read!=null)read.close();usbRelease=usbClean?"succeeded":"failed";clean&=usbClean;
             }
             if(out!=null && quit)out.println(clean?"CLOSED":"ERROR cleanup");
-            if(child!=null)try{if(!child.waitFor(2,TimeUnit.SECONDS)){child.destroyForcibly();forcedTermination=true;clean=false;if(!cancelled)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.TIMEOUT);}else {log("RUST_EXIT "+child.exitValue());childExit=child.exitValue();if(childExit!=0){clean=false;if(!cancelled)progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);}}}catch(InterruptedException e){child.destroyForcibly();forcedTermination=true;Thread.currentThread().interrupt();clean=false;}
+            NativeProcessExit.Result ended=NativeProcessExit.await(child,2000);
+            childExit=ended.exitCode;forcedTermination=ended.forced;
+            if(childExit!=null)log("RUST_EXIT "+childExit);
+            if(forcedTermination||childExit!=null&&childExit!=0){clean=false;if(!cancelled&&!nativeStop.pending())progress.finish(ConnectionAttempt.Outcome.FAILED,forcedTermination?ConnectionAttempt.Reason.TIMEOUT:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);}
+            if(nativeFirmware)protocolCleanup=NativeCleanupEvidence.protocol(run);
+            if(nativeFirmware&&!"succeeded".equals(protocolCleanup))clean=false;
             try{File result=new File(run,"result.json");if(quit && clean && result.length()>0){String report=new String(java.nio.file.Files.readAllBytes(result.toPath()),StandardCharsets.UTF_8);log(report);if(dtcRead && !cancelled)saveEngineCodes(report,identity,run);if(vinCheck){identified=VehicleSession.fromProbe(new org.json.JSONObject(report));}}}catch(Exception e){if(dtcRead)clean=false;log("Result read failed: "+e.getMessage());}
             if(symbolOnly || audible){new File(getFilesDir(),audible?"chipsoft-audible-authority.json":"chipsoft-symbol-authority.json").delete();new File(getFilesDir(),"firmware/card-authorized.bin").delete();}
-            progress.cleanup(childExit,forcedTermination,usbRelease,"unknown");
+            progress.cleanup(childExit,forcedTermination,usbRelease,protocolCleanup);
             // Read-only refusals end the native run; explain them and offer Full instead of a generic stop.
             // Offer the restart only after a confirmed USB release and a normal child exit.
             final PolicyBlock blocked=nativeFirmware&&!vinCheck&&!fullNative&&!seeds&&!keyStatus&&!symbolOnly&&!audible&&!cancelled&&!unexpectedDisconnect&&!forcedTermination&&"succeeded".equals(usbRelease)?PolicyBlock.scan(new File(run,"rust.log")):null;
             if(blocked!=null)log("POLICY_BLOCKED adapter=chipsoft service="+blocked.service+" can_id="+blocked.canId+" profile=Read vehicle_tx=false");
             // A policy stop already recorded the process exit; don't stack a cleanup-failure report on the Full prompt.
-            if(!clean && !cancelled && blocked==null){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
+            if(!clean && !cancelled && !nativeStop.pending() && blocked==null){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             if(vinCheck && identified==null && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.VIN_UNAVAILABLE);showConnectionReport();}
-            if(quit && clean && !identifyFirst && (!vinCheck || identified!=null))progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
+            if(quit && clean && !nativeStop.pending() && !identifyFirst && (!vinCheck || identified!=null))progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             closeSockets();if(firmwareLease!=null)firmwareLease.close();
-            log("USB_CLOSED cleanup_ok="+clean+" session="+run.getName());
+            sessionCleanupConfirmed=nativeFirmware&&quit&&!forcedTermination&&"succeeded".equals(usbRelease)&&"succeeded".equals(protocolCleanup);
+            log("USB_CLOSED cleanup_ok="+(nativeFirmware?sessionCleanupConfirmed:clean)+" usb_release="+usbRelease+" protocol_cleanup="+protocolCleanup+" session="+run.getName());
             if(progress.failed())log(ConnectionAttempt.failureSummary(this,run));
             final AdapterCompatibilityNotice.Notice compatibilityNotice=progress.failed()?AdapterCompatibilityNotice.read(run):null;
             if(vinCheck && identified!=null && !cancelled && generation==vehicleGeneration){
@@ -440,11 +462,13 @@ public final class ChipsoftUsbActivity extends Activity {
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
             if(nativeFirmware&&!vinCheck&&health!=null){
-                if(blocked!=null)health.expectedStop();else
-                if(compatibilityNotice!=null&&!cancelled)health.endedCompatibility(compatibilityNotice);else if(unexpectedDisconnect)health.ended("Chipsoft USB disconnected during the operation. Last firmware screen and evidence were retained.","Chipsoft disconnected");else if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
+                if(unexpectedDisconnect||forcedTermination||!sessionCleanupConfirmed||childExit!=null&&childExit!=0&&blocked==null){String explanation=TransportFailure.from(run);health.endedFailure(run,unexpectedDisconnect?"Chipsoft USB disconnected. Changes not verified; check saved session.":explanation==null?"The native process or adapter cleanup did not finish successfully. Changes not verified; check saved session.":explanation,unexpectedDisconnect?"Chipsoft disconnected":"Session ended with a problem");}
+                else if(blocked!=null)health.expectedStop();
+                else if(compatibilityNotice!=null&&!cancelled)health.endedCompatibility(compatibilityNotice);
+                else health.expectedStop();
             }
             running.set(false);
-            final String endedMessage=blocked!=null?blocked.status():unexpectedDisconnect?"Chipsoft disconnected · operation interrupted; last screen saved":cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
+            final String endedMessage=blocked!=null?blocked.status():unexpectedDisconnect?"Chipsoft disconnected · Changes not verified; check saved session":NativeSessionEnd.message("Chipsoft",childExit,forcedTermination,cancelled||nativeStop.pending(),usbRelease,protocolCleanup);
             if(lcdPump!=null)lcdPump.clearDirectory(run);
             runOnUiThread(()->{if(nativeFirmware&&!vinCheck&&!isDestroyed())finishNativePresentation(run,endedMessage);});
             if(blocked!=null)runOnUiThread(()->{if(!isDestroyed()&&!isFinishing()&&generation==vehicleGeneration)FullSessionPrompt.offer(this,blocked,this::restartInFullSession);});
@@ -517,29 +541,28 @@ public final class ChipsoftUsbActivity extends Activity {
             connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);stop();status.setText("Adapter changed · reconnect to identify vehicle");return;
         }
         if(!running.compareAndSet(false,true))return;
+        mcpProcess=null;nativeStop.reset();sessionCleanupConfirmed=false;
         new Thread(()->probe(attached,false,identity,generation),"chipsoft-firmware").start();
     }
     void stopForSecurityHandoff(){
-        // SecurityAccessView waits for cleanup and reports timeout/failure separately.
-        // Register the intended stop before the native worker can report its exit.
-        if(health!=null)health.expectedStop();
-        nativeKey("stop");
+        // The same bounded native stop is used by the operator and security handoff.
+        stop();
     }
     void nativeKey(String code){
         File run=nativeDirectory;
-        if(!running.get() || cancelled || run==null)return;
+        if(!running.get() || cancelled || nativeStop.pending() || run==null)return;
         android.util.Log.i("OpenSaabPerf","KEY code="+code+" unix_ms="+System.currentTimeMillis());
         // Do not queue up delayed vehicle-menu actions behind a stalled guest.
         if(!keyPending.compareAndSet(false,true)){log("Wait for previous key");return;}
         try{keyWorker.execute(()->{
             try{
-                if(!running.get() || cancelled || nativeDirectory!=run)return;
+                if(!running.get() || cancelled || nativeStop.pending() || nativeDirectory!=run)return;
                 if(health!=null)health.input();
                 File dest=new File(run,"native-key.txt");
                 if(dest.exists()){log("Wait for previous key");return;}
                 File pending=new File(run,"native-key.tmp");
                 java.nio.file.Files.write(pending.toPath(),(code+"\n").getBytes(StandardCharsets.US_ASCII));
-                if(!running.get() || cancelled || nativeDirectory!=run){pending.delete();return;}
+                if(!running.get() || cancelled || nativeStop.pending() || nativeDirectory!=run){pending.delete();return;}
                 java.nio.file.Files.move(pending.toPath(),dest.toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE);
                 android.util.Log.i("OpenSaabPerf","KEY_PUBLISHED code="+code+" unix_ms="+System.currentTimeMillis());
             }catch(Exception e){log("Key input failed: "+e.getMessage());}
@@ -553,7 +576,36 @@ public final class ChipsoftUsbActivity extends Activity {
         status.setText(reason);showVehicle(true);updateWorkspace();
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
-    void stop(){if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);if(health!=null&&!unexpectedDisconnect)health.expectedStop();if(menuShortcut!=null)menuShortcut.cancel();if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);requests.cancel();pending=false;cancelled=true;vehicleGeneration++;pendingVehicleStart=null;showVehicle(true);closeSockets();}
+    void stop(){
+        // A late Stop must not replace an already-ended worker's real failure.
+        if(running.get()&&mcpProcess!=null&&!mcpProcess.isAlive()){requests.cancel();pending=false;pendingVehicleStart=null;return;}
+        if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");
+        if(continueDiagnostics!=null)continueDiagnostics.setEnabled(false);
+        if(health!=null&&!unexpectedDisconnect)health.expectedStop();
+        if(menuShortcut!=null)menuShortcut.cancel();
+        if(vehicleStartPrompt!=null){vehicleStartPrompt.dismiss();vehicleStartPrompt=null;}
+        if(connectionAttempt!=null)connectionAttempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);
+        requests.cancel();pending=false;pendingVehicleStart=null;showVehicle(true);
+        final File run=nativeDirectory;
+        if(running.get()&&run!=null&&!cancelled&&!unexpectedDisconnect){
+            if(nativeStop.pending())return;
+            try{
+                nativeStop.begin(SystemClock.elapsedRealtime());
+                File marker=new File(run,"native-stop.tmp");java.nio.file.Files.write(marker.toPath(),new byte[0]);
+                java.nio.file.Files.move(marker.toPath(),new File(run,"native-stop").toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                status.setText("Stopping original firmware · waiting for Chipsoft cleanup");
+                log("NATIVE_STOP_REQUEST grace_ms="+ChipsoftNativeStopGate.GRACE_MS+" bridge_kept_open=true");
+                Thread guard=new Thread(()->{
+                    try{Thread.sleep(ChipsoftNativeStopGate.GRACE_MS);}catch(InterruptedException e){Thread.currentThread().interrupt();}
+                    if(nativeDirectory==run&&running.get()&&nativeStop.awaitingQuit()&&nativeStop.expired(SystemClock.elapsedRealtime())){
+                        log("NATIVE_STOP_TIMEOUT protocol_cleanup_unconfirmed=true");cancelled=true;closeSockets();
+                    }
+                },"chipsoft-native-stop-deadline");guard.setDaemon(true);guard.start();return;
+            }catch(IOException e){log("Native Stop command failed: "+e.getMessage());}
+        }
+        // An idle stop must preserve the identified, clean continuation after import.
+        if(running.get()||pending){cancelled=true;vehicleGeneration++;closeSockets();}
+    }
     protected void onResume(){super.onResume();AndroidMcp.bind(this,mcpOwner);foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}
         if(pending && requests.pending(permissionEpoch) && selected!=null){

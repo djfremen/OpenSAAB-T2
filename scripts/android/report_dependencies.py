@@ -6,6 +6,21 @@ The resulting AAR resources/R classes are also included in command-line test APK
 import hashlib, json, os, shutil, subprocess, xml.etree.ElementTree as ET, zipfile
 from pathlib import Path
 
+def verify_artifacts(artifacts, lock):
+    """Fail closed on both resolver graph changes and changed AAR/JAR bytes."""
+    if lock.get('schema')!=1:raise ValueError('Unknown Android dependency lock schema')
+    expected={(x['coordinate'],x['filename']):x['sha256'] for x in lock['artifacts']}
+    actual={}
+    receipt=[]
+    for item in artifacts:
+        path=Path(item['path']);key=(item['coordinate'],path.name)
+        digest=hashlib.sha256(path.read_bytes()).hexdigest()
+        if key in actual and actual[key]!=digest:raise ValueError('Conflicting Android dependency bytes: '+str(key))
+        actual[key]=digest
+        receipt.append({**item,'filename':path.name,'bytes':path.stat().st_size,'sha256':digest})
+    if actual!=expected:raise ValueError('Resolved Android dependency inputs differ from report-dependencies.lock.json')
+    return receipt
+
 class ReportDependencies:
     def __init__(self, repo, output, env):
         self.repo, self.output, self.env = repo, output, env
@@ -19,6 +34,16 @@ class ReportDependencies:
                         '-PreportDependencyOutput='+str(manifest), '--console=plain'],
                        cwd=repo, env=resolver_env, check=True)
         artifacts = json.loads(manifest.read_text())
+        lock_path=repo/'android/tech2-app/report-dependencies.lock.json'
+        receipt=verify_artifacts(artifacts,json.loads(lock_path.read_text()))
+        retained=output/'report-inputs';retained.mkdir(exist_ok=True)
+        for item in receipt:
+            destination=retained/(item['coordinate'].replace(':','_')+'-'+item['filename'])
+            shutil.copy2(item['path'],destination)
+            item['retained_path']=str(destination.relative_to(output))
+        (output/'report-dependency-receipt.json').write_text(json.dumps({
+            'schema':1,'lock_sha256':hashlib.sha256(lock_path.read_bytes()).hexdigest(),
+            'artifacts':receipt},indent=2)+'\n')
         self.jars, self.resources, self.packages = [], [], []
         extracted = output/'report-libraries';shutil.rmtree(extracted,ignore_errors=True);extracted.mkdir()
         for path in dict.fromkeys(a['path'] for a in artifacts):
