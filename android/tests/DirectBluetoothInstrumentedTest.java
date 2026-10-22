@@ -53,7 +53,8 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    }
    if(cmd.equals("ATI")){
     if(mode.equals("mxp-cancel-repeat")&&readyRepeats==1){requested.countDown();return;}
-    reply="ATI\rELM327 v1.4b\r";
+    // Actual preview.35 hardware: ATI echoes; CR repeats return no ATI echo.
+    reply=(raw.isEmpty()?"\r":"ATI\r")+"ELM327 v1.4b\r";
     if((mode.equals("mxp-ati-once")&&atiAttempts==1&&readyRepeats==0)||mode.equals("mxp-stm-twice"))reply="TI\r?\r";
     if(mode.equals("mxp-fail-ati"))reply="ATI\rUnknown adapter";
     if(mode.equals("mxp-fail-repeat")&&readyRepeats==2)reply="ATI\r?";

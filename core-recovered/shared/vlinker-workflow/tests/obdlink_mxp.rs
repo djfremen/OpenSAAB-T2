@@ -4,8 +4,9 @@ use serde_json::{json, Value};
 const VIN: &str = "7E8 10 13 5A 90 59 53 33 46\r7E8 21 44 34 39 59 58 34 31\r7E8 22 30 30 30 30 30 31 00";
 // Exact AT rejection captured on Fire preview.34, all three opened connections.
 const CAPTURED_AT: &str = "AT\r?\r\r>";
-// Explicit identification fixture; physical provenance is recorded separately.
+// Echoed ATI and non-echoed CR reply captured on the physical MX+ in preview.35.
 const ATI_REPLY: &str = "ATI\rELM327 v1.4b\r\r>";
+const REPEATED_ATI_REPLY: &str = "\rELM327 v1.4b\r\r>";
 fn response(command: &str) -> String {
     let body = match command {
         "AT" => return CAPTURED_AT.into(),
@@ -36,7 +37,7 @@ fn run(mode: &str, changed: Option<(&str,&str)>) -> (Value,Vec<String>) {
         }
         let command=effect["command"].as_str().unwrap().to_owned();commands.push(command.clone());
         let logical=if command.is_empty() {assert_eq!(last,"ATI","CR must repeat only confirmed ATI");"ATI"} else {last=command.clone();&command};
-        let reply=changed.filter(|(c,_)|*c==logical).map(|(_,r)|r.to_string()).unwrap_or_else(||response(logical));
+        let reply=changed.filter(|(c,_)|*c==logical).map(|(_,r)|r.to_string()).unwrap_or_else(||if command.is_empty(){REPEATED_ATI_REPLY.into()}else{response(logical)});
         for part in reply.as_bytes().chunks(2) {effect=s.event(&json!({"op":"rx","bytes":part}));}
     }
     (effect,commands)
