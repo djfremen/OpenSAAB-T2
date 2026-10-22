@@ -310,7 +310,7 @@ public final class ChipsoftUsbActivity extends Activity {
         long epoch=requests.begin();if(manager.hasPermission(selected))start(selected,epoch);
         else {pending=true;permissionEpoch=epoch;Intent i=new Intent(permission).setPackage(getPackageName()).putExtra("epoch",epoch);manager.requestPermission(selected,PendingIntent.getBroadcast(this,(int)epoch,i,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT));log("Waiting for Android USB permission");}
     }
-    void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;mcpProcess=null;nativeStop.reset();sessionCleanupConfirmed=false;unexpectedDisconnect=false;long generation=vehicleGeneration;
+    void start(UsbDevice d,long epoch){if(!foreground || !requests.consume(epoch) || !running.compareAndSet(false,true))return;cancelled=false;mcpProcess=null;nativeDirectory=null;nativeStop.reset();sessionCleanupConfirmed=false;unexpectedDisconnect=false;long generation=vehicleGeneration;
         if(vinSummary!=null)vinSummary.setText("Reading VIN from vehicle…");
         if(engineCodes!=null)engineCodes.setText("Reading fresh VIN, then engine codes…");
         new Thread(()->probe(d,nativeFirmware || dtcRead,null,generation),"chipsoft-usb").start();}
@@ -345,10 +345,14 @@ public final class ChipsoftUsbActivity extends Activity {
                     if(iface.getInterfaceClass()==10 && iface.getAlternateSetting()==0){data=iface;for(int j=0;j<iface.getEndpointCount();j++){UsbEndpoint ep=iface.getEndpoint(j);if(ep.getType()==2){if(ep.getDirection()==128)rx=ep;else tx=ep;}}}
                 }
                 if(ctl==null || data==null || rx==null || tx==null || rx.getMaxPacketSize()!=64)throw new IOException("Unverified Chipsoft CDC layout");
+                checkStartupCancellation(generation);
                 progress.stage(ConnectionAttempt.Stage.USB_OPEN);
                 conn=manager.openDevice(d);if(conn==null)throw new IOException("USB open denied");
+                checkStartupCancellation(generation);
                 progress.stage(ConnectionAttempt.Stage.INTERFACE_CLAIM);
-                ctlClaim=conn.claimInterface(ctl,true);dataClaim=conn.claimInterface(data,true);if(!ctlClaim || !dataClaim)throw new IOException("USB interface claim failed");
+                ctlClaim=conn.claimInterface(ctl,true);
+                checkStartupCancellation(generation);
+                dataClaim=conn.claimInterface(data,true);if(!ctlClaim || !dataClaim)throw new IOException("USB interface claim failed");
                 // STM CDC reference skips line coding and DTR/RTS to avoid resetting it.
                 log("USB_OPEN "+d.getDeviceName()+" CDC; no line/control changes");
                 read=new UsbRequest();if(!read.initialize(conn,rx))throw new IOException("USB read initialization failed");ByteBuffer buffer=ByteBuffer.allocateDirect(64);
@@ -382,6 +386,7 @@ public final class ChipsoftUsbActivity extends Activity {
                 if(keyStatus)builder.environment().put("TECH2_CHIPSOFT_KEY_STATUS","1");
                 if(nativeFirmware){progress.stage(ConnectionAttempt.Stage.FIRMWARE_START);builder.environment().put("OPENSAAB_PERFORMANCE_DIR",run.getAbsolutePath());}
                 DemandStartup.configure(this,builder);
+                checkStartupCancellation(generation);
                 child=builder.redirectErrorStream(true).redirectOutput(new File(run,"rust.log")).start();mcpProcess=child;
                 client=DemandStartup.accept(this,server,builder,child,()->cancelled);client.setSoTimeout(4000);client.setTcpNoDelay(true);InputStream in=client.getInputStream();out=new PrintWriter(new OutputStreamWriter(client.getOutputStream(),StandardCharsets.US_ASCII),true);
                 if(!UsbBridgeCodec.readLine(in).equals("HELLO "+token))throw new IOException("Session authentication failed");out.println(dtcRead?"READY chipsoft-dtc":fullNative?"READY chipsoft-full-native":keyStatus?"READY chipsoft-key-status":vinCheck?"READY chipsoft-vin":audible?"READY chipsoft-audible":symbolOnly?"READY chipsoft-symbol-only":seeds?"READY chipsoft-seeds":nativeFirmware?"READY chipsoft-native":receiveTest?"READY chipsoft-receive":"READY chipsoft-identity");
@@ -430,7 +435,7 @@ public final class ChipsoftUsbActivity extends Activity {
             if(conn!=null){
                 boolean usbClean=true;
                 if(read!=null && queued){try{if(!read.cancel())usbClean=false;UsbRequest done=conn.requestWait(300);if(done!=read)usbClean=false;}catch(Exception e){usbClean=false;}}
-                if(receiveTest && !quit && tx!=null){clean=false;for(String hex:new String[]{"050004000000880008800000","050004000000050005000000","2000000000000000"})try{byte[] b=UsbBridgeCodec.unhex(hex);conn.bulkTransfer(tx,b,b.length,200);}catch(Exception ignored){}log("Emergency channel close sent; replies unverified");}
+                if(receiveTest && !quit && tx!=null && child!=null){clean=false;for(String hex:new String[]{"050004000000880008800000","050004000000050005000000","2000000000000000"})try{byte[] b=UsbBridgeCodec.unhex(hex);conn.bulkTransfer(tx,b,b.length,200);}catch(Exception ignored){}log("Emergency channel close sent; replies unverified");}
                 if(dataClaim)usbClean&=conn.releaseInterface(data);if(ctlClaim)usbClean&=conn.releaseInterface(ctl);conn.close();if(read!=null)read.close();usbRelease=usbClean?"succeeded":"failed";clean&=usbClean;
             }
             if(out!=null && quit)out.println(clean?"CLOSED":"ERROR cleanup");
@@ -476,21 +481,28 @@ public final class ChipsoftUsbActivity extends Activity {
             if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
             if(dtcRead && quit && clean && !cancelled && generation==vehicleGeneration)runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed() && continueDiagnostics!=null)continueDiagnostics.setEnabled(true);});
             final VehicleIdentity ready=identified;
-            if(vinCheck)runOnUiThread(()->{
-                if(cancelled || generation!=vehicleGeneration || isFinishing() || isDestroyed())return;
-                if(ready==null){
-                    vinSummary.setText("VIN unavailable · no vehicle session started");
-                    if(compatibilityNotice!=null)return;
-                    new AlertDialog.Builder(this).setTitle("Could not identify vehicle")
-                        .setMessage("Check the adapter connection and turn the ignition ON, then retry. A fresh VIN is needed to keep this session and its reports attached to the correct vehicle.")
-                        .setNeutralButton("Report problem",(dialog,which)->startActivity(new Intent(this,SupportReportActivity.class)))
-                        .setPositiveButton("Retry",(dialog,which)->discover()).setNegativeButton("Back",(dialog,which)->{stop();finish();}).show();return;
-                }
-                vehicle=ready;showVehicle(false);
-                if(identifyFirst){pendingVehicleStart=()->startIdentified(d,ready,generation);if(foreground){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}}
-                if(onlineDetails)enrichVehicle(ready,run,generation);
-            });
+            if(vinCheck)runOnUiThread(vinResultCallback(ready,generation,identifyFirst,run,compatibilityNotice,()->startIdentified(d,ready,generation)));
         }
+    }
+    /** The actual queued VIN result: generation admission applies before creating a handoff. */
+    Runnable vinResultCallback(VehicleIdentity ready,long generation,boolean identifyFirst,File run,AdapterCompatibilityNotice.Notice compatibilityNotice,Runnable launchFirmware){
+        return ()->{
+            if(cancelled || generation!=vehicleGeneration || isFinishing() || isDestroyed())return;
+            if(ready==null){
+                vinSummary.setText("VIN unavailable · no vehicle session started");
+                if(compatibilityNotice!=null)return;
+                new AlertDialog.Builder(this).setTitle("Could not identify vehicle")
+                    .setMessage("Check the adapter connection and turn the ignition ON, then retry. A fresh VIN is needed to keep this session and its reports attached to the correct vehicle.")
+                    .setNeutralButton("Report problem",(dialog,which)->startActivity(new Intent(this,SupportReportActivity.class)))
+                    .setPositiveButton("Retry",(dialog,which)->discover()).setNegativeButton("Back",(dialog,which)->{stop();finish();}).show();return;
+            }
+            vehicle=ready;showVehicle(false);
+            if(identifyFirst){pendingVehicleStart=launchFirmware;if(foreground){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}}
+            if(onlineDetails)enrichVehicle(ready,run,generation);
+        };
+    }
+    void checkStartupCancellation(long generation)throws IOException{
+        if(cancelled||nativeStop.pending()||generation!=vehicleGeneration)throw new IOException("Startup cancelled");
     }
     void saveEngineCodes(String report,VehicleIdentity identity,File run)throws Exception{
         org.json.JSONObject result=new org.json.JSONObject(report);
@@ -541,11 +553,12 @@ public final class ChipsoftUsbActivity extends Activity {
             connectionFailure(ConnectionAttempt.Reason.DISCONNECTED);stop();status.setText("Adapter changed · reconnect to identify vehicle");return;
         }
         if(!running.compareAndSet(false,true))return;
-        mcpProcess=null;nativeStop.reset();sessionCleanupConfirmed=false;
+        mcpProcess=null;nativeDirectory=null;nativeStop.reset();sessionCleanupConfirmed=false;
         new Thread(()->probe(attached,false,identity,generation),"chipsoft-firmware").start();
     }
     void stopForSecurityHandoff(){
-        // The same bounded native stop is used by the operator and security handoff.
+        // Existing, clean saved-data processing must not revoke its identified continuation.
+        if(!running.get()&&!pending)return;
         stop();
     }
     void nativeKey(String code){
@@ -577,6 +590,8 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void closeSockets(){try{if(client!=null)client.close();}catch(IOException ignored){}try{if(server!=null)server.close();}catch(IOException ignored){}}
     void stop(){
+        // Revoke queued startup effects even in the gap after VIN cleanup set running=false.
+        vehicleGeneration++;pendingVehicleStart=null;requests.cancel();pending=false;
         // A late Stop must not replace an already-ended worker's real failure.
         if(running.get()&&mcpProcess!=null&&!mcpProcess.isAlive()){requests.cancel();pending=false;pendingVehicleStart=null;return;}
         if(adapterSummary!=null&&adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");
@@ -604,7 +619,7 @@ public final class ChipsoftUsbActivity extends Activity {
             }catch(IOException e){log("Native Stop command failed: "+e.getMessage());}
         }
         // An idle stop must preserve the identified, clean continuation after import.
-        if(running.get()||pending){cancelled=true;vehicleGeneration++;closeSockets();}
+        if(running.get()){cancelled=true;closeSockets();}
     }
     protected void onResume(){super.onResume();AndroidMcp.bind(this,mcpOwner);foreground=true;
         if(pendingVehicleStart!=null){Runnable launch=pendingVehicleStart;pendingVehicleStart=null;launch.run();}

@@ -1,5 +1,11 @@
 # Android ARM64 session safety — preview.31
 
+Historical status: **rejected before installation** on October 22. A subsequent
+source review found that a queued VIN-success callback could start firmware after
+Stop during the worker-to-UI handoff gap. Its successfully built artifacts and
+receipts remain immutable; no installed or physical qualification is claimed.
+The successor is [preview.32](ANDROID_SESSION_SAFETY_PREVIEW32_2026-10-22.md).
+
 This candidate follows the October 22 four-adapter review of preview.30.
 It is prepared for another owner test round. Software checks, package identity,
 installed verification and physical qualification are separate records.

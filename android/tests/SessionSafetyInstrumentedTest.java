@@ -36,8 +36,21 @@ public final class SessionSafetyInstrumentedTest extends Instrumentation {
                 check(new File(run,"native-stop").isFile()&&chip.nativeStop.pending(),"General Stop omitted native marker");
                 check(!chip.cancelled&&!local.isClosed()&&!server.isClosed(),"Stop destroyed bridge before cleanup");
                 check(!chip.sendMenuKey(0x10),"Stopping accepted new firmware input");chip.stop();
-                chip.nativeStop.quitReceived();chip.running.set(false);chip.sessionCleanupConfirmed=true;chip.stopForSecurityHandoff();
-                check(!chip.cancelled&&chip.sessionCleanupConfirmed,"Clean idle handoff cancelled Continue");chip.closeSockets();});
+                chip.nativeStop.quitReceived();chip.running.set(false);chip.sessionCleanupConfirmed=true;long generation=chip.vehicleGeneration;chip.stopForSecurityHandoff();
+                check(!chip.cancelled&&chip.sessionCleanupConfirmed&&generation==chip.vehicleGeneration,"Clean idle handoff cancelled Continue");chip.closeSockets();});
+            VehicleIdentity freshVin=new VehicleIdentity("YS3FD49Y041000000",Instant.now().toString(),"queued synthetic VIN",2004,"not_requested","","","","","");
+            int[] launches={0};
+            for(boolean foreground:new boolean[]{false,true}){
+                main(()->{chip.foreground=foreground;chip.running.set(false);chip.cancelled=false;chip.nativeStop.reset();chip.vehicle=null;chip.pendingVehicleStart=null;
+                    long completedGeneration=chip.vehicleGeneration;
+                    Runnable callback=chip.vinResultCallback(freshVin,completedGeneration,true,run,null,()->launches[0]++);
+                    new Handler(Looper.getMainLooper()).post(callback); // Real production callback queued behind this Stop.
+                    chip.stop();check(chip.vehicleGeneration!=completedGeneration,"Idle Stop did not revoke queued VIN generation");
+                    try{chip.checkStartupCancellation(completedGeneration);throw new AssertionError("Cancelled startup admitted USB/child effects");}catch(IOException expected){}
+                });waitForIdleSync();
+                main(()->check(chip.pendingVehicleStart==null&&launches[0]==0&&chip.vehicle==null&&!chip.running.get(),"Queued VIN callback created a handoff or launched firmware after Stop"));
+            }
+            main(()->{chip.foreground=true;chip.sessionCleanupConfirmed=true;chip.cancelled=false;long generation=chip.vehicleGeneration;chip.vehicle=freshVin;chip.stopForSecurityHandoff();check(generation==chip.vehicleGeneration&&chip.vehicle==freshVin&&!chip.cancelled,"Idle security handoff changed identified continuation");});
             FirmwareStore.writeJson(new File(run,"adapter-diagnostics.json"),new JSONObject().put("protocol_cleanup","succeeded"));
             check("succeeded".equals(NativeCleanupEvidence.protocol(run)),"Final protocol success lost");
             ConnectionAttempt attempt=new ConnectionAttempt(chip,ConnectionAttempt.Adapter.CHIPSOFT);attempt.bind(run,"full_native","original_menus");attempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.USER_STOP);attempt.cleanup(5,false,"succeeded","failed");
@@ -81,7 +94,7 @@ public final class SessionSafetyInstrumentedTest extends Instrumentation {
             main(()->{Button next=home.getWindow().getDecorView().findViewWithTag("preview-continue");if(next!=null)next.performClick();});waitForIdleSync();
             String[] shortcuts={"Read engine codes — HS-CAN","ECU information","Read DTC","Clear DTC","Engine Data","Reset misfire and knock counters"};
             main(()->{try{field(home,"running").setBoolean(home,false);Dialog idle=home.showActions();for(String label:shortcuts)check(text(idle.getWindow().getDecorView(),label),"Idle shortcut missing: "+label);idle.dismiss();field(home,"running").setBoolean(home,true);Dialog running=home.showActions();for(String label:shortcuts)check(!text(running.getWindow().getDecorView(),label),"Active new-connection shortcut: "+label);check(text(running.getWindow().getDecorView(),"Get security access")&&text(running.getWindow().getDecorView(),"Saved DTC reports"),"Working common action hidden");running.dismiss();field(home,"running").setBoolean(home,false);}catch(Exception e){throw new RuntimeException(e);}});
-            output.putString("stream","PASS: Chipsoft native Stop preserves loopback bridge and blocks keys; idle security handoff preserves Continue; late-stop, forced and cleanup failures persist; final health failure overrides expected Stop with explicit review; MDI carrier success cannot hide native failure/force; running/closing/stopped imported UI callbacks; six MainActivity new-connection actions hidden only while active. Synthetic only, no adapter/API/native launch or vehicle qualification.\n");
+            output.putString("stream","PASS: queued production VIN callback cannot create pending handoff or launch after idle Stop, foreground/background; cancelled startup gate blocks USB/child effects; idle security handoff preserves exact identity/generation; Chipsoft native Stop preserves loopback bridge and blocks keys; late-stop, forced and cleanup failures persist; final health failure overrides expected Stop; MDI carrier cannot hide native failure/force; running/closing/stopped imported UI callbacks and six active-menu guards. Synthetic only, no adapter/API/native launch or vehicle qualification.\n");
         }catch(Throwable error){code=0;StringWriter trace=new StringWriter();error.printStackTrace(new PrintWriter(trace));output.putString("stream","FAIL: "+trace+"\n");}
         finally{if(view!=null){SecurityAccessView v=view;main(v::close);}if(active!=null){Activity a=active;main(a::finish);}if(peer!=null)try{peer.close();}catch(IOException ignored){}
             try{if(card!=null){if(backup==null)card.delete();else{Files.move(backup.toPath(),card.toPath(),StandardCopyOption.REPLACE_EXISTING);}}if(receiptFile!=null){if(previousReceipt==null)receiptFile.delete();else Files.write(receiptFile.toPath(),previousReceipt);}}catch(IOException error){code=0;output.putString("stream","FAIL: synthetic fixture restoration failed: "+error);}

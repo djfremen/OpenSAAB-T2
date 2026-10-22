@@ -1937,7 +1937,7 @@ fn run(attempt: u64) -> Result<(u8, bool), (u8, String)> {
         q(&boot_path.to_string_lossy()), q(&card_path.to_string_lossy()), q(&opsys_path.to_string_lossy()), bus.host_cancelled_operations);
     let mut report: serde_json::Value = serde_json::from_str(&report).expect("generated runtime report");
     report["crash_diagnostics"] = crash_diagnostics;
-    report["observations"] = serde_json::json!({"uart_reply_timeouts":bus.trace.uart_reply_timeouts,"original_firmware_post_failures":bus.trace.observed_post_failures,"post_result_modified":false,"counter_scope":"single_native_trace_stream","timeouts_harmless":null,"manual_screen_capture":"latest_plus_final_and_faults; text_history_in_console"});
+    report["observations"] = serde_json::json!({"uart_reply_timeouts":bus.trace.uart_reply_timeouts,"original_firmware_post_failures":bus.trace.observed_post_failures,"post_result_override_requested":opts.fast_boot||options::env_flag("TECH2_FAKE_POST"),"counter_scope":"single_native_trace_stream","timeouts_harmless":null,"manual_screen_capture":"latest_plus_final_and_faults; text_history_in_console"});
     report["session_outcome"] = serde_json::json!({"process":outcome.name(),"operation":"not_evaluated","workflow_qualified":false,"native_cleanup_failures":cleanup_failures,"host_release":"reported_separately"});
     report["emulation_evidence"] = opensaab_session_evidence::snapshot(
         outcome.name(), &stop, &text, report.get("candi"));

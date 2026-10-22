@@ -1354,7 +1354,7 @@ fn run(attempt: u64, retained: &mut Option<(tech2_emu::capture::CaptureStorage, 
     report["program_identity"] = serde_json::json!({"name":tech2_emu::product_identity::display_name(),"version":*tech2_emu::product_identity::VERSION,"architecture":tech2_emu::product_identity::architecture()});
     report["psos"] = bus.psos.snapshot();
     report["connection"] = bus.connection_snapshot(bus.candi_link.as_ref().is_some_and(|link|link.has_live_clock()));
-    report["observations"] = serde_json::json!({"uart_reply_timeouts":bus.trace.uart_reply_timeouts,"original_firmware_post_failures":bus.trace.observed_post_failures,"post_result_modified":false,"counter_scope":"single_native_trace_stream","timeouts_harmless":null,"manual_screen_capture":"latest_plus_final_and_faults; text_history_in_console"});
+    report["observations"] = serde_json::json!({"uart_reply_timeouts":bus.trace.uart_reply_timeouts,"original_firmware_post_failures":bus.trace.observed_post_failures,"post_result_override_requested":opts.fast_boot||options::env_flag("TECH2_FAKE_POST"),"counter_scope":"single_native_trace_stream","timeouts_harmless":null,"manual_screen_capture":"latest_plus_final_and_faults; text_history_in_console"});
     report["session_outcome"] = serde_json::json!({"process":outcome.name(),"operation":"not_evaluated","workflow_qualified":false,"native_cleanup_failures":cleanup_failures,"host_release":"reported_separately"});
     report["emulation_evidence"] = opensaab_session_evidence::snapshot(
         outcome.name(), &stop, &text, report.get("candi"));

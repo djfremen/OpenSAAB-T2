@@ -29,7 +29,7 @@ public final class SecurityAccessInstrumentedTest extends Instrumentation {
             final ChipsoftUsbActivity a=activity;waitForIdleSync();
             // Exercise the real handoff stop binding, without USB or a native process.
             File handoff=Files.createTempDirectory(a.getCacheDir().toPath(),"handoff-test-").toFile();
-            main(()->{a.health.begin(handoff);a.stopForSecurityHandoff();a.health.ended();});
+            main(()->{a.nativeDirectory=handoff;a.running.set(true);a.health.begin(handoff);a.stopForSecurityHandoff();a.running.set(false);a.nativeDirectory=null;a.nativeStop.reset();a.health.ended();});
             java.lang.reflect.Field healthDialog=EmulatorHealthMonitor.class.getDeclaredField("dialog");healthDialog.setAccessible(true);
             check(healthDialog.get(a.health)==null,"Expected security handoff raised crash prompt");
             org.json.JSONArray events=SessionDiagnostics.read(handoff);
