@@ -10,6 +10,8 @@ public final class SessionModePickerInstrumentedTest extends Instrumentation {
  private void ui(Runnable action){final Throwable[] error={null};runOnMainSync(()->{try{action.run();}catch(Throwable e){error[0]=e;}});if(error[0]!=null)throw new AssertionError(error[0]);}
  public void onStart(){Bundle result=new Bundle();Activity host=null;try{
   DisposableEmulator.require(getTargetContext());DisposableEmulator.requireInstalledVersion(getTargetContext(),arguments);
+  // The Ready choice is remembered; start this check from a first-run state.
+  getTargetContext().getSharedPreferences("session_mode",Context.MODE_PRIVATE).edit().clear().commit();
   host=startActivitySync(new Intent().setClassName(getTargetContext(),"com.opensaab.tech2.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));final Activity activity=host;
   waitForIdleSync();ui(()->{View continueButton=activity.findViewById(android.R.id.content).findViewWithTag("preview-continue");if(continueButton!=null)continueButton.performClick();});
   ui(()->{

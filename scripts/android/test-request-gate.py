@@ -13,6 +13,8 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/shared/com/opensaab/usb/RequestGate.java'),
         str(repo/'android/shared/com/opensaab/usb/SessionModes.java'),
         str(repo/'android/tests/SessionModesTest.java'),
+        str(repo/'android/shared/com/opensaab/usb/PolicyBlock.java'),
+        str(repo/'android/tests/PolicyBlockTest.java'),
         str(repo/'android/shared/com/opensaab/usb/BluetoothFirmwareHandoff.java'),
         str(repo/'android/shared/com/opensaab/usb/MxSessionOutcome.java'),
         str(repo/'android/shared/com/opensaab/usb/MxWriteAccess.java'),
@@ -82,6 +84,7 @@ with tempfile.TemporaryDirectory(prefix='opensaab-request-gate-') as output:
         str(repo/'android/tests/NativeCommandGateTest.java')],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.RequestGateTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.SessionModesTest'],check=True)
+    subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.PolicyBlockTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.BluetoothFirmwareHandoffTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.MxSessionOutcomeTest'],check=True)
     subprocess.run([str(jdk/'bin/java'),'-cp',output,'com.opensaab.usb.MxWriteAccessTest'],check=True)

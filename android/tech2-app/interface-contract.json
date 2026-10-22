@@ -573,7 +573,7 @@
       },
       {
         "id": "reset",
-        "label": "Clear offset · refresh access"
+        "label": "Reset security data (INIT_AUTH)"
       }
     ],
     "rule": "Entries remain visible when a platform lacks a capability; show its specific reason. Visibility is not implementation or qualification. Android remains the behavior reference; no offline session invents a VIN or live diagnostic result.",
@@ -1440,5 +1440,17 @@
     "guards": "Retained socket is never reported closed. Default discovery still requires transport closure. Only opt-in MX+ native intent accepts attempt-bound retained proof with exact one VIN/no replay and confirmed protocol stop. No fallback reconnect if adoption fails. Cancellation/background/stale/mismatch/unclaimed callbacks close retained resources. Native role/authority and original confirmations unchanged.",
     "evidence": "preview.25 repeated failure was 8161ms before process launch after successful VIN. Source and synthetic tests do not qualify the installed physical workflow; exact native archives and live results recorded separately.",
     "other_targets": "Shared core proof source adoption and Android ARM64 binding are scoped separately; ARM32/macOS/iOS/Windows/Linux installed and physical qualification pending."
+  },
+  "android_session_modes_preview27": {
+    "version": "0.1.1-preview.27",
+    "date": "2026-10-21",
+    "scope": "Android Java only: session-mode clarity and recovery after the Oct 21 Fire HD 10 four-adapter garage tests. Native components reused unchanged from preview.26.",
+    "nano_full": "VCX Nano Full session is available on every build; the FLAG_DEBUGGABLE requirement is removed. Exclusive-profile and adapter-test conflicts still reject it.",
+    "mode_visibility": "One SessionModeBadge on the Ready chooser, the main firmware workspace and every adapter screen. FULL SESSION is a warning-colored badge stating vehicle changes are possible; READ-ONLY states changes are blocked. Connect and start names the mode. The Ready choice is remembered; first run stays Read-only.",
+    "read_only_refusal": "A Read-only guard refusal (Chipsoft profile=Read, Nano collection profile) is recognized from the existing log wording, explained, and offers Restart in Full session. Nothing restarts without that tap; the VIN is identified again.",
+    "security_resume": "MX+ Continue firmware reconnects the same adapter in Full (or the running Clear/Reset mode) with VIN re-check; no automatic Bluetooth reconnect after import. Nano Continue firmware without a confirmed session in that screen opens a fresh Full connection instead of a dead end.",
+    "security_reset": "Reset to INIT_AUTH is on every security panel (existing NoMoreGlobal SsaCardReset with backup and receipt).",
+    "transport_reporting": "Bluetooth connect failures keep the watchdog/real reason. MDI USB detach is recorded as DISCONNECTED, not USER_STOP; crash summary reads native/.",
+    "qualification": "Source, javac against android-36 and test-request-gate pass. Not built, installed or vehicle-tested."
   }
 }

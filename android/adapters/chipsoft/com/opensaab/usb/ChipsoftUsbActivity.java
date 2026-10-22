@@ -69,8 +69,7 @@ public final class ChipsoftUsbActivity extends Activity {
         root.setOnApplyWindowInsetsListener((v,i)->{v.setPadding(SessionStyle.dp(this,12),i.getSystemWindowInsetTop()+SessionStyle.dp(this,8),SessionStyle.dp(this,12),i.getSystemWindowInsetBottom()+SessionStyle.dp(this,8));return i;});
         root.addView(new BrandHeader(this,"OpenSAAB T2 · Chipsoft"));
         if(nativeFirmware){
-            modeLabel=new TextView(this);modeLabel.setTextSize(12);
-            modeLabel.setText(fullNative?"Mode: Full native control":seeds?"Mode: Security-data collection":keyStatus?"Mode: Key-status test":(symbolOnly || audible)?"Mode: BCM reminder operation":"Mode: Read-only diagnostics");
+            modeLabel=new TextView(this);modeLabel.setTag(SessionModeBadge.TAG);applyModeLabel();
             root.addView(modeLabel);
         }
         TextView appIdentity=new TextView(this);appIdentity.setText(AppUpdates.identity(this));root.addView(appIdentity);
@@ -144,7 +143,9 @@ public final class ChipsoftUsbActivity extends Activity {
     }
     void updateWorkspace(){
         if(workspace==null)return;
-        workspace.mode(seeds?"Session mode: Security-data collection":keyStatus?"Session mode: Key-status test":(symbolOnly||audible)?"Session mode: BCM reminder operation":(fullNative?SessionModes.Mode.FULL:SessionModes.Mode.READ).badge());
+        if(keyStatus)workspace.mode("KEY-STATUS TEST · Ignition key check only",false);
+        else if(symbolOnly||audible)workspace.mode("BCM REMINDER OPERATION · One original reset only",true);
+        else workspace.mode(seeds?SessionModes.Mode.SEEDS:fullNative?SessionModes.Mode.FULL:SessionModes.Mode.READ,false,true);
         String heading=vehicle==null?"Chipsoft · no vehicle identified":(running.get()?"Vehicle · ":"Last vehicle · ")+vehicle.modelYear+" · "+vehicle.platform;
         String security="";
         if(securityAccess!=null){TextView state=securityAccess.findViewWithTag("security-state");security=securityAccess.busy()?"Security: processing · details":state.getText().toString();}
@@ -211,6 +212,21 @@ public final class ChipsoftUsbActivity extends Activity {
         if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
         startActivity(next);finish();
     }
+    /** Same adapter, new Full-session screen; the vehicle VIN is identified again. */
+    void restartInFullSession(){
+        if(running.get()){Toast.makeText(this,"USB is still closing. Retry when the session stops.",Toast.LENGTH_LONG).show();return;}
+        getSharedPreferences("adapter_settings",MODE_PRIVATE).edit().putBoolean("chipsoft_restricted",false).apply();
+        Intent next=new Intent(this,ChipsoftUsbActivity.class).putExtra("full_native",true).putExtra("auto_start",true)
+            .putExtra(SecurityCollectionMode.EXTRA,SecurityCollectionMode.from(getIntent())).putExtra(SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(SecurityCollectionMode.PLATFORM_EXTRA));
+        if(selected!=null)next.putExtra("usb_device_name",selected.getDeviceName());
+        startActivity(next);finish();
+    }
+    void applyModeLabel(){
+        if(modeLabel==null)return;
+        if(keyStatus)SessionModeBadge.applyCustom(modeLabel,"KEY-STATUS TEST · Ignition key check only",false);
+        else if(symbolOnly||audible)SessionModeBadge.applyCustom(modeLabel,"BCM REMINDER OPERATION · One original reset only",true);
+        else SessionModeBadge.apply(modeLabel,fullNative?SessionModes.Mode.FULL:seeds?SessionModes.Mode.SEEDS:SessionModes.Mode.READ,false);
+    }
     void resumeSecurityFirmware(){
         if(running.get()||cancelled||isFinishing()||isDestroyed())return;
         final UsbDevice device=selected;
@@ -230,7 +246,7 @@ public final class ChipsoftUsbActivity extends Activity {
             seeds=false;fullNative=true;
             getIntent().removeExtra("native_seeds");getIntent().putExtra("full_native",true);
             securityAccess.returnedToFirmware();
-            modeLabel.setText("Mode: Full native control");
+            applyModeLabel();if(workspace!=null)workspace.mode(SessionModes.Mode.FULL,false,true);
             adapterVersion=null;adapterSummary.setText("Chipsoft Pro firmware: not detected");
             connectionAttempt=new ConnectionAttempt(this,ConnectionAttempt.Adapter.CHIPSOFT);
             connectionAttempt.device(attached.getVendorId(),attached.getProductId());
@@ -406,7 +422,12 @@ public final class ChipsoftUsbActivity extends Activity {
             try{File result=new File(run,"result.json");if(quit && clean && result.length()>0){String report=new String(java.nio.file.Files.readAllBytes(result.toPath()),StandardCharsets.UTF_8);log(report);if(dtcRead && !cancelled)saveEngineCodes(report,identity,run);if(vinCheck){identified=VehicleSession.fromProbe(new org.json.JSONObject(report));}}}catch(Exception e){if(dtcRead)clean=false;log("Result read failed: "+e.getMessage());}
             if(symbolOnly || audible){new File(getFilesDir(),audible?"chipsoft-audible-authority.json":"chipsoft-symbol-authority.json").delete();new File(getFilesDir(),"firmware/card-authorized.bin").delete();}
             progress.cleanup(childExit,forcedTermination,usbRelease,"unknown");
-            if(!clean && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
+            // Read-only refusals end the native run; explain them and offer Full instead of a generic stop.
+            // Offer the restart only after a confirmed USB release and a normal child exit.
+            final PolicyBlock blocked=nativeFirmware&&!vinCheck&&!fullNative&&!seeds&&!keyStatus&&!symbolOnly&&!audible&&!cancelled&&!unexpectedDisconnect&&!forcedTermination&&"succeeded".equals(usbRelease)?PolicyBlock.scan(new File(run,"rust.log")):null;
+            if(blocked!=null)log("POLICY_BLOCKED adapter=chipsoft service="+blocked.service+" can_id="+blocked.canId+" profile=Read vehicle_tx=false");
+            // A policy stop already recorded the process exit; don't stack a cleanup-failure report on the Full prompt.
+            if(!clean && !cancelled && blocked==null){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.CLEANUP_FAILED);showConnectionReport();}
             if(vinCheck && identified==null && !cancelled){progress.finish(ConnectionAttempt.Outcome.FAILED,ConnectionAttempt.Reason.VIN_UNAVAILABLE);showConnectionReport();}
             if(quit && clean && !identifyFirst && (!vinCheck || identified!=null))progress.finish(ConnectionAttempt.Outcome.COMPLETED,ConnectionAttempt.Reason.NONE);
             closeSockets();if(firmwareLease!=null)firmwareLease.close();
@@ -419,12 +440,14 @@ public final class ChipsoftUsbActivity extends Activity {
                 catch(Exception e){log("Could not save vehicle identity");identified=null;}
             }
             if(nativeFirmware&&!vinCheck&&health!=null){
+                if(blocked!=null)health.expectedStop();else
                 if(compatibilityNotice!=null&&!cancelled)health.endedCompatibility(compatibilityNotice);else if(unexpectedDisconnect)health.ended("Chipsoft USB disconnected during the operation. Last firmware screen and evidence were retained.","Chipsoft disconnected");else if(cancelled||quit&&clean)health.expectedStop();else {String explanation=TransportFailure.from(run);health.ended(explanation==null?"The adapter session ended without a confirmed successful completion. No ECU result was assumed.":explanation,explanation==null?"Live adapter stopped":"Single-wire CAN wake-up failed");}
             }
             running.set(false);
-            final String endedMessage=unexpectedDisconnect?"Chipsoft disconnected · operation interrupted; last screen saved":cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
+            final String endedMessage=blocked!=null?blocked.status():unexpectedDisconnect?"Chipsoft disconnected · operation interrupted; last screen saved":cancelled?"Session stopped":quit&&clean?"Session ended":TransportFailure.from(run)!=null?"Single-wire CAN wake-up failed":"Live adapter stopped · operation not completed";
             if(lcdPump!=null)lcdPump.clearDirectory(run);
             runOnUiThread(()->{if(nativeFirmware&&!vinCheck&&!isDestroyed())finishNativePresentation(run,endedMessage);});
+            if(blocked!=null)runOnUiThread(()->{if(!isDestroyed()&&!isFinishing()&&generation==vehicleGeneration)FullSessionPrompt.offer(this,blocked,this::restartInFullSession);});
             runOnUiThread(()->{if(!isDestroyed()&&!isFinishing()&&generation==vehicleGeneration){if(compatibilityNotice!=null&&!cancelled){adapterSummary.setText(compatibilityNotice.title+" · details in Console");if(foreground&&!running.get()&&(!nativeFirmware||vinCheck))AdapterCompatibilityNotice.show(this,compatibilityNotice);}else if(adapterVersion!=null)adapterSummary.setText("Chipsoft Pro firmware: "+adapterVersion+" · last detected");}});
             if(dtcRead && (!quit || !clean) && !cancelled)runOnUiThread(()->{if(engineCodes!=null)engineCodes.setText("Engine-code read failed or report incomplete. No confirmed code list. Retry or use Report connection problem.");});
             if(dtcRead && quit && clean && !cancelled && generation==vehicleGeneration)runOnUiThread(()->{if(!cancelled && generation==vehicleGeneration && !isDestroyed() && continueDiagnostics!=null)continueDiagnostics.setEnabled(true);});

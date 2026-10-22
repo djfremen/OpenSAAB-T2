@@ -21,11 +21,10 @@ public final class NanoFullNativeGateTest {
         check(!NativeCommandGate.fullNative(NanoKeyStatusGateTest.wire(b)));
     }
     public static void main(String[] args)throws Exception{
-        check(NativeCommandGate.fullNativeModeAllowed(true,false,false));
-        check(!NativeCommandGate.fullNativeModeAllowed(false,false,false));
-        check(!NativeCommandGate.fullNativeModeAllowed(true,true,false));
-        check(!NativeCommandGate.fullNativeModeAllowed(true,false,true));
-        check(!NativeCommandGate.fullNativeModeAllowed(true,true,true));
+        check(NativeCommandGate.fullNativeModeAllowed(false,false));
+        check(!NativeCommandGate.fullNativeModeAllowed(true,false));
+        check(!NativeCommandGate.fullNativeModeAllowed(false,true));
+        check(!NativeCommandGate.fullNativeModeAllowed(true,true));
         // The explicit mode admits original security/Add frames; default Read and Seeds do not.
         int[][] commands={{4,0x27,2,0x12,0x34,0,0,0},{4,0x3b,1,0x99,0,0,0,0},
             {3,0xae,3,2,0,0,0,0},{1,4,0,0,0,0,0,0},

@@ -63,12 +63,17 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         buttons=new LinearLayout(activity);LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(-1,SessionStyle.dp(activity,48));buttonParams.topMargin=SessionStyle.dp(activity,8);addView(buttons,buttonParams);
         action=new Button(activity);action.setTag("security-action");action.setOnClickListener(v->activate());buttons.addView(action,new LinearLayout.LayoutParams(0,-1,1));SessionStyle.row(buttons);
         Button fresh=new Button(activity);fresh.setText("Collect fresh data");fresh.setTag("security-fresh");fresh.setOnClickListener(v->confirmCollection());buttons.addView(fresh,new LinearLayout.LayoutParams(0,-1,1));SessionStyle.row(buttons);
+        // Every adapter screen gets the same stopped-session reset to INIT_AUTH (NoMoreGlobal clear).
+        addResetAction(()->SecurityReset.show(activity,running));
         setVisibility(GONE);
     }
     public void addResetAction(Runnable reset){
-        Button clear=new Button(activity);clear.setText("Clear offset");clear.setOnClickListener(v->reset.run());
-        clear.setContentDescription("Clear offset — collect fresh security data");buttons.addView(clear);SessionStyle.row(buttons);
+        Button clear=new Button(activity);clear.setText("Reset to INIT_AUTH");clear.setTag("security-reset");clear.setOnClickListener(v->reset.run());
+        clear.setContentDescription("Reset saved security data to INIT_AUTH before a fresh collection");buttons.addView(clear,new LinearLayout.LayoutParams(0,-1,1));SessionStyle.row(buttons);
     }
+    private boolean autoResume=true;
+    /** Bluetooth: never reconnect automatically after import; the operator taps Continue firmware. */
+    public void manualResume(){autoResume=false;}
     public boolean busy(){return busy;}
     public boolean readyToProcess(){return collection&&transferSeen&&!imported&&!busy&&seedsReady();}
     private boolean seedsReady(){try{SsaData.validateInput(selectedSsa);return true;}catch(Exception invalid){return false;}}
@@ -214,10 +219,12 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 activity.runOnUiThread(()->{
                     refreshGeneration++;busy=false;manualCollection=false;collection=false;transferSeen=false;navigator=null;imported=true;
                     if(!closed&&session.get()==run){
-                        SessionDiagnostics.record(run,SessionDiagnostics.Event.RESTART_REQUESTED);
-                        show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
-                        android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
-                        resume.run();
+                        if(autoResume){
+                            SessionDiagnostics.record(run,SessionDiagnostics.Event.RESTART_REQUESTED);
+                            show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
+                            android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
+                            resume.run();
+                        }else show("[POST-AUTH] Security data imported. Tap Continue firmware to reconnect and return to the original firmware in Full session. The VIN is checked again.","Continue firmware");
                     }
                 });
             }catch(Exception e){

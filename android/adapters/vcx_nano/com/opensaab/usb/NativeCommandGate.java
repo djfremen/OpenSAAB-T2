@@ -33,9 +33,9 @@ public final class NativeCommandGate {
         return b[4]==0 && b[5]==0 && b[6]==0x10 && b[7]==0
             && p.channel==1 && p.id==0x100 && p.count==0;
     }
-    /** Private explicit mode may not inherit another profile or adapter-test request. */
-    public static boolean fullNativeModeAllowed(boolean privateBuild,boolean otherNativeProfile,boolean adapterTest){
-        return privateBuild && !otherNativeProfile && !adapterTest;
+    /** Explicit Full mode, on every build, may not inherit another profile or adapter-test request. */
+    public static boolean fullNativeModeAllowed(boolean otherNativeProfile,boolean adapterTest){
+        return !otherNativeProfile && !adapterTest;
     }
     /** Visible seed collection is available in release builds, with the same restricted profile. */
     public static boolean securityCollectionModeAllowed(boolean otherNativeProfile,boolean adapterTest){

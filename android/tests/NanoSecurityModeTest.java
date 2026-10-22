@@ -33,10 +33,9 @@ public final class NanoSecurityModeTest {
         check(!new NativeCommandGate.Stream().allowed(key,true,false,1));
         check(!new NativeCommandGate.Stream().allowed(key,false,false,1));
         check(NativeCommandGate.fullNative(key));
-        check(NativeCommandGate.fullNativeModeAllowed(true,false,false));
-        check(!NativeCommandGate.fullNativeModeAllowed(false,false,false));
-        check(!NativeCommandGate.fullNativeModeAllowed(true,true,false));
-        check(!NativeCommandGate.fullNativeModeAllowed(true,false,true));
+        check(NativeCommandGate.fullNativeModeAllowed(false,false));
+        check(!NativeCommandGate.fullNativeModeAllowed(true,false));
+        check(!NativeCommandGate.fullNativeModeAllowed(false,true));
         check(NativeCommandGate.securityCollectionModeAllowed(false,false));
         check(!NativeCommandGate.securityCollectionModeAllowed(true,false));
         check(!NativeCommandGate.securityCollectionModeAllowed(false,true));

@@ -136,6 +136,7 @@ public final class MainActivity extends Activity {
         sessionMode=new com.opensaab.usb.SessionModeControl(this);workspace.addLaunchContent(sessionMode);
         start=new Button(this);start.setText("Connect and start");com.opensaab.usb.SessionStyle.button(start,true);start.setOnClickListener(v->selectAdapter("native_dtc",true));workspace.addLaunch(start);
         start.setTag("connect-start");
+        sessionMode.onChange(this::refreshAdapterLabel);
         Button securityStart=new Button(this);securityStart.setText("Get security access");securityStart.setTag("security-start");com.opensaab.usb.SessionStyle.button(securityStart,false);securityStart.setOnClickListener(v->chooseSecurityCollection());workspace.addLaunch(securityStart);
         offline=new Button(this);offline.setText("Run without an adapter");offline.setTag("start-offline");com.opensaab.usb.SessionStyle.button(offline,false);offline.setOnClickListener(v->{if(idleTool()){mxDevice=null;startSession();}});workspace.addLaunch(offline);
         details.addView(label(com.opensaab.usb.AppUpdates.identity(this),13));
@@ -191,7 +192,7 @@ public final class MainActivity extends Activity {
     }
     private void updateWorkspace(){
         if(workspace==null)return;
-        workspace.mode(running?(mxDevice==null?"Offline emulation":mxMode.badge()):null);
+        workspace.mode(mxMode,mxDevice==null,running);
         if(updateReminder!=null)updateReminder.refresh();
         workspace.summary(running?status.getText().toString().replace("Emulation mode • Offline • No vehicle connection","Offline emulation · no vehicle connection"):status.getText()+"\n"+compactVehicle+(compactSecurity.isEmpty()?"":"\n"+compactSecurity));
         if(running&&mxDevice!=null&&mxVehicle!=null){
@@ -305,6 +306,18 @@ public final class MainActivity extends Activity {
     }
     private void key(int code) {
         if(mxSecurityAccess!=null)mxSecurityAccess.manualNavigation(); enqueue(String.format(Locale.ROOT,"0x%02x",code)); }
+    /** The primary button always names the mode it will start. */
+    private String modeSuffix(){
+        if(sessionMode==null)return "";
+        if(sessionMode.selected()==com.opensaab.usb.SessionModes.Mode.FULL)return " · Full session";
+        // MDI has no read-only guard in this build, so never label its button Read-only.
+        try{
+            android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
+            for(android.hardware.usb.UsbDevice d:usb.getDeviceList().values())
+                if(com.opensaab.usb.MdiAdapter.candidate(com.opensaab.usb.AdapterCatalog.identify(d.getVendorId(),d.getProductId())))return " · MDI: Full session only";
+        }catch(RuntimeException unavailable){}
+        return " · Read-only";
+    }
     private void refreshAdapterLabel(){
         if(start==null||running)return;
         android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
@@ -313,7 +326,7 @@ public final class MainActivity extends Activity {
         String label="Connect and start";
         if(found.size()==1){com.opensaab.usb.AdapterProfile profile=com.opensaab.usb.AdapterCatalog.identify(found.get(0).getVendorId(),found.get(0).getProductId()).profile;
             if(profile!=null)label=profile.candidateLabel()+" · Connect and start";}
-        start.setText(label);
+        start.setText(label+modeSuffix());
     }
     private void selectAdapter(String mode,boolean allowEmulation) {
         if(com.opensaab.usb.MdiUsbActivity.sessionActive()||com.opensaab.usb.VlinkerVehicleConnection.active()){status.setText("Finish the current connection first");return;}
@@ -488,13 +501,27 @@ public final class MainActivity extends Activity {
         mxSecurityAccess=new com.opensaab.usb.SecurityAccessView(this,mxMode==com.opensaab.usb.SessionModes.Mode.SEEDS,()->session,
             ()->running||!mxCleanupConfirmed,()->stopSession("Closing for security workflow"),
             ()->{if(modeSelectionReady()&&mxCleanupConfirmed){mxExpectedVin=mxVehicle==null?null:mxVehicle.vin;beginBluetoothStartup(mxDevice,mxCompatibility,com.opensaab.usb.SessionModes.Mode.SEEDS);}},this::resumeMxSecurity);
+        mxSecurityAccess.manualResume();
         mxSecurityAccess.setMenuKey(code->{com.opensaab.usb.InteractiveKeyPump pump=keyPump;return foreground&&running&&!stopping.get()&&pump!=null&&pump.offer(String.format(Locale.ROOT,"0x%02x",code));});
         details.addView(mxSecurityAccess);
     }
     private void resumeMxSecurity(){
-        if(!modeSelectionReady()||!mxCleanupConfirmed||mxDevice==null||mxVehicle==null){status.setText("Security data imported · reconnect after verified adapter cleanup");return;}
-        mxExpectedVin=mxVehicle.vin;
-        status.setText("Security data imported · Choose Session Mode on the main screen, then Connect and start. Vehicle identity will be checked again.");
+        if(mxDevice==null||mxVehicle==null){status.setText("Security data imported · Connect and start to reconnect MX+. Vehicle identity will be checked again.");return;}
+        if(!modeSelectionReady()||!mxCleanupConfirmed){status.setText("Security data imported · MX+ is still closing. Tap Continue firmware again in a moment.");return;}
+        // Same adapter, same pairing choice; a security task continues in Full unless a narrower write mode was running.
+        com.opensaab.usb.SessionModes.Mode resume=(mxMode==com.opensaab.usb.SessionModes.Mode.CLEAR||mxMode==com.opensaab.usb.SessionModes.Mode.RESET)?mxMode:com.opensaab.usb.SessionModes.Mode.FULL;
+        Runnable go=()->{
+            if(!modeSelectionReady()||!mxCleanupConfirmed||mxDevice==null||mxVehicle==null)return;
+            if(resume==com.opensaab.usb.SessionModes.Mode.FULL){com.opensaab.usb.SessionModeControl.remember(this,resume);if(sessionMode!=null)sessionMode.reload();}
+            mxExpectedVin=mxVehicle.vin;
+            status.setText("Security data imported · Reconnecting MX+ in "+resume.label+" · re-reading VIN…");
+            beginBluetoothStartup(mxDevice,mxCompatibility,resume);
+        };
+        if(resume==mxMode){go.run();return;}
+        // Moving from Read/collection to Full is always an explicit, named choice.
+        new android.app.AlertDialog.Builder(this).setTitle("Continue in Full session?")
+            .setMessage(com.opensaab.usb.SessionModes.headline(resume)+"\n"+com.opensaab.usb.SessionModes.detail(resume)+"\n\nMX+ reconnects and the VIN is checked again.")
+            .setNegativeButton("Cancel",null).setPositiveButton("Continue in Full session",(d,w)->go.run()).show();
     }
     private boolean permitMxKey(int code){
         if(mxDevice==null)return true;
@@ -683,7 +710,7 @@ public final class MainActivity extends Activity {
         }
     }
     private void finishSession(String message,boolean cleanupConfirmed){
-        mxCleanupConfirmed=cleanupConfirmed;running=false;lcdPump.clear();start.setText("Connect and start");start.setEnabled(true);status.setText(message);append(message);updateWorkspace();
+        mxCleanupConfirmed=cleanupConfirmed;running=false;lcdPump.clear();start.setText("Connect and start"+modeSuffix());start.setEnabled(true);status.setText(message);append(message);updateWorkspace();
         boolean requested=mxWriteAccess.pending();
         if(mxWriteAccess.consume(session==null?"":session.getName(),cleanupConfirmed,foreground&&!isDestroyed())){
             mxMode=com.opensaab.usb.SessionModes.Mode.CLEAR;mxConsentUtc=mxPendingConsentUtc;mxPendingConsentUtc=null;startSession();
@@ -732,7 +759,7 @@ public final class MainActivity extends Activity {
         refreshAdapterLabel();
         if(!running){String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();if(!missing.isEmpty())status.setText("Firmware setup needed — tap Firmware");else if(status.getText().toString().startsWith("Firmware setup needed"))status.setText("Ready — connect an adapter or explore offline");}
     }
-    @Override protected void onResume(){resumed=true;if(previewContinued)com.opensaab.usb.AndroidMcp.bind(this,mcpOwner);super.onResume();if(updateReminder!=null)updateReminder.resume();}
+    @Override protected void onResume(){resumed=true;if(previewContinued)com.opensaab.usb.AndroidMcp.bind(this,mcpOwner);super.onResume();if(updateReminder!=null)updateReminder.resume();if(sessionMode!=null&&!running)sessionMode.reload();}
     @Override protected void onPause(){resumed=false;if(updateReminder!=null)updateReminder.pause();super.onPause();}
     @Override protected void onStop() { com.opensaab.usb.AndroidMcp.unbind(this); foreground=false;if(sessionModeDialog!=null)sessionModeDialog.dismiss();bluetoothHandoff.cancel();if(!previewContinued){super.onStop();return;}if(bluetoothPicker!=null)bluetoothPicker.close();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();clearSimulatorIdentity();ui.removeCallbacks(consoleRefresh);ui.removeCallbacks(historyRefresh);stopSession("Stopped in background");super.onStop(); }
     @Override protected void onSaveInstanceState(Bundle state){state.putBoolean("preview_continued",previewContinued);super.onSaveInstanceState(state);}

@@ -48,5 +48,29 @@ public final class SessionModes {
         if("nano".equals(family))return mode==Mode.READ?"native_dtc":mode==Mode.CLEAR?"native_clear_dtc":"nano_full_native";
         throw new IllegalArgumentException("Adapter uses a different native binding");
     }
+    /** Headline shown on the badge; kept short enough for a phone-width line. */
+    public static String headline(Mode mode){
+        if(mode==null)return "OFFLINE · No vehicle connection";
+        switch(mode){
+            case FULL: return "FULL SESSION · Vehicle changes possible";
+            case CLEAR: return "CLEAR-CODES SESSION · Code clearing allowed";
+            case RESET: return "COUNTER-RESET SESSION · One reset allowed";
+            case SEEDS: return "SECURITY COLLECTION · Seeds only, no writes";
+            default: return "READ-ONLY SESSION · Vehicle changes blocked";
+        }
+    }
+    /** Second line: what the operator should expect in this mode. */
+    public static String detail(Mode mode){
+        if(mode==null)return "Emulation only. Nothing is sent to a vehicle.";
+        switch(mode){
+            case FULL: return "Clearing, resets, adjustments and programming can change the car. Follow the original confirmations.";
+            case CLEAR: return "Reading plus supported code clearing. Other writes stay blocked.";
+            case RESET: return "Only the original T8 misfire and knock counter reset is added to reading.";
+            case SEEDS: return "Collects security challenges. Service writes and key submission stay blocked.";
+            default: return "Codes, data and menus only. A step that needs to write will ask to restart in Full session.";
+        }
+    }
+    /** True for every mode that can change the vehicle. Display only. */
+    public static boolean writes(Mode mode){return mode==Mode.FULL||mode==Mode.CLEAR||mode==Mode.RESET;}
     private SessionModes(){}
 }

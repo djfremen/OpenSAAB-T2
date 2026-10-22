@@ -17,7 +17,7 @@ public final class AdvancedFeatures {
         add(panel,"Adapters",()->{if(idle(a,running)){dialog.dismiss();a.startActivity(new Intent(a,AdapterDetectorActivity.class));}});
         add(panel,"USB tests",()->{if(idle(a,running)){dialog.dismiss();a.startActivityForResult(new Intent(a,NanoProbeActivity.class),27);}});
         add(panel,"System Check",()->DeviceCompatibility.show(a));
-        add(panel,"Clear offset · refresh access",()->SecurityReset.show(a,running));
+        add(panel,"Reset security data (INIT_AUTH)",()->SecurityReset.show(a,running));
         add(panel,"Done",dialog::dismiss);
         SessionStyle.stack(panel);dialog.show();return dialog;
     }

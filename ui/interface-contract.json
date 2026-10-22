@@ -569,7 +569,7 @@
       },
       {
         "id": "reset",
-        "label": "Clear offset · refresh access"
+        "label": "Reset security data (INIT_AUTH)"
       }
     ],
     "rule": "Entries remain visible when a platform lacks a capability; show its specific reason. Visibility is not implementation or qualification. Android remains the behavior reference; no offline session invents a VIN or live diagnostic result.",

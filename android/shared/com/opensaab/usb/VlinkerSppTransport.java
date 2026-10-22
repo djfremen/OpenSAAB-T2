@@ -41,7 +41,13 @@ final class VlinkerSppTransport implements VlinkerTransport {
     public void open()throws Exception{
         if(stopped)throw new IOException("Bluetooth connection cancelled");connecting=true;
         ScheduledFuture<?> limit=watchdog.schedule(()->{failure=new IOException("Bluetooth connect timed out");closeEndpoint();},8000,TimeUnit.MILLISECONDS);
-        try{endpoint.connect();if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth connection cancelled"):failure;output=endpoint.output();InputStream input=endpoint.input();
+        try{try{endpoint.connect();}catch(IOException refused){
+                // Keep the real reason: the watchdog closes the socket on timeout, which Android reports as a generic read failure.
+                if(failure!=null)throw failure;
+                if(stopped)throw new IOException("Bluetooth connection cancelled",refused);
+                throw new IOException("Adapter not reachable over Bluetooth ("+refused.getMessage()+"). Check that it is plugged in with ignition ON, then retry.",refused);
+            }
+            if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth connection cancelled"):failure;output=endpoint.output();InputStream input=endpoint.input();
             enqueue(new JSONObject().put("type","ready").put("transport","android-classic-spp").put("uuid",SPP_UUID.toString()).put("device_name",deviceName).put("device_address",deviceAddress).put("connection_mode",connectionMode));
             Thread reader=new Thread(()->{
                 try{byte[] bytes=new byte[1024];int n;while(!stopped&&(n=input.read(bytes))!=-1){JSONArray rx=new JSONArray();for(int i=0;i<n;i++)rx.put(bytes[i]&255);synchronized(delivery){if(!stopped)enqueue(new JSONObject().put("type","rx").put("bytes",rx));}}if(!stopped)failure=new IOException("Bluetooth adapter disconnected; start a fresh read");}

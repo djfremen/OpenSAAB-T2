@@ -16,9 +16,9 @@ public final class SecurityReset {
         if(running.getAsBoolean()||FirmwareGate.sessionActive()||SecurityAccessView.workflowBusy()||BUSY.get()){
             new AlertDialog.Builder(a).setTitle("Stop firmware first").setMessage("Stop emulation and release USB before clearing saved security data.").setPositiveButton("OK",null).show();return;
         }
-        new AlertDialog.Builder(a).setTitle("Clear offset · fresh security data")
+        new AlertDialog.Builder(a).setTitle("Reset security data to INIT_AUTH")
             .setMessage("Remove the saved VIN, security code and seed/key data from this emulator's working firmware card, using the same reset as NoMoreGlobal. Clear only BEFORE collecting fresh security data, never after processing or loading the response. A verified backup is saved on this device.\n\nThis does not clear fault codes or reset access in the vehicle. You must collect fresh security data afterward and follow the firmware's key-position instructions.")
-            .setNegativeButton("Cancel",null).setPositiveButton("Clear security data",(d,w)->clear(a,running)).show();
+            .setNegativeButton("Cancel",null).setPositiveButton("Reset to INIT_AUTH",(d,w)->clear(a,running)).show();
     }
     private static void clear(Activity a,BooleanSupplier running){
         if(!BUSY.compareAndSet(false,true))return;

@@ -34,6 +34,9 @@ public class NanoProbeActivity extends Activity {
     public static boolean sessionActive(){return usbSessionOwned.get();}
     final NanoRebootHandoff rebootHandoff=new NanoRebootHandoff();
     volatile boolean sessionCleanupConfirmed;
+    TextView modeBadge;
+    SessionModes.Mode activeMode(){return nativeResetCounters?SessionModes.Mode.RESET:nativeFullNative?SessionModes.Mode.FULL:nativeClearDtc?SessionModes.Mode.CLEAR:(nativeSeeds||nativeSecurityCollect)?SessionModes.Mode.SEEDS:SessionModes.Mode.READ;}
+    void refreshModeBadge(){if(modeBadge!=null)SessionModeBadge.apply(modeBadge,activeMode(),false);}
     boolean rebootRequestRejected;
     UsbManager manager;
     TextView text, summary;
@@ -132,7 +135,7 @@ public class NanoProbeActivity extends Activity {
         title=new TextView(this); setTitle(AppBuildProfile.programName(this));title.setText(AppBuildProfile.programName(this)); title.setTextSize(23); root.addView(title);
         TextView architecture=new TextView(this);architecture.setTextSize(12);architecture.setText(EmulatorArchitecture.label(new File(getApplicationInfo().nativeLibraryDir,"libtech2_emu.so")));root.addView(architecture);
         purpose=new TextView(this); purpose.setText(nativeFullNative?"Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus":nativeKeyStatus?"Original Tech2 + CANdi firmware · direct USB\nSelect Diagnostics / All / Service / Check Ignition Key Status":nativeResetCounters?"Original Tech2 + CANdi firmware · direct USB\nReset T8 misfire and knock counters · follow original menus":nativeEngineData?"Original Tech2 + CANdi firmware · direct USB\nSelect vehicle year and model, then Engine / Engine Control":nativeClearDtc?"Original Tech2 + CANdi firmware · direct USB\nClear mode enabled · follow original prompts":nativeDtc?"Original Tech2 + CANdi firmware · direct USB\nRead codes · follow original ignition prompts":nativeSeeds?"Original Tech2 + CANdi firmware · direct USB\nSeed collection only · follow original ignition prompts":"Direct Android USB · bounded channel tests\nOptional read-only VIN check · no security access"); root.addView(purpose);
-        if(nativeDtc || nativeFullNative){TextView selectedMode=new TextView(this);selectedMode.setTag("session-mode-badge");selectedMode.setTextSize(15);selectedMode.setTextColor(0xffb6e8ff);selectedMode.setTypeface(null,android.graphics.Typeface.BOLD);selectedMode.setText(nativeResetCounters?"Session mode: Counter reset":(nativeFullNative?SessionModes.Mode.FULL:nativeClearDtc?SessionModes.Mode.CLEAR:SessionModes.Mode.READ).badge());root.addView(selectedMode);}
+        if(nativeFirmware() || nativeSecurityCollect){modeBadge=SessionModeBadge.create(this,activeMode(),false);root.addView(modeBadge);}
         summary=new TextView(this);summary.setMaxLines(2);summary.setEllipsize(android.text.TextUtils.TruncateAt.END);summary.setText("Ready · no active USB session");summary.setTextSize(15);root.addView(summary);
         // App navigation stays above the LCD and console, including on errors.
         // Back leaves this screen; the firmware EXIT key only navigates guest menus.
@@ -207,7 +210,7 @@ public class NanoProbeActivity extends Activity {
         boolean adapterTest=channelTest || channelTestSw || getIntent().hasExtra("nano_probe_mode") || getIntent().getBooleanExtra("receive_test",false) || hsVin || dlcVoltage || rebootNano || initHandshake || skipInit;
         if(nativeResetCounters && adapterTest)conflictingModes=true;
         nativeResetRejected=getIntent().getBooleanExtra("native_reset_counters",false) && conflictingModes;
-        if(nativeFullNative && !NativeCommandGate.fullNativeModeAllowed(privateBuild,otherNativeProfile,adapterTest))conflictingModes=true;
+        if(nativeFullNative && !NativeCommandGate.fullNativeModeAllowed(otherNativeProfile,adapterTest))conflictingModes=true;
         if(nativeSecurityCollect && !NativeCommandGate.securityCollectionModeAllowed(otherNativeProfile,adapterTest))conflictingModes=true;
         rebootRequestRejected=rebootNano && conflictingModes;
         nativeFullNativeRejected=fullNativeRequested && conflictingModes;
@@ -580,7 +583,11 @@ public class NanoProbeActivity extends Activity {
             sessionCleanupConfirmed=cleaned&&!forcedTermination&&(!nativeFirmware()||nativeProtocolCleanupConfirmed);
             closeSockets();if(firmwareLease!=null)firmwareLease.close();usbSessionOwned.set(false);if(health!=null){if(stoppedByUser||requestedQuit&&cleaned)health.expectedStop();else health.ended();}running.set(false);
             if(securityVinProbe){securityVinProbe=false;if(!startSecurityFirmware){securityVehicle=null;securityDevice=null;}}
-            if(readModeRejected && !stoppedByUser)runOnUiThread(()->{if(activeSessionId==sessionId && !isFinishing() && !isDestroyed())new AlertDialog.Builder(this).setTitle("Nano mode blocked this request").setMessage(nativeFailure).setPositiveButton("Done",null).show();});
+            if(readModeRejected && !stoppedByUser){
+                final PolicyBlock blocked=PolicyBlock.fromLine("Native USB command rejected by collection profile");
+                log("POLICY_BLOCKED adapter=nano profile=Read vehicle_tx=false");
+                runOnUiThread(()->{if(activeSessionId==sessionId && !isFinishing() && !isDestroyed()){summary.setText(blocked.status());FullSessionPrompt.offer(this,blocked,()->openSecuritySession(false));}});
+            }
             if(startSecurityFirmware)runOnUiThread(()->{if(activeSessionId==sessionId && foreground && !isFinishing() && !isDestroyed())startSameSecurityAdapter();});
             runOnUiThread(()->{if(activeSessionId==sessionId)clearNativePresentation();});
             runOnUiThread(()->{if(retry!=null && !isFinishing())retry.setEnabled(true);});
@@ -651,12 +658,21 @@ public class NanoProbeActivity extends Activity {
     }
     void resumeSecurityFirmware(){
         if(running.get() || cancelled || isFinishing() || isDestroyed())return;
-        if(usbSessionOwned.get() || permissionPending || !sessionCleanupConfirmed){
-            summary.setText("Security data imported · adapter cleanup was not confirmed. Reconnect Nano to continue.");return;
+        if(usbSessionOwned.get() || permissionPending){
+            summary.setText("Security data imported · Nano USB is still closing. Tap Continue firmware again in a moment.");return;
+        }
+        if(!sessionCleanupConfirmed){
+            // Not a dead end, but never automatic: this screen keeps its mode until the operator chooses a fresh connection.
+            summary.setText("Security data imported · Nano cleanup not confirmed in this screen");
+            if(foreground&&!isFinishing()&&!isDestroyed())new AlertDialog.Builder(this).setTitle("Connect again in Full session?")
+                .setMessage("This screen has no confirmed Nano session to continue. Connect again to return to the original firmware in a FULL SESSION, where vehicle changes are possible. The VIN is identified again.\n\nIf the Nano stays busy, unplug it and plug it back in first.")
+                .setNegativeButton("Not now",null).setPositiveButton("Connect in Full session",(d,w)->{SessionModeControl.remember(this,SessionModes.Mode.FULL);openSecuritySession(false);}).show();
+            return;
         }
         nativeSecurityCollect=false;nativeSeeds=false;nativeFullNative=true;
         title.setText(AppBuildProfile.programName(this));
         purpose.setText("Original Tech2 + CANdi firmware · direct USB\nFull native control · original Add / Remove menus");
+        if(modeBadge==null){modeBadge=SessionModeBadge.create(this,activeMode(),false);((android.view.ViewGroup)purpose.getParent()).addView(modeBadge,((android.view.ViewGroup)purpose.getParent()).indexOfChild(purpose)+1);}else refreshModeBadge();
         getIntent().removeExtra("nano_security_collect");getIntent().removeExtra("native_seed");getIntent().putExtra("nano_full_native",true);
         if(securityAccess!=null)securityAccess.returnedToFirmware();
         Runnable restart=this::startSameSecurityAdapter;

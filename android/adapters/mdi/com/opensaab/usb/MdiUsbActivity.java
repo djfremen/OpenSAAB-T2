@@ -29,6 +29,7 @@ public final class MdiUsbActivity extends Activity {
     private volatile File directory,nativeDirectory;
     private volatile VehicleIdentity identity;
     private volatile boolean stopping;
+    private volatile boolean detached;
     private boolean foreground,permissionPending,frameSeen,closed;
     private String permission,message="Ready · MDI USB adapter selected",authority;
     private SessionWorkspace workspace;
@@ -58,7 +59,7 @@ public final class MdiUsbActivity extends Activity {
             if(foreground&&current!=null&&manager.hasPermission(current))begin(current,epoch);
             else {requests.cancel();setMessage("USB permission unavailable · Connect and start to retry");if(attempt!=null)attempt.finish(ConnectionAttempt.Outcome.CANCELLED,ConnectionAttempt.Reason.PERMISSION_DENIED);}
         }else if(UsbManager.ACTION_USB_DEVICE_DETACHED.equals(i.getAction())&&selected!=null&&selected.equals(device)){
-            stop("MDI disconnected · releasing the session");
+            detached=true;stop("MDI disconnected · releasing the session");
         }
     }};
 
@@ -131,7 +132,9 @@ public final class MdiUsbActivity extends Activity {
     private void update(){
         if(workspace==null)return;
         TextView auth=security==null?null:security.findViewWithTag("security-state");
-        workspace.mode(authority.equals("seeds")?"Session mode: Security-data collection":SessionModes.Mode.FULL.badge());
+        // MDI has no read-only enforcement in this build, so every non-collection session is Full.
+        if(authority.equals("seeds"))workspace.mode("SECURITY COLLECTION · MDI has no read-only guard",true);
+        else workspace.mode(SessionModes.Mode.FULL,false,true);
         workspace.summary(message+(auth==null?"":"\n"+auth.getText())+(identity==null?"\nVehicle access not verified":(running.get()&&!stopping?"\nVIN: ":"\nLast session VIN: ")+identity.vin+"\nVehicle access not verified"));
         connect.setVisibility(running.get()||permissionPending?View.GONE:View.VISIBLE);
         cancel.setVisibility(running.get()||permissionPending?View.VISIBLE:View.GONE);
@@ -150,7 +153,7 @@ public final class MdiUsbActivity extends Activity {
             if(selected!=null){setMessage("Multiple MDI candidates · select one adapter");selected=null;return;}selected=d;
         }
         if(selected==null){setMessage("Selected adapter disconnected · return and Refresh");return;}
-        identity=null;frameSeen=false;stopping=false;observedPhase="";
+        identity=null;frameSeen=false;stopping=false;detached=false;observedPhase="";
         attempt=new ConnectionAttempt(this,ConnectionAttempt.Adapter.MDI);attempt.device(selected.getVendorId(),selected.getProductId());
         long epoch=requests.begin();
         if(manager.hasPermission(selected)){begin(selected,epoch);return;}
@@ -161,7 +164,7 @@ public final class MdiUsbActivity extends Activity {
     }
     private void begin(UsbDevice device,long epoch){
         if(!foreground||closed||!requests.consume(epoch)||!OWNED.compareAndSet(false,true))return;
-        running.set(true);stopping=false;setMessage("Opening selected MDI USB adapter");
+        running.set(true);stopping=false;detached=false;setMessage("Opening selected MDI USB adapter");
         new Thread(()->execute(device),"opensaab-mdi-session").start();
     }
     private void execute(UsbDevice device){
@@ -244,9 +247,9 @@ public final class MdiUsbActivity extends Activity {
             JSONObject workflow=report.optJSONObject("workflow");JSONObject nativeResult=workflow==null?null:workflow.optJSONObject("native_firmware");
             setup=workflow==null?"":workflow.optString("setup_needed");
             if(nativeResult!=null)transportClean&=nativeResult.optBoolean("transport_cleanup_ok");
-            end=stopping?"Stopped by operator":!setup.isEmpty()?"MDI identified · setup needed":result==0?"MDI session ended":workflow!=null&&workflow.has("error")?workflow.optString("error"):"MDI connection or session failed";
+            end=stopping?(detached?"MDI USB disconnected during the session":"Stopped by operator"):!setup.isEmpty()?"MDI identified · setup needed":result==0?"MDI session ended":workflow!=null&&workflow.has("error")?workflow.optString("error"):"MDI connection or session failed";
             if(!transportClean)end+=" · transport cleanup unconfirmed";
-        }catch(Throwable error){end=stopping?"Stopped by operator":error instanceof IOException?error.getMessage():"MDI connection failed";
+        }catch(Throwable error){end=stopping?(detached?"MDI USB disconnected during the session":"Stopped by operator"):error instanceof IOException?error.getMessage():"MDI connection failed";
             if(attempt!=null&&!stopping)attempt.failure(error);
         }finally{
             if(attempt!=null)attempt.stage(ConnectionAttempt.Stage.CLEANUP);
@@ -261,9 +264,10 @@ public final class MdiUsbActivity extends Activity {
             final String requiredSetup=setup;
             final boolean released=transportClean&&usbClean;
             if(attempt!=null)attempt.cleanup(null,false,connection==null?"not_attempted":usbClean?"succeeded":"failed",transportClean?"succeeded":"unknown");
-            if(attempt!=null)attempt.finish(stopping?ConnectionAttempt.Outcome.CANCELLED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
-                stopping?ConnectionAttempt.Reason.USER_STOP:!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
-            final String failureDetails=attempt!=null && attempt.failed()?"\n\n"+ConnectionAttempt.failureSummary(this,directory):"";
+            // A USB detach is a transport loss, not an operator stop.
+            if(attempt!=null)attempt.finish(stopping&&!detached?ConnectionAttempt.Outcome.CANCELLED:stopping?ConnectionAttempt.Outcome.FAILED:workflowSucceeded&&transportClean&&usbClean?ConnectionAttempt.Outcome.COMPLETED:ConnectionAttempt.Outcome.FAILED,
+                stopping?(detached?ConnectionAttempt.Reason.DISCONNECTED:ConnectionAttempt.Reason.USER_STOP):!released?ConnectionAttempt.Reason.CLEANUP_FAILED:!requiredSetup.isEmpty()?ConnectionAttempt.Reason.SETUP_REQUIRED:workflowSucceeded?ConnectionAttempt.Reason.NONE:ConnectionAttempt.Reason.PROTOCOL_OR_PROCESS_ERROR);
+            final String failureDetails=attempt!=null && attempt.failed()?"\n\n"+ConnectionAttempt.failureSummary(this,new File(directory,"native").isDirectory()?new File(directory,"native"):directory):"";
             ui.post(()->{if(closed)return;health.expectedStop();lcdPump.clear();setMessage(result);console.setText(result+failureDetails);setResult(RESULT_CANCELED,new Intent().putExtra("summary",result));
                 if(!stopping&&foreground&&released&&!requiredSetup.isEmpty())showSetup(requiredSetup);
                 if(pendingTool!=null){Runnable next=pendingTool;pendingTool=null;next.run();}});
@@ -326,7 +330,7 @@ public final class MdiUsbActivity extends Activity {
         UsbDevice current=attached();if(current==null){setMessage("Reconnect MDI before returning to firmware");return;}
         if(collect){startActivity(new Intent(this,MdiUsbActivity.class).putExtra("mdi_security_collect",true).putExtra(SecurityCollectionMode.EXTRA,SecurityCollectionMode.from(getIntent())).putExtra(SecurityCollectionMode.PLATFORM_EXTRA,getIntent().getStringExtra(SecurityCollectionMode.PLATFORM_EXTRA))
             .putExtra("usb_device_name",current.getDeviceName()).putExtra("auto_start",true));finish();return;}
-        authority="full";stopping=false;security.returnedToFirmware();discover();
+        authority="full";stopping=false;detached=false;security.returnedToFirmware();discover();
     }
     private android.app.Dialog actions(){
         return new SessionSheet.Menu(this)
