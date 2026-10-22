@@ -6,6 +6,8 @@ import android.bluetooth.*;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.SystemClock;
+import android.provider.Settings;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -18,7 +20,9 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
     interface Endpoint {void connect()throws IOException;InputStream input()throws IOException;OutputStream output()throws IOException;void close()throws IOException;}
     private final Endpoint endpoint;
     private static final SppTransportAdmission PHYSICAL_ADMISSION=new SppTransportAdmission();
+    private static final SppReleaseTiming.Ledger RELEASE_TIMING=new SppReleaseTiming.Ledger();
     private final boolean physical;
+    private final SppReleaseTiming.Attempt timing;
     private final String deviceName,deviceAddress,connectionMode;
     private final ArrayBlockingQueue<JSONObject> packets=new ArrayBlockingQueue<>(64);
     private final Object delivery=new Object();
@@ -48,6 +52,8 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
         bondState=device.getBondState();
         if(Build.VERSION.SDK_INT<31||c.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)==PackageManager.PERMISSION_GRANTED){discoveryBeforeConnect=adapter.isDiscovering();adapter.cancelDiscovery();}
         deviceName=device.getName();deviceAddress=device.getAddress();connectionMode=compatibility?"unauthenticated-spp":"authenticated-spp";
+        String bootId=null;try{String count=Settings.Global.getString(c.getContentResolver(),"boot_count");if(count!=null&&count.matches("[0-9]+"))bootId="boot_count:"+count;}catch(RuntimeException unavailable){}
+        timing=RELEASE_TIMING.attempt(deviceAddress,bootId,SystemClock::elapsedRealtime);
         // No automatic fallback: unauthenticated SPP is an explicit picker choice.
         PHYSICAL_ADMISSION.reserve(this);
         BluetoothSocket socket;
@@ -57,14 +63,15 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
         PHYSICAL_ADMISSION.constructed(this);
     }
     VlinkerSppTransport(Endpoint endpoint){this(endpoint,"");}
-    VlinkerSppTransport(Endpoint endpoint,String name){this.endpoint=endpoint;physical=false;deviceName=name;deviceAddress="";connectionMode="fixture";}
+    VlinkerSppTransport(Endpoint endpoint,String name){this(endpoint,name,new SppReleaseTiming.Ledger().attempt("fixture","fixture-boot",SystemClock::elapsedRealtime));}
+    VlinkerSppTransport(Endpoint endpoint,String name,SppReleaseTiming.Attempt timing){this.endpoint=endpoint;this.timing=timing;physical=false;deviceName=name;deviceAddress="";connectionMode="fixture";}
     private void enqueue(JSONObject value)throws IOException{if(!packets.offer(value)){failure=new IOException("Bluetooth receive queue exceeded limit");throw failure;}}
     public void open()throws Exception{
         if(physical)PHYSICAL_ADMISSION.requireOwner(this);
         synchronized(ownership){if(stopped)throw new IOException("Bluetooth connection cancelled");connecting=true;connectPhase="connecting";}
         long started=System.nanoTime();
         BluetoothConnectDeadline limit=new BluetoothConnectDeadline(watchdog,()->{connectPhase="connect_timeout";failure=new IOException("Bluetooth connect timed out");closeEndpoint();});
-        try{try{endpoint.connect();}catch(IOException refused){
+        try{try{timing.connectStarted();endpoint.connect();}catch(IOException refused){
                 connectError=refused.toString();
                 // Keep the real reason: the watchdog closes the socket on timeout, which Android reports as a generic read failure.
                 if(failure!=null)throw failure;
@@ -88,9 +95,10 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
             },"vlinker-spp-reader");openedReader.setDaemon(true);
             synchronized(ownership){if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth connection cancelled"):failure;reader=openedReader;reader.start();}
         }catch(Exception error){if(failure==null)failure=error instanceof IOException?(IOException)error:new IOException("Bluetooth open failed",error);stopped=true;throw failure;}
-        finally{connecting=false;limit.close();if(stopped&&connectPhase.equals("connecting"))connectPhase="cancelled";if(connectElapsedMs<0)connectElapsedMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);if(stopped)closeEndpoint();}
+        finally{timing.connectFinished();connecting=false;limit.close();if(stopped&&connectPhase.equals("connecting"))connectPhase="cancelled";if(connectElapsedMs<0)connectElapsedMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);if(stopped)closeEndpoint();}
     }
-    JSONObject connectionEvidence()throws JSONException{return new JSONObject().put("phase",connectPhase).put("connect_elapsed_ms",connectElapsedMs).put("connect_deadline_ms",BluetoothConnectDeadline.TIMEOUT_MS).put("device_name",deviceName).put("device_address",deviceAddress).put("connection_mode",connectionMode).put("bond_state",bondState).put("discovery_before_connect",discoveryBeforeConnect==null?JSONObject.NULL:discoveryBeforeConnect).put("bluetooth_closed",closeConfirmed()).put("automatic_replay",false).put("platform_error",connectError).put("transport_write_attempts",writeAttempts.get()).put("failed_before_commands",connectPhase.equals("connect_failed")||connectPhase.equals("connect_timeout")).put("radio_sleep_state","unverified").put("hci_failure_status",JSONObject.NULL).put("failure",failure==null?"":failure.getMessage()).put("release_failure",releaseFailure());}
+    private JSONObject baseConnectionEvidence()throws JSONException{return new JSONObject().put("phase",connectPhase).put("connect_elapsed_ms",connectElapsedMs).put("connect_deadline_ms",BluetoothConnectDeadline.TIMEOUT_MS).put("device_name",deviceName).put("device_address",deviceAddress).put("connection_mode",connectionMode).put("bond_state",bondState).put("discovery_before_connect",discoveryBeforeConnect==null?JSONObject.NULL:discoveryBeforeConnect).put("bluetooth_closed",closeConfirmed()).put("automatic_replay",false).put("platform_error",connectError).put("transport_write_attempts",writeAttempts.get()).put("failed_before_commands",connectPhase.equals("connect_failed")||connectPhase.equals("connect_timeout")).put("radio_sleep_state","unverified").put("hci_failure_status",JSONObject.NULL).put("failure",failure==null?"":failure.getMessage()).put("release_failure",releaseFailure());}
+    JSONObject connectionEvidence()throws JSONException{JSONObject value=baseConnectionEvidence();for(Map.Entry<String,Object> field:timing.snapshot().entrySet())value.put(field.getKey(),field.getValue()==null?JSONObject.NULL:field.getValue());return value;}
     public void send(JSONObject request)throws Exception{
         if(request.optString("op").equals("close")){closeEndpoint();packets.clear();enqueue(new JSONObject().put("type","closed").put("bluetooth_closed",closeConfirmed()));return;}
         boolean interrupt=request.optString("op").equals("interrupt");
@@ -98,9 +106,9 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
         if(!interrupt && (!request.optString("op").equals("write")||command.isEmpty()||command.length()>128||!command.matches("[ -~]+")))throw new IOException("Invalid native transport write");
         OutputStream target;ScheduledFuture<?> limit;
         synchronized(ownership){if(stopped||failure!=null||output==null)throw failure==null?new IOException("Bluetooth connection is closed"):failure;target=output;writing=true;limit=watchdog.schedule(()->{failure=new IOException("Bluetooth write timed out");closeEndpoint();},2000,TimeUnit.MILLISECONDS);}
-        try{synchronized(delivery){if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth write cancelled"):failure;writeAttempts.incrementAndGet();target.write((interrupt?"\r":command+"\r").getBytes(StandardCharsets.US_ASCII));target.flush();if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth write cancelled"):failure;enqueue(new JSONObject().put("type","write_completed").put("command",command));}}
+        try{synchronized(delivery){if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth write cancelled"):failure;timing.writeStarted(command,interrupt);writeAttempts.incrementAndGet();target.write((interrupt?"\r":command+"\r").getBytes(StandardCharsets.US_ASCII));target.flush();if(stopped||failure!=null)throw failure==null?new IOException("Bluetooth write cancelled"):failure;timing.writeCompleted();enqueue(new JSONObject().put("type","write_completed").put("command",command));}}
         catch(Exception error){if(failure==null)failure=error instanceof IOException?(IOException)error:new IOException("Bluetooth write failed",error);closeEndpoint();throw failure;}
-        finally{writing=false;limit.cancel(false);}
+        finally{writing=false;limit.cancel(false);closeConfirmed();}
     }
     public JSONObject receive(int timeoutMs)throws Exception{
         JSONObject next=packets.peek();if(failure!=null&&(next==null||!next.optString("type").equals("closed")))throw failure;JSONObject value=packets.poll(timeoutMs,TimeUnit.MILLISECONDS);if(failure!=null&&(value==null||!value.optString("type").equals("closed")))throw failure;if(value!=null)return value;if(stopped)throw new IOException("Bluetooth connection is closed");throw new java.net.SocketTimeoutException("Waiting for Bluetooth response");
@@ -110,7 +118,7 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
     private void closeEndpoint(){
         OutputStream ownedOutput;InputStream ownedInput;boolean closeSocket;Thread ownedReader;
         synchronized(ownership){
-            stopped=true;closeSocket=!endpointCloseStarted;endpointCloseStarted=true;
+            stopped=true;timing.releaseStarted();closeSocket=!endpointCloseStarted;endpointCloseStarted=true;
             ownedOutput=output;output=null;ownedInput=input;input=null;ownedReader=reader;closingResources++;
         }
         try{
@@ -126,10 +134,11 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
             synchronized(ownership){while(closingResources>0){long remaining=deadline-System.nanoTime();if(remaining<=0)break;TimeUnit.NANOSECONDS.timedWait(ownership,remaining);}
                 if(closingResources>0||(ownedReader!=null&&ownedReader.isAlive()))closeFailure("reader/streams",new IOException("Bluetooth shutdown did not finish before the deadline"));}
         }catch(InterruptedException error){Thread.currentThread().interrupt();closeFailure("reader/streams",error);}
+        closeConfirmed();
     }
     public void cancelPendingIO(){if(connecting||writing)closeEndpoint();}
-    public boolean closeConfirmed(){synchronized(ownership){return stopped&&endpointCloseFinished&&!connecting&&!writing&&closingResources==0&&input==null&&output==null&&(reader==null||!reader.isAlive())&&closeFailure==null;}}
+    public boolean closeConfirmed(){synchronized(ownership){boolean confirmed=stopped&&endpointCloseFinished&&!connecting&&!writing&&closingResources==0&&input==null&&output==null&&(reader==null||!reader.isAlive())&&closeFailure==null;if(confirmed)timing.releaseConfirmed();return confirmed;}}
     private String releaseFailure(){synchronized(ownership){return closeFailure==null?"":closeFailure.toString();}}
-    boolean readyForHandoff(){return !stopped&&failure==null&&output!=null&&!connecting;}
+    boolean readyForHandoff(){return !stopped&&failure==null&&output!=null&&!connecting&&!writing&&packets.isEmpty();}
     public void shutdown(){closeEndpoint();watchdog.shutdownNow();packets.clear();}
 }

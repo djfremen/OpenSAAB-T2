@@ -21,7 +21,11 @@ fn run(mode: &str, changed: Option<(&str,&str)>) -> (Value,Vec<String>) {
     let mut s = if mode=="ecm_dtc" {Session::probe(true)} else if mode=="ecm_info" {Session::probe(false)} else {Session::new(mode=="vin")};
     assert_eq!(s.event(&json!({"op":"select_profile","model":"obdlink_mxp"}))["state"],"idle");
     let mut effect=s.event(&json!({"op":"start"}));let mut commands=vec![];
-    while effect["state"]=="send" {
+    while effect["state"]=="send" || effect.get("resync_quiet_ms").is_some() {
+        if effect.get("resync_quiet_ms").is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(310));
+            effect=s.event(&json!({"op":"tick"}));continue;
+        }
         let command=effect["command"].as_str().unwrap().to_owned();commands.push(command.clone());
         let reply=changed.filter(|(c,_)|*c==command).map(|(_,r)|r.to_string()).unwrap_or_else(||response(&command));
         let bytes=format!("{reply}\r>").into_bytes();

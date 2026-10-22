@@ -22,10 +22,11 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   final String mode;final List<String> commands=Collections.synchronizedList(new ArrayList<>());
   final BlockingQueue<Integer> bytes=new LinkedBlockingQueue<>();final CountDownLatch entered=new CountDownLatch(1),requested=new CountDownLatch(1),closedLatch=new CountDownLatch(1);
   final AtomicInteger socketCloses=new AtomicInteger(),inputCloses=new AtomicInteger(),outputCloses=new AtomicInteger();
-  String lastCommand="03A9811200000000";int readyRepeats;
+  final AtomicInteger opens=new AtomicInteger();
+  String lastCommand="03A9811200000000";int readyRepeats,atAttempts;
   volatile boolean closed;final ByteArrayOutputStream wire=new ByteArrayOutputStream(),command=new ByteArrayOutputStream();
   Endpoint(String mode){this.mode=mode;}
-  public void connect()throws IOException{entered.countDown();if(mode.equals("blocked-connect"))waitUntilClosed();}
+  public void connect()throws IOException{if(opens.incrementAndGet()!=1)throw new IOException("Fixture socket was opened twice");entered.countDown();if(mode.equals("blocked-connect"))waitUntilClosed();}
   private void waitUntilClosed()throws IOException{try{closedLatch.await();}catch(InterruptedException e){Thread.currentThread().interrupt();}throw new IOException("Fixture socket closed");}
   public InputStream input(){return new InputStream(){
    public int read()throws IOException{try{return bytes.take();}catch(InterruptedException e){throw new IOException(e);}}
@@ -38,7 +39,10 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    if(b!=13){if(b==10||b<32||b>126)throw new IOException("SPP received non-ASCII/CR framing");command.write(b);return;}
    String raw=command.toString("US-ASCII");command.reset();commands.add(raw);
    // A bare CR repeats the previous adapter command, which is deliberately a vehicle request initially.
-   String cmd=raw.isEmpty()?lastCommand:raw;if(raw.isEmpty())readyRepeats++;else lastCommand=raw;
+   String cmd=raw.isEmpty()?lastCommand:raw;if(raw.isEmpty())readyRepeats++;else if(raw.equals("AT"))atAttempts++;
+   boolean monitorConsumesAt=mode.startsWith("mxp-stm-")&&cmd.equals("AT")&&(atAttempts==1||mode.equals("mxp-stm-twice"));
+   if(!raw.isEmpty()&&!monitorConsumesAt)lastCommand=raw;
+   if(monitorConsumesAt){String residual=mode.equals("mxp-stm-one")?"STOPPED\r>":mode.equals("mxp-stm-noise")?"STOPPED\r>garbage":mode.equals("mxp-stm-incomplete")?"STOPPED\r>?":"STOPPED\r>?\r>";for(byte value:residual.getBytes(StandardCharsets.US_ASCII))bytes.offer(value&255);return;}
    if(cmd.equals("03A9811200000000")){requested.countDown();if(mode.equals("timeout")||mode.equals("cancel"))return;if(mode.equals("disconnect")){bytes.offer(-1);return;}}
    String reply=cmd.equals("ATZ")?"ELM327":cmd.equals("ATI")?"ELM327 v1.4b":cmd.equals("STDI")?"OBDLink MX+ r3.1.3":cmd.equals("STI")?"STN2255 v5.12.4":cmd.equals("STPR")?"6":cmd.equals("STPBRR")?"500000":cmd.equals("VTI")?(mode.equals("wrong-adapter")?"Unknown adapter":mode.startsWith("evo-")?"Carista EVO v2.2.84":"vLinker MC+ fixture"):cmd.equals("VTVERS")?(mode.startsWith("evo-")?"MIC3413 V2.0.84":"MIC3313 V2.0.92"):cmd.equals("VTPRON")?"6 [AT]":cmd.equals("VTPBRD")?"500000":cmd.equals("ATRV")?"12.0V":cmd.equals("021A900000000000")?frames(("Z\u0090YS3FD49YX41000001").getBytes(StandardCharsets.ISO_8859_1)):cmd.equals("0210020000000000")?"7E8 01 50 00 00 00 00 00 00":cmd.equals("0120000000000000")?"7E8 01 60 00 00 00 00 00 00":cmd.equals("03A9811200000000")?"5E8 81 01 07 00 6F 00 00 00"+((mode.equals("truncated")||mode.equals("evo-truncated"))?"":"\r5E8 81 00 00 00 FF 00 00 00"):"OK";
    if(cmd.equals("AT")){
@@ -82,11 +86,24 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   try{admission.reserve(()->true);throw new AssertionError(why);}
   catch(IOException blocked){check(blocked.getMessage().contains("force stop OpenSAAB in Android settings"),"Unconfirmed release omitted actionable process-restart guidance");}
  }
+ private void releaseTiming()throws Exception{
+  final java.util.concurrent.atomic.AtomicLong now=new java.util.concurrent.atomic.AtomicLong(100);SppReleaseTiming.Clock clock=now::get;SppReleaseTiming.Ledger ledger=new SppReleaseTiming.Ledger();
+  CleanupEndpoint endpoint=new CleanupEndpoint("timing");VlinkerSppTransport first=new VlinkerSppTransport(endpoint,"fixture",ledger.attempt("A","boot-1",clock));
+  first.open();first.receive(1000);check(endpoint.reading.await(2,TimeUnit.SECONDS),"Timing fixture reader absent");
+  JSONObject start=first.connectionEvidence();check(start.getLong("connect_started_elapsed_ms")==100&&start.isNull("prior_confirmed_release_elapsed_ms")&&start.isNull("release_to_connect_ms"),"Unknown release became an inferred interval");
+  now.set(110);first.send(new JSONObject().put("op","write").put("command","AT"));first.receive(1000);
+  now.set(120);first.send(new JSONObject().put("op","write").put("command","021A900000000000"));first.receive(1000);
+  now.set(130);first.shutdown();JSONObject released=first.connectionEvidence();
+  check(released.getLong("first_probe_write_elapsed_ms")==110&&released.getLong("first_vehicle_write_elapsed_ms")==120&&released.getLong("release_started_elapsed_ms")==130&&released.getLong("confirmed_release_elapsed_ms")==130,"Connect/probe/write/release times were conflated");
+  now.set(150);CleanupEndpoint nextEndpoint=new CleanupEndpoint("timing-next");VlinkerSppTransport next=new VlinkerSppTransport(nextEndpoint,"fixture",ledger.attempt("A","boot-1",clock));
+  next.open();next.receive(1000);JSONObject evidence=next.connectionEvidence();check(evidence.getLong("prior_confirmed_release_elapsed_ms")==130&&evidence.getLong("release_to_connect_ms")==20&&evidence.getLong("transport_write_attempts")==0,"Release-to-connect telemetry changed transport effects");
+  now.set(160);next.shutdown();
+ }
  private void cleanupOwnership()throws Exception{
   CleanupEndpoint clean=new CleanupEndpoint("clean");VlinkerSppTransport transport=new VlinkerSppTransport(clean);transport.open();
   check(clean.reading.await(2,TimeUnit.SECONDS),"Clean reader never entered");transport.receive(1000);
   transport.cancelPendingIO();check(!clean.closing.await(50,TimeUnit.MILLISECONDS)&&transport.readyForHandoff(),"Idle cancellation reset the active handoff socket");
-  transport.send(new JSONObject().put("op","write").put("command","AT"));check(transport.receive(1000).optString("type").equals("write_completed"),"Idle cancellation broke existing stream");
+  transport.send(new JSONObject().put("op","write").put("command","AT"));check(!transport.readyForHandoff(),"Unread write completion qualified for handoff");check(transport.receive(1000).optString("type").equals("write_completed"),"Idle cancellation broke existing stream");check(transport.readyForHandoff(),"Drained completion did not restore idle ownership");
   transport.send(new JSONObject().put("op","close"));check(transport.receive(1000).getBoolean("bluetooth_closed"),"Close packet omitted confirmed release");transport.shutdown();
   check(clean.sockets.get()==1&&clean.inputs.get()==1&&clean.outputs.get()==1&&!clean.reader.isAlive()&&transport.closeConfirmed(),"Socket/streams/reader were not released exactly once");
 
@@ -98,15 +115,17 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   CleanupEndpoint held=new CleanupEndpoint("held-writer");VlinkerSppTransport unwinding=new VlinkerSppTransport(held);unwinding.open();check(held.reading.await(2,TimeUnit.SECONDS),"Held writer reader missing");unwinding.receive(1000);
   SppTransportAdmission admission=new SppTransportAdmission();admission.reserve(unwinding);admission.constructed(unwinding);admissionBlocked(admission,"Active transport allowed another SPP owner");
   final Throwable[] writeOutcome={null};Thread writer=new Thread(()->{try{unwinding.send(new JSONObject().put("op","write").put("command","AT"));}catch(Throwable error){writeOutcome[0]=error;}});writer.start();check(held.writerEntered.await(2,TimeUnit.SECONDS),"Writer did not enter fixture");
-  try{unwinding.shutdown();check(!held.reader.isAlive()&&writer.isAlive()&&!unwinding.closeConfirmed(),"Unwinding writer was incorrectly reported released after reader/socket close");admissionBlocked(admission,"Unwinding writer admitted another socket after higher-level owner exit");}
+  try{unwinding.shutdown();check(!held.reader.isAlive()&&writer.isAlive()&&!unwinding.closeConfirmed(),"Unwinding writer was incorrectly reported released after reader/socket close");check(unwinding.connectionEvidence().isNull("confirmed_release_elapsed_ms"),"Live writer published a release timestamp");admissionBlocked(admission,"Unwinding writer admitted another socket after higher-level owner exit");}
   finally{held.writerExit.countDown();joined(writer,"Writer did not unwind after fixture release");unwinding.shutdown();}
   check(writeOutcome[0] instanceof IOException&&unwinding.closeConfirmed()&&held.sockets.get()==1&&held.inputs.get()==1&&held.outputs.get()==1,"Writer release lost original stream/socket ownership");
+  check(!unwinding.connectionEvidence().isNull("confirmed_release_elapsed_ms"),"Confirmed writer release omitted its timestamp");
   SppTransportAdmission.Owner replacement=()->true;admission.reserve(replacement);admission.constructed(replacement);admission.requireOwner(replacement);
 
   for(String mode:new String[]{"socket-failure","input-failure","output-failure"}){
    CleanupEndpoint broken=new CleanupEndpoint(mode);VlinkerSppTransport rejected=new VlinkerSppTransport(broken);rejected.open();check(broken.reading.await(2,TimeUnit.SECONDS),"Failure reader missing");rejected.shutdown();rejected.shutdown();
    check(!rejected.closeConfirmed()&&broken.sockets.get()==1&&broken.inputs.get()==1&&broken.outputs.get()==1&&!broken.reader.isAlive(),"Release failure hidden or later resources skipped: "+mode);
    check(!rejected.connectionEvidence().getString("release_failure").isEmpty(),"Release failure evidence missing: "+mode);
+   check(rejected.connectionEvidence().isNull("confirmed_release_elapsed_ms"),"Failed release published a confirmed time: "+mode);
    SppTransportAdmission sticky=new SppTransportAdmission();sticky.reserve(rejected);sticky.constructed(rejected);admissionBlocked(sticky,"Sticky "+mode+" failure allowed another SPP socket");
   }
 
@@ -127,7 +146,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   check(outcome[0] instanceof IOException&&cancelled.closeConfirmed()&&late.sockets.get()==1&&late.outputs.get()==1&&late.inputRequests.get()==0,"Late stream leaked or cancelled startup acquired input");
  }
  private void wakePrefix(Endpoint endpoint,boolean complete){
-  List<String> wanted=Arrays.asList("AT","","","ATI","ATD");
+  List<String> wanted=endpoint.atAttempts==2?Arrays.asList("AT","AT","","","ATI","ATD"):Arrays.asList("AT","","","ATI","ATD");
   check(!endpoint.commands.contains("ATZ")&&!endpoint.commands.contains("ATWS"),"MX+ wake rebooted adapter");
   int count=complete?wanted.size():Math.min(wanted.size(),endpoint.commands.size());
   check(endpoint.commands.size()>=count&&endpoint.commands.subList(0,count).equals(wanted.subList(0,count)),"Unsafe MX+ wake/repeat prefix: "+endpoint.commands);
@@ -143,7 +162,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   JSONObject report=terminal[0].getJSONObject("report");check(report.optString("status").equals("failed")&&!report.has("result")&&!report.has("saved_report_id")&&report.getBoolean("bluetooth_closed"),"Wake failure published success or omitted cleanup: "+mode);
   check(!endpoint.commands.contains("021A900000000000")&&!endpoint.commands.contains("03A9811200000000")&&!endpoint.commands.contains("ATD"),"Failed readiness advanced to setup/vehicle request: "+endpoint.commands);
   wakePrefix(endpoint,false);check(endpoint.socketCloses.get()==1&&endpoint.inputCloses.get()==1&&endpoint.outputCloses.get()==1,"Wake failure leaked or duplicated stream close");
-  int expected=mode.equals("mxp-fail-at")||mode.equals("mxp-busy-banner")?1:mode.equals("mxp-fail-ati")?4:mode.equals("mxp-cancel-repeat")?2:3;
+  int expected=mode.equals("mxp-fail-at")||mode.equals("mxp-stm-twice")?2:mode.equals("mxp-busy-banner")||mode.startsWith("mxp-stm-")?1:mode.equals("mxp-fail-ati")?4:mode.equals("mxp-cancel-repeat")?2:3;
   check(endpoint.commands.size()==expected,"Readiness advanced/replayed after its failure: "+mode+" "+endpoint.commands);
   if(mode.equals("mxp-repeat-no-prompt"))check(report.optString("error").contains("timeout"),"Missing prompt failed for the wrong reason: "+report);
   if(mode.equals("mxp-cancel-repeat"))check(endpoint.commands.equals(Arrays.asList("AT","")),"Cancellation after confirmed AT advanced/replayed readiness: "+endpoint.commands);
@@ -158,7 +177,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   check(!client.busy&&!VlinkerVehicleConnection.active(),"Native owner retained: "+mode);check(endpoint.closed,"Socket not closed: "+mode);check(terminal[0]!=null,"Missing native terminal result: "+mode);
   check(endpoint.socketCloses.get()==1&&endpoint.inputCloses.get()==(mode.equals("blocked-connect")?0:1)&&endpoint.outputCloses.get()==(mode.equals("blocked-connect")?0:1),"Socket/stream ownership mismatch: "+mode);
   if(mode.startsWith("mxp-"))wakePrefix(endpoint,true);
-  JSONObject report=terminal[0].getJSONObject("report");boolean success=mode.equals("complete")||mode.equals("evo-complete")||mode.equals("mxp-complete");
+  JSONObject report=terminal[0].getJSONObject("report");boolean success=mode.equals("complete")||mode.equals("evo-complete")||mode.equals("mxp-complete")||mode.equals("mxp-stm-one")||mode.equals("mxp-stm-two");
   check(report.getString("transport").equals("synthetic-fixture"),"Fixture mislabeled as hardware");check(report.getString("status").equals(success?"complete":"failed"),"Wrong terminal outcome: "+mode+" "+report);
   check(!report.getBoolean("automatic_replay"),"Automatic replay enabled");
   check(report.getBoolean("bluetooth_closed")!=mode.equals("unconfirmed-close"),"Incorrect release receipt: "+mode);
@@ -168,6 +187,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
   if(mode.equals("wrong-adapter"))check(!endpoint.commands.contains("ATSP6")&&!endpoint.commands.contains("021A900000000000"),"Unverified adapter reached vehicle commands");
   if(success){check(report.getInt("host_vehicle_request_attempts")==1&&report.getInt("host_vehicle_requests_written")==1,"VIN count mismatch");JSONObject result=report.getJSONObject("result");if(mode.startsWith("evo-")){check(result.getString("adapter_model").equals("carista_evo"),"EVO probe lost model");check(result.getString("profile_id").equals(info?"carista_evo_mic3413_hscan_ecm_info_v1":"carista_evo_mic3413_hscan_ecm_dtc_v1"),"EVO probe lost operation profile");}if(mode.startsWith("mxp-")){check(result.getString("adapter_model").equals("obdlink_mxp"),"MX+ probe lost model");check(result.getString("command_family").equals("STN"),"MX+ probe lost STN command family");check(Collections.frequency(endpoint.commands,"STPC")==1,"MX+ probe missing STPC");}check(result.getString("vin").equals("YS3FD49YX41000001"),"Chunked VIN decode failed");if(info)check(result.getJSONObject("ecm_identifiers").length()==7,"Identifier suite incomplete");else check(result.getJSONObject("dtc_report").getJSONArray("records").length()==1,"Raw DTC decode failed");String id=report.getString("saved_report_id");File text=new File(context.getFilesDir(),"dtc-reports/"+id+".txt"),json=new File(context.getFilesDir(),"dtc-reports/"+id+".json");check(new String(Files.readAllBytes(text.toPath()),StandardCharsets.UTF_8).contains("Synthetic fixture replay"),"Saved report omitted fixture scope");text.delete();json.delete();}
   else check(!report.has("result")&&!report.has("saved_report_id"),"Partial result saved as complete");
+  if(mode.equals("mxp-stm-one")||mode.equals("mxp-stm-two")){JSONObject wake=report.getJSONObject("result").getJSONObject("wake_readiness");check(wake.getInt("adapter_only_resync_count")==1&&wake.getInt("initial_AT_attempts")==2&&wake.getInt("residual_prompt_count")== (mode.equals("mxp-stm-one")?1:2),"Residual recovery evidence missing");check(Collections.frequency(endpoint.commands,"AT")==2,"Residual STM was flushed/replayed instead of explicit AT resync");}
   return report;
  }
  private void startup(Context context,String mode)throws Exception{
@@ -180,13 +200,36 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    if(mode.startsWith("mxp-"))wakePrefix(endpoint,true);
   }finally{if(client.busy)main(client::stop);if(prior==null)history.delete();else Files.write(history.toPath(),prior);}
  }
+ private void retainedFreshVin(Context context)throws Exception{
+  Endpoint endpoint=new Endpoint("mxp-complete");VlinkerSppTransport transport=new VlinkerSppTransport(endpoint,"OBDLink MX+ fixture");String address="00:04:3E:00:00:01";
+  java.lang.reflect.Field device=VlinkerSppTransport.class.getDeclaredField("deviceAddress");device.setAccessible(true);device.set(transport,address);
+  java.lang.reflect.Field mode=VlinkerSppTransport.class.getDeclaredField("connectionMode");mode.setAccessible(true);mode.set(transport,"authenticated-spp");
+  VlinkerVehicleConnection[] owner={null};MxNativeBridge.PreparedTransport[] prepared={null};Throwable[] failure={null};CountDownLatch[] done={new CountDownLatch(1)};
+  VlinkerVehicleConnection.Listener listener=snapshot->{if(!snapshot.optBoolean("startup_terminal"))return;try{check(snapshot.optString("state").equals("identified"),"Retained fresh VIN failed: "+snapshot);prepared[0]=owner[0].takeNativeTransport(snapshot.getString("attempt_id"));}catch(Throwable error){failure[0]=error;}finally{done[0].countDown();}};
+  // The outer DebugAVD check supplies the fixture guard; exercise the unchanged
+  // production handoff proof format without qualifying these synthetic bytes.
+  owner[0]=new VlinkerVehicleConnection(context,listener,()->transport,"android-classic-spp",true,false);
+  java.lang.reflect.Field retain=VlinkerVehicleConnection.class.getDeclaredField("retainForNative");retain.setAccessible(true);retain.setBoolean(owner[0],true);
+  try{
+   main(owner[0]::start);check(done[0].await(25,TimeUnit.SECONDS),"First retained VIN timed out");waitForIdleSync();if(failure[0]!=null)throw new AssertionError(failure[0]);check(prepared[0]!=null&&endpoint.opens.get()==1&&endpoint.socketCloses.get()==0,"Discovery did not retain a quiescent socket");
+   MxNativeBridge.PreparedTransport supplied=prepared[0];prepared[0]=null;done[0]=new CountDownLatch(1);
+   owner[0]=VlinkerVehicleConnection.debugRetainedFixture(context,listener,supplied,address,false);
+   main(owner[0]::start);check(done[0].await(25,TimeUnit.SECONDS),"Retained second VIN timed out");waitForIdleSync();if(failure[0]!=null)throw new AssertionError(failure[0]);
+   check(prepared[0]!=null&&endpoint.opens.get()==1&&Collections.frequency(endpoint.commands,"021A900000000000")==2&&Collections.frequency(endpoint.commands,"STPC")==2,"Retained path reopened socket or reused an old VIN/protocol receipt");
+  }finally{if(prepared[0]!=null)prepared[0].close();main(owner[0]::stop);transport.shutdown();}
+  check(!VlinkerVehicleConnection.active()&&endpoint.socketCloses.get()==1,"Retained fresh VIN cleanup lost ownership");
+ }
  public void onStart(){Bundle result=new Bundle();int code=-1;
   try{Context context=getTargetContext();check(SimulatorVehicleConnection.available(context),"Debug emulator required; never use phone fixtures");
    cleanupOwnership();
+   releaseTiming();
    for(String mode:new String[]{"complete","timeout","cancel","truncated","disconnect","wrong-adapter","blocked-connect","blocked-write","unconfirmed-close","complete"})run(context,mode,false);
    run(context,"complete",true);run(context,"evo-complete",true);run(context,"evo-complete",false);run(context,"evo-truncated",false);run(context,"mxp-complete",true);run(context,"mxp-complete",false);
+   run(context,"mxp-stm-one",false);run(context,"mxp-stm-two",false);
    startup(context,"complete");startup(context,"evo-vin");startup(context,"mxp-vin");
+   retainedFreshVin(context);
    for(String mode:new String[]{"mxp-fail-at","mxp-fail-ati","mxp-fail-repeat","mxp-busy-banner","mxp-repeat-no-prompt","mxp-cancel-repeat"})failedWake(context,mode);
+   for(String mode:new String[]{"mxp-stm-twice","mxp-stm-noise","mxp-stm-incomplete"})failedWake(context,mode);
    Endpoint refused=new Endpoint("platform-refusal"){
     public void connect()throws IOException{throw new IOException("read failed, socket might closed or timeout, read ret: -1");}
    };
@@ -197,6 +240,7 @@ public final class DirectBluetoothInstrumentedTest extends Instrumentation {
    JSONObject failure=refusal.connectionEvidence();
    check(failure.getString("phase").equals("connect_failed")&&failure.getBoolean("failed_before_commands"),"Connect failure layer lost");
    check(failure.getLong("transport_write_attempts")==0&&refused.commands.isEmpty(),"Failed connect wrote/replayed commands");
+   check(!failure.isNull("connect_started_elapsed_ms")&&failure.isNull("first_probe_write_elapsed_ms")&&failure.isNull("first_vehicle_write_elapsed_ms"),"Connect refusal timing implied a transmitted probe/vehicle request");
    check(failure.getString("radio_sleep_state").equals("unverified")&&failure.isNull("hci_failure_status"),"Timing guessed radio cause");
    check(failure.getString("platform_error").contains("read ret: -1")&&!failure.getString("failure").isEmpty(),"Original platform error or explanation lost");
    Endpoint blocked=new Endpoint("blocked-connect");VlinkerSppTransport transport=new VlinkerSppTransport(blocked);long started=SystemClock.elapsedRealtime();boolean timedOut=false;try{transport.open();}catch(IOException expected){timedOut=expected.getMessage().equals("Bluetooth connect timed out");}finally{transport.shutdown();}long elapsed=SystemClock.elapsedRealtime()-started;check(timedOut&&blocked.closed&&elapsed>=20000&&elapsed<25000,"Connect deadline failed");

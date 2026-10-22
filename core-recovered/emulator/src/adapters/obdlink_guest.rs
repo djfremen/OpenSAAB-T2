@@ -491,6 +491,9 @@ impl Link {
     }
     fn cleanup(&mut self, events: &SyncSender<Event>) {
         let protocol = (|| -> Result<(), String> {
+            if !self.configured {
+                return Err("STN configuration incomplete; protocol cleanup unconfirmed".into());
+            }
             if self.monitoring {
                 self.interrupt_monitor(events, "session-close")?;
             } else {
@@ -503,16 +506,49 @@ impl Link {
             }
             Ok(())
         })();
-        // CLOSE is a local ownership command, permitted even after uncertain in-band I/O.
-        let native = self.socket.command("CLOSE").and_then(|s| {
-            if s == "CLOSED" {
-                Ok(())
-            } else {
-                Err("Native Bluetooth close unconfirmed".into())
+        let protocol_error = protocol.err();
+        // These are local ownership commands, allowed even after uncertain
+        // in-band I/O. FINISH CLEAN asserts only the completed protocol cleanup.
+        // The host returns PARKED only for an explicitly armed security handoff;
+        // ordinary Stop returns CLOSED and releases the complete transport.
+        let command = if protocol_error.is_none() { "FINISH CLEAN" } else { "CLOSE" };
+        let (disposition, transport_error) = match self.finish_transport(command) {
+            Ok(disposition) => (disposition, None),
+            Err(error) if command == "FINISH CLEAN" => {
+                // Never retain ownership after an ambiguous acknowledgement.
+                // A successful fallback close does not erase the failed finish.
+                let closed = self.finish_transport("CLOSE");
+                match closed {
+                    Ok(disposition) => (disposition, Some(error)),
+                    Err(close_error) => ("unknown", Some(format!("{error}; {close_error}"))),
+                }
             }
-        });
-        let result = protocol.and(native);
-        let _=self.record(serde_json::json!({"cleanup":match result {Ok(())=>"confirmed".to_string(),Err(e)=>format!("unconfirmed: {e}")}}));
+            Err(error) => ("unknown", Some(error)),
+        };
+        let cleanup = match protocol_error.as_ref().or(transport_error.as_ref()) {
+            None => "confirmed".to_string(),
+            Some(error) => format!("unconfirmed: {error}"),
+        };
+        // PARKED is not Bluetooth release, native operation success or ECU
+        // authorization. Runtime failure is reported separately and still wins.
+        let _ = self.record(serde_json::json!({
+            "protocol_cleanup": if protocol_error.is_none() { "succeeded" } else { "failed" },
+            "protocol_cleanup_error": protocol_error,
+            "transport_disposition": disposition,
+            "transport_handoff_error": transport_error,
+            "cleanup": cleanup,
+        }));
+    }
+    fn finish_transport(&mut self, command: &str) -> Result<&'static str, String> {
+        let response = self.socket.command(command)?;
+        if !self.socket.0.buffer().is_empty() {
+            return Err("Native Bluetooth finish returned excess acknowledgement bytes".into());
+        }
+        match (command, response.as_str()) {
+            (_, "CLOSED") => Ok("closed"),
+            ("FINISH CLEAN", "PARKED") => Ok("parked"),
+            _ => Err("Native Bluetooth transport disposition unconfirmed".into()),
+        }
     }
 }
 #[derive(Clone, Debug)]

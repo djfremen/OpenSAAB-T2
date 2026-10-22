@@ -3,6 +3,7 @@ pub mod adapter_identity;
 pub mod adapters;
 pub mod connection_startup;
 pub mod ownership;
+pub mod mx_idle;
 pub mod reports;
 pub mod t8_dtc;
 pub mod vin_probe;

@@ -55,13 +55,27 @@ pub fn cleanup_failures(dir: &std::path::Path) -> Vec<&'static str> {
     // policy. Stream it rather than loading a full session into memory.
     use std::io::BufRead;
     if let Ok(file) = std::fs::File::open(dir.join("obdlink-native-transcript-private.jsonl")) {
-        let mut last = None;
+        let mut failed = false;
         for line in std::io::BufReader::new(file).lines().map_while(Result::ok) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-                if let Some(cleanup) = value["cleanup"].as_str() { last = Some(cleanup.to_owned()); }
+                // Link::record wraps actual observations in `event`. Accept
+                // legacy top-level records too, but never let a later confirmed
+                // summary erase an explicit failure already observed.
+                for event in [&value, &value["event"]] {
+                    if let Some(cleanup) = event["cleanup"].as_str() {
+                        failed |= cleanup != "confirmed";
+                    }
+                    if event.get("protocol_cleanup").is_some()
+                        || event.get("transport_disposition").is_some() {
+                        failed |= event["protocol_cleanup"] != "succeeded"
+                            || !matches!(event["transport_disposition"].as_str(), Some("closed" | "parked"))
+                            || !event["protocol_cleanup_error"].is_null()
+                            || !event["transport_handoff_error"].is_null();
+                    }
+                }
             }
         }
-        if last.as_deref().is_some_and(|value| value != "confirmed") {
+        if failed {
             failures.push("bluetooth_protocol_or_socket");
         }
     }
@@ -70,6 +84,20 @@ pub fn cleanup_failures(dir: &std::path::Path) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static CLEANUP_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    fn cleanup_directory() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("native-cleanup-proof-{}-{}", std::process::id(),
+            CLEANUP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        std::fs::create_dir(&dir).unwrap();
+        dir
+    }
+    fn transcript_failures(lines: &str) -> Vec<&'static str> {
+        let dir = cleanup_directory();
+        std::fs::write(dir.join("obdlink-native-transcript-private.jsonl"), lines).unwrap();
+        let failures = cleanup_failures(&dir);
+        std::fs::remove_dir_all(dir).unwrap();
+        failures
+    }
     #[test]
     fn final_failure_reason_has_priority_over_requested_stop() {
         assert_eq!(opensaab_session_evidence::stop_code("cleanup_failure", "Native Android session stopped by operator; native cleanup failed: usb"), "cleanup_failure");
@@ -88,8 +116,7 @@ mod tests {
     }
     #[test]
     fn final_cleanup_failure_is_read_after_join_and_unknown_stays_unknown() {
-        let dir = std::env::temp_dir().join(format!("native-cleanup-proof-{}",std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = cleanup_directory();
         assert!(cleanup_failures(&dir).is_empty());
         std::fs::write(dir.join("adapter-diagnostics.json"),r#"{"protocol_cleanup":"unknown","usb_release":"succeeded"}"#).unwrap();
         assert!(cleanup_failures(&dir).is_empty());
@@ -97,6 +124,37 @@ mod tests {
         std::fs::write(dir.join("obdlink-native-transcript-private.jsonl"),"{\"cleanup\":\"unconfirmed: missing prompt\"}\n").unwrap();
         assert_eq!(cleanup_failures(&dir), vec!["protocol","usb","bluetooth_protocol_or_socket"]);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn nested_native_cleanup_failure_cannot_be_hidden_by_a_later_summary() {
+        assert_eq!(transcript_failures(concat!(
+            "{\"elapsed_ms\":1,\"event\":{\"cleanup\":\"unconfirmed: missing prompt\"}}\n",
+            "{\"cleanup\":\"confirmed\"}\n"
+        )), vec!["bluetooth_protocol_or_socket"]);
+    }
+    #[test]
+    fn structured_protocol_and_transport_failures_override_confirmed_text() {
+        for record in [
+            r#"{"event":{"cleanup":"confirmed","protocol_cleanup":"failed","transport_disposition":"closed"}}"#,
+            r#"{"event":{"cleanup":"confirmed","protocol_cleanup":"succeeded","transport_disposition":"unknown"}}"#,
+            r#"{"event":{"cleanup":"confirmed","protocol_cleanup":"succeeded","transport_disposition":"closed","transport_handoff_error":"ambiguous finish acknowledgement"}}"#,
+            r#"{"event":{"cleanup":"confirmed","protocol_cleanup":"succeeded","transport_disposition":"parked","protocol_cleanup_error":"STPC rejected"}}"#,
+            r#"{"event":{"cleanup":"confirmed","transport_disposition":"parked"}}"#,
+        ] {
+            assert_eq!(transcript_failures(record), vec!["bluetooth_protocol_or_socket"], "{record}");
+        }
+    }
+    #[test]
+    fn verified_parking_is_protocol_cleanup_only_and_does_not_qualify_work() {
+        for disposition in ["closed", "parked"] {
+            assert!(transcript_failures(&serde_json::json!({"event":{
+                "cleanup":"confirmed", "protocol_cleanup":"succeeded", "transport_disposition":disposition,
+                "protocol_cleanup_error":null, "transport_handoff_error":null
+            }}).to_string()).is_empty());
+        }
+        assert_eq!(Outcome::GuestFailure.after_cleanup(false), Outcome::GuestFailure);
+        assert_eq!(Outcome::Stopped.after_cleanup(false), Outcome::Stopped);
+        assert_ne!(Outcome::Stopped.name(), "success");
     }
 }
 

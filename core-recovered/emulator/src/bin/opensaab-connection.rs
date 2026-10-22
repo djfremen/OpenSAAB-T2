@@ -9,6 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("Missing app data directory")?;
     let mut connection = tech2_emu::connection_startup::Session::new(root.into());
     let mut protocol = tech2_emu::adapters::vlinker::Session::startup().owned();
+    let mut parked = opensaab_vlinker_workflow::mx_idle::Session::new().owned();
     let stdin = io::stdin();
     let mut input = stdin.lock();
     let mut output = io::stdout().lock();
@@ -49,6 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => json!({"state":"failed","error":"Unsupported probe mode"}),
             },
             Some("vlinker") => protocol.event(&event),
+            Some("mx_idle") => parked.event(&event),
             Some("reports") => {
                 let mut request = event.clone(); request["schema"] = json!(1);
                 request["root"] = json!(connection.root_path());

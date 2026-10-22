@@ -203,6 +203,41 @@ impl Prompt {
     }
 }
 
+const INITIAL_AT_MAX_BYTES: usize = 256;
+const RESYNC_QUIET_MS: u64 = 300;
+#[derive(Debug, PartialEq)]
+enum InitialAtReply { Partial, Confirmed, Residual { prompts: usize, complete: bool } }
+// Residual STM can consume the first AT as monitor interruption followed by an
+// invalid command. Only complete, bounded STOPPED/? prompts justify resync.
+fn initial_at_reply(bytes: &[u8]) -> Result<InitialAtReply, String> {
+    if bytes.len() > INITIAL_AT_MAX_BYTES { return Err("Initial AT reply exceeded limit".into()); }
+    if !bytes.iter().all(|b|[10,13].contains(b)||(32..=126).contains(b)) { return Err("Non-ASCII initial AT reply".into()); }
+    let raw = std::str::from_utf8(bytes).unwrap();
+    let mut parts = raw.split('>').collect::<Vec<_>>();
+    let tail = parts.pop().unwrap().trim();
+    if parts.is_empty() { return Ok(InitialAtReply::Partial); }
+    if parts.len() > 2 { return Err("Too many initial AT prompts".into()); }
+    let mut residual = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        let mut lines = part.split(['\r','\n']).map(str::trim).filter(|s|!s.is_empty());
+        let first = lines.next().unwrap_or("");
+        let reply = if index == 0 && first == "AT" { lines.next().unwrap_or("") } else { first };
+        if lines.next().is_some() { return Err("Ambiguous initial AT response".into()); }
+        if reply == "OK" {
+            return if parts.len() == 1 && tail.is_empty() { Ok(InitialAtReply::Confirmed) }
+                else { Err("Ambiguous bytes after initial AT confirmation".into()) };
+        }
+        if !["STOPPED","?"].contains(&reply) || residual.contains(&reply) {
+            return Err("Unexpected initial AT response".into());
+        }
+        residual.push(reply);
+    }
+    if !tail.is_empty() && !["STOPPED","?"].iter().any(|s|s.starts_with(tail)) {
+        return Err("Unexpected residual bytes after initial AT prompt".into());
+    }
+    Ok(InitialAtReply::Residual { prompts: residual.len(), complete: tail.is_empty() })
+}
+
 pub struct Session {
     read_vin: bool,
     owned: bool,
@@ -225,6 +260,13 @@ pub struct Session {
     firmware: String,
     voltage: String,
     vin: String,
+    mx_profile: bool,
+    initial_at_bytes: Vec<u8>,
+    initial_at_attempts: u8,
+    resync_count: u8,
+    residual_prompts: usize,
+    residual_response: String,
+    resync_last_input: Option<Instant>,
 }
 impl Session {
     // Pure protocol sessions can replay offline fixtures; native bindings must claim ownership.
@@ -263,6 +305,9 @@ impl Session {
             firmware: String::new(),
             voltage: String::new(),
             vin: String::new(),
+            mx_profile: false,
+            initial_at_bytes: Vec::new(), initial_at_attempts: 0, resync_count: 0,
+            residual_prompts: 0, residual_response: String::new(), resync_last_input: None,
         }
     }
     pub fn probe(codes: bool) -> Self {
@@ -291,6 +336,7 @@ impl Session {
     }
     fn select_obdlink(&mut self) -> Result<(), String> {
         if self.started { return Err("Cannot change an active adapter profile".into()); }
+        self.mx_profile = true;
         let startup = crate::adapters::obdlink_mxp::STARTUP;
         let end = startup.iter().position(|c| *c == if self.read_vin {"STPC"} else {"ATRV"}).unwrap();
         self.commands = startup[..end + usize::from(!self.read_vin)].to_vec();
@@ -325,13 +371,15 @@ impl Session {
             self.index += 1;
             return self.emit();
         }
-        let result = json!({"state":"failed", "error":self.cleanup_error.clone().unwrap_or(reason), "automatic_replay":false});
+        let mut result = json!({"state":"failed", "error":self.cleanup_error.clone().unwrap_or(reason), "automatic_replay":false});
+        if self.mx_profile { result["wake_readiness"] = self.readiness_evidence(); }
         self.vin.clear();
         self.terminal = Some(result.clone());
         result
     }
     fn emit(&mut self) -> Value {
         self.command_at = Instant::now();
+        if self.mx_profile && self.index == 0 && self.commands[0] == "AT" { self.initial_at_attempts += 1; self.initial_at_bytes.clear(); }
         if self.commands[self.index] == SESSION_START {
             self.diagnostic_active = true;
         }
@@ -341,6 +389,11 @@ impl Session {
         } else {
             json!({"state":"send", "command":self.commands[self.index]})
         }
+    }
+    fn readiness_evidence(&self) -> Value {
+        json!({"initial_AT_attempts":self.initial_at_attempts,"adapter_only_resync_count":self.resync_count,
+            "residual_prompt_count":self.residual_prompts,"residual_response_ascii":self.residual_response,
+            "adapter_rebooted":false,"vehicle_request_replay":false,"sleep_state":"unverified"})
     }
     fn validate(&mut self, reply: &str) -> Result<(), String> {
         let command = self.commands[self.index];
@@ -477,7 +530,19 @@ impl Session {
                 self.started = true;
                 self.emit()
             }
-            "tick" => json!({"state":"waiting"}),
+            "tick" => {
+                if self.resync_last_input.is_some_and(|at|at.elapsed() >= Duration::from_millis(RESYNC_QUIET_MS)) {
+                    match initial_at_reply(&self.initial_at_bytes) {
+                        Ok(InitialAtReply::Residual { prompts, complete: true }) => {
+                            self.residual_prompts = prompts;
+                            self.residual_response = String::from_utf8_lossy(&self.initial_at_bytes).into_owned();
+                            self.resync_count = 1; self.resync_last_input = None;
+                            let mut effect = self.emit(); effect["wake_readiness"] = self.readiness_evidence(); effect
+                        }
+                        _ => self.fail("Incomplete or ambiguous initial AT residual prompt"),
+                    }
+                } else { json!({"state":"waiting"}) }
+            },
             "rx" if self.started => {
                 let Some(input) = event["bytes"].as_array() else {
                     return self.fail("Missing response bytes");
@@ -489,9 +554,25 @@ impl Session {
                 let Some(bytes) = bytes else {
                     return self.fail("Invalid response byte");
                 };
-                if let Err(error) = self.prompt.feed(&bytes) {
-                    return self.fail(error);
-                }
+                if self.mx_profile && self.index == 0 && self.commands[0] == "AT" {
+                    if bytes.len() > INITIAL_AT_MAX_BYTES.saturating_sub(self.initial_at_bytes.len()) { return self.fail("Initial AT reply exceeded limit"); }
+                    self.initial_at_bytes.extend_from_slice(&bytes);
+                    match initial_at_reply(&self.initial_at_bytes) {
+                        Ok(InitialAtReply::Partial) => return json!({"state":"waiting"}),
+                        Ok(InitialAtReply::Residual { prompts, .. }) => {
+                            if self.resync_count != 0 { return self.fail("Initial AT resync did not confirm readiness; no further retry"); }
+                            self.residual_prompts = prompts;
+                            self.residual_response = String::from_utf8_lossy(&self.initial_at_bytes).into_owned();
+                            self.resync_last_input = Some(Instant::now());
+                            return json!({"state":"waiting","resync_quiet_ms":RESYNC_QUIET_MS,"wake_readiness":self.readiness_evidence()});
+                        }
+                        Ok(InitialAtReply::Confirmed) => {
+                            self.resync_last_input = None;
+                            if let Err(error) = self.prompt.feed(&self.initial_at_bytes) { return self.fail(error); }
+                        }
+                        Err(error) => return self.fail(error),
+                    }
+                } else if let Err(error) = self.prompt.feed(&bytes) { return self.fail(error); }
                 if !self.prompt.done {
                     return json!({"state":"waiting"});
                 }
@@ -546,7 +627,7 @@ impl Session {
                         "result":{"mode":self.mode,"ecm_identifiers":self.ecm,"dtc_report":self.dtc,"display":display,"diagnostic_session_stopped":!self.diagnostic_active,"adapter_model":self.model.unwrap().id(),"adapter_label":self.model.unwrap().label(),"command_family":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {"STN"} else {"MIC"},"profile_id":if self.mode == "vin" { self.model.unwrap().vin_profile_id() } else { self.model.unwrap().probe_profile_id(self.mode == "ecm_dtc") },"product":self.product,"chip_firmware":self.firmware,"voltage":self.voltage,
                             "vin":if self.read_vin {Some(&self.vin)} else {None},
                             "request_origin":self.origin, "firmware_emulation":false,
-                            "wake_readiness":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {json!({"initial_AT_confirmed":true,"confirmed_AT_CR_repeats":2,"ATI_validated":true,"adapter_rebooted":false,"sleep_state":"unverified"})} else {Value::Null},
+                            "wake_readiness":if self.model == Some(crate::adapter_identity::Model::ObdlinkMxp) {let mut evidence=self.readiness_evidence();evidence["initial_AT_confirmed"]=json!(true);evidence["confirmed_AT_CR_repeats"]=json!(2);evidence["ATI_validated"]=json!(true);evidence} else {Value::Null},
                             "flow_control_owner":if self.read_vin {"adapter"} else {"none"}}});
                     self.terminal = Some(result.clone());
                     result
@@ -1099,5 +1180,37 @@ mod tests {
         value = feed(&mut session, "OK>");
         assert_eq!(value["state"], "failed");
         assert_eq!(feed(&mut session, &(probe_reply(DTC_READ) + ">")), value);
+    }
+    fn mx_start() -> Session {
+        let mut s=Session::startup();s.event(&json!({"op":"select_profile","model":"obdlink_mxp"}));
+        assert_eq!(s.event(&json!({"op":"start"}))["command"],"AT");s
+    }
+    fn resync_tick(s:&mut Session)->Value {
+        s.resync_last_input=Some(Instant::now()-Duration::from_millis(301));
+        s.event(&json!({"op":"tick"}))
+    }
+    #[test] fn residual_monitor_prompts_allow_one_nonempty_adapter_resync() {
+        for raw in ["STOPPED\r>","?\r>","AT\rSTOPPED\r>?\r>","STOPPED\r>?\r>"] {
+            let mut s=mx_start();
+            for part in raw.as_bytes().chunks(2) {assert_eq!(s.event(&json!({"op":"rx","bytes":part}))["state"],"waiting");}
+            let waiting=s.event(&json!({"op":"tick"}));assert_eq!(waiting["state"],"waiting");
+            let retry=resync_tick(&mut s);assert_eq!(retry["command"],"AT");assert!(retry.get("transport_op").is_none());
+            assert_eq!(retry["wake_readiness"]["adapter_only_resync_count"],1);
+            let repeat=feed(&mut s,"AT\rOK\r>");assert_eq!(repeat["transport_op"],"repeat_ready_at");
+            assert_eq!(s.initial_at_attempts,2);assert_eq!(s.residual_response,raw);
+            assert_eq!(feed(&mut s,"AT\rOK\r>")["transport_op"],"repeat_ready_at");
+            assert_eq!(feed(&mut s,"AT\rOK\r>")["command"],"ATI");
+        }
+    }
+    #[test] fn residual_resync_rejects_noise_incomplete_duplicate_and_repeated_failure() {
+        for raw in ["STOPPED\r>garbage","STOPPED\r>STOPPED\r>","STOPPED\r>?\r>OK\r>","STOPPED\r>OK\r>","AT\rSTOPPED\rOK\r>","AT\rOK\r>?"] {
+            let mut s=mx_start();assert_eq!(feed(&mut s,raw)["state"],"failed","{raw}");
+        }
+        let mut s=mx_start();feed(&mut s,"STOPPED\r>?");assert_eq!(resync_tick(&mut s)["state"],"failed");
+        let mut s=mx_start();feed(&mut s,"STOPPED\r>");resync_tick(&mut s);
+        let failed=feed(&mut s,"?\r>");assert_eq!(failed["state"],"failed");assert_eq!(failed["wake_readiness"]["adapter_only_resync_count"],1);
+        assert_eq!(feed(&mut s,"OK\r>"),failed);assert_eq!(s.event(&json!({"op":"tick"})),failed);
+        let mut s=mx_start();feed(&mut s,"STOPPED\r>");let cancelled=s.event(&json!({"op":"cancel"}));assert_eq!(cancelled["state"],"failed");assert_eq!(resync_tick(&mut s),cancelled);
+        let mut s=mx_start();feed(&mut s,"STOPPED\r>");s.command_at=Instant::now()-Duration::from_secs(4);assert_eq!(s.event(&json!({"op":"tick"}))["state"],"failed");
     }
 }

@@ -39,6 +39,8 @@ public class VlinkerVehicleConnection {
     private boolean retainForNative;
     private MxNativeBridge.PreparedTransport preparedTransport;
     private String preparedAttempt="";
+    private MxNativeBridge.PreparedTransport suppliedTransport;
+    private boolean reuseOpenTransport;
     VlinkerVehicleConnection(Context c,Listener l,LinkFactory factory,String kind,boolean enabled){this(c,l,factory,kind,enabled,false);}
     VlinkerVehicleConnection(Context c,Listener l,LinkFactory factory,String kind,boolean enabled,boolean fixture){
         if(fixture&&!SimulatorVehicleConnection.available(c))throw new IllegalArgumentException("Synthetic transport requires a Debug emulator");
@@ -66,6 +68,17 @@ public class VlinkerVehicleConnection {
     public static VlinkerVehicleConnection directForNative(Context c,Listener l,android.bluetooth.BluetoothDevice device,boolean compatibility){
         VlinkerVehicleConnection connection=direct(c,l,device,compatibility);connection.retainForNative=true;return connection;
     }
+    public static VlinkerVehicleConnection directForNative(Context c,Listener l,android.bluetooth.BluetoothDevice device,boolean compatibility,MxNativeBridge.PreparedTransport retained){
+        if(retained==null)return directForNative(c,l,device,compatibility);
+        VlinkerVehicleConnection connection=new VlinkerVehicleConnection(c,l,()->retained.claim(device,compatibility),"android-classic-spp",true);
+        connection.retainForNative=true;connection.reuseOpenTransport=true;connection.suppliedTransport=retained;return connection;
+    }
+    static VlinkerVehicleConnection debugRetainedFixture(Context c,Listener listener,MxNativeBridge.PreparedTransport retained,String address,boolean compatibility){
+        if(!SimulatorVehicleConnection.available(c))throw new IllegalArgumentException("Synthetic retained transport requires a Debug emulator");
+        VlinkerVehicleConnection connection=new VlinkerVehicleConnection(c,listener,()->retained.claim(address,compatibility),"android-classic-spp",true,false);
+        connection.retainForNative=true;connection.reuseOpenTransport=true;connection.suppliedTransport=retained;return connection;
+    }
+    private void discardSupplied(){MxNativeBridge.PreparedTransport value=suppliedTransport;suppliedTransport=null;if(value!=null)value.close();}
     public synchronized boolean nativeTransportReady(String attempt){return !busy&&!cancelled.get()&&OWNER.get()==this&&preparedTransport!=null&&preparedTransport.available()&&preparedAttempt.equals(attempt);}
     public synchronized MxNativeBridge.PreparedTransport takeNativeTransport(String attempt){
         if(!nativeTransportReady(attempt))throw new IllegalStateException("Verified native transport handoff unavailable");
@@ -82,13 +95,13 @@ public class VlinkerVehicleConnection {
         if(busy||(!enabled||!available(context)))return;probeMode=mode;ownerToken="";start();
     }
     public void start(){
-        if(busy||(!enabled||!available(context)))return;
-        if(!OWNER.compareAndSet(null,this)){publish(blockedSnapshot());return;}
+        if(busy)return;if(!enabled||!available(context)){discardSupplied();return;}
+        if(!OWNER.compareAndSet(null,this)){discardSupplied();publish(blockedSnapshot());return;}
         busy=true;cancelled.set(false);closed=false;protocolStarted=false;ownerToken="";attempts=0;written=0;commandAttempts=new JSONObject();commandWrites=new JSONObject();transportIdentity=new JSONObject();
         new Thread(this::run,"opensaab-vlinker-effects").start();
     }
     private static JSONObject blockedSnapshot(){try{return new JSONObject().put("state","blocked").put("message","Finish the active workflow before connecting");}catch(JSONException e){throw new AssertionError(e);}}
-    public void stop(){cancelled.set(true);discardNativeTransport();VlinkerTransport current=link;if(current!=null)current.cancelPendingIO();}
+    public void stop(){cancelled.set(true);discardSupplied();discardNativeTransport();VlinkerTransport current=link;if(current!=null)current.cancelPendingIO();}
     private JSONObject event(String scope,JSONObject value)throws Exception{
         value.put("scope",scope);
         coreInput.write((value.toString()+"\n").getBytes(StandardCharsets.UTF_8));coreInput.flush();
@@ -155,11 +168,21 @@ public class VlinkerVehicleConnection {
         JSONObject acquired=protocol(claim);if(!acquired.optString("state").equals("idle"))throw new IOException(acquired.optString("error"));
         if(cancelled.get())throw new IOException("Connection cancelled");
         link=linkFactory.create();if(cancelled.get())throw new IOException("Connection cancelled");
-        if(link instanceof VlinkerSppTransport)record("bluetooth_connect_started",((VlinkerSppTransport)link).connectionEvidence());
-        try{link.open();}finally{if(link instanceof VlinkerSppTransport)record("bluetooth_connect_finished",((VlinkerSppTransport)link).connectionEvidence());}
+        if(reuseOpenTransport){
+            if(!(link instanceof VlinkerSppTransport)||!((VlinkerSppTransport)link).readyForHandoff())throw new IOException("Retained Bluetooth transport is unavailable");
+            record("security_transport_adopted",((VlinkerSppTransport)link).connectionEvidence().put("socket_reopened",false));
+        }else{
+            if(link instanceof VlinkerSppTransport)record("bluetooth_connect_started",((VlinkerSppTransport)link).connectionEvidence());
+            try{link.open();}finally{if(link instanceof VlinkerSppTransport)record("bluetooth_connect_finished",((VlinkerSppTransport)link).connectionEvidence());}
+        }
         if(cancelled.get())throw new IOException("Connection cancelled");
         long deadline=SystemClock.elapsedRealtime()+30000;
-        JSONObject ready=packet(deadline,true);transportIdentity=ready;
+        JSONObject ready;
+        if(reuseOpenTransport){
+            ready=((VlinkerSppTransport)link).connectionEvidence();
+            ready.put("type","ready").put("transport","android-classic-spp").put("uuid",VlinkerSppTransport.SPP_UUID.toString()).put("source","security-processing-retained").put("socket_reopened",false);
+        }else ready=packet(deadline,true);
+        transportIdentity=ready;
         boolean macSpp=transportKind.equals("android-emulator-local-m4-bluetooth")&&SimulatorVehicleConnection.available(context)
             &&ready.optString("transport").equals("macos-classic-spp")&&ready.optString("uuid").equals(VlinkerSppTransport.SPP_UUID.toString())&&VlinkerDevicePicker.androidName(ready.optString("device_name"));
         boolean profile=transportKind.equals("android-classic-spp")
@@ -186,6 +209,17 @@ public class VlinkerVehicleConnection {
             else throw new IOException("Unexpected Bluetooth packet");
         }
     }
+    private void drainHandoffReceipts()throws Exception{
+        while(true){
+            if(cancelled.get())throw new IOException("Connection cancelled");
+            try{
+                JSONObject packet=link.receive(1);record("handoff_receipt",packet);
+                if(!packet.optString("type").equals("write_completed")||!packet.optString("command").equals("STPC"))
+                    throw new IOException("Unexpected bytes after discovery cleanup; connection not retained");
+                commandWrites.put("STPC",commandWrites.optInt("STPC")+1);
+            }catch(SocketTimeoutException quiet){return;}
+        }
+    }
     private JSONObject lookup(JSONObject request){
         HttpURLConnection http=null;
         try{
@@ -201,6 +235,14 @@ public class VlinkerVehicleConnection {
             return op("lookup_result").put("http_status",status).put("body",bytes.toString("UTF-8"));
         }catch(Exception unavailable){try{return op("lookup_unavailable");}catch(Exception impossible){throw new AssertionError(impossible);}}
         finally{if(http!=null)http.disconnect();}
+    }
+    private boolean finishCore(){
+        java.lang.Process child=core;if(child==null)return true;
+        try{if(coreInput!=null)coreInput.close();}catch(Exception ignored){}
+        NativeProcessExit.Result exit=NativeProcessExit.await(child,500);
+        boolean clean=!child.isAlive()&&!exit.forced&&exit.exitCode!=null&&exit.exitCode==0;core=null;
+        try{record("workflow_worker_exit",new JSONObject().put("process_dead",!child.isAlive()).put("forced",exit.forced).put("exit_code",exit.exitCode==null?JSONObject.NULL:exit.exitCode));}catch(Exception ignored){}
+        return clean;
     }
     private void runProbe(){
         JSONObject snapshot=null,result=null;String error="";
@@ -231,7 +273,8 @@ public class VlinkerVehicleConnection {
             snapshot=new JSONObject().put("state",success?"complete":"failed").put("message",success?result.optString("display"):"ECM probe failed · "+error).put("report",report);
         }catch(Exception failure){try{snapshot=new JSONObject().put("state","failed").put("message","ECM probe unavailable · "+failure.getMessage());}catch(Exception impossible){throw new AssertionError(impossible);}}
         finally{
-            if(link!=null){link.shutdown();link=null;}if(core!=null){core.destroy();core=null;}try{if(transcript!=null)transcript.close();}catch(Exception ignored){}
+            if(!finishCore())try{snapshot=new JSONObject().put("state","failed").put("message","Shared workflow worker did not exit cleanly");}catch(Exception ignored){}
+            discardSupplied();if(link!=null){link.shutdown();link=null;}try{if(transcript!=null)transcript.close();}catch(Exception ignored){}
             final JSONObject terminal=snapshot;ui.post(()->{OWNER.compareAndSet(this,null);busy=false;probeMode="";if(terminal!=null)listener.changed(terminal);});
         }
     }
@@ -250,8 +293,9 @@ public class VlinkerVehicleConnection {
             try{result=discover();}catch(Exception failure){error=failure.getMessage();}
             finally{
                 if(result==null)cleanupProtocol();protocolStarted=false;
+                if(result!=null&&retainForNative&&link instanceof VlinkerSppTransport)try{drainHandoffReceipts();}catch(Exception failed){error=failed.getMessage();result=null;}
                 retained=retainForNative&&!cancelled.get()&&result!=null&&result.optString("adapter_model").equals("obdlink_mxp")
-                    &&result.optBoolean("diagnostic_session_stopped")&&commandWrites.optInt("STPC")==1&&link instanceof VlinkerSppTransport;
+                    &&result.optBoolean("diagnostic_session_stopped")&&commandWrites.optInt("STPC")==1&&link instanceof VlinkerSppTransport&&((VlinkerSppTransport)link).readyForHandoff();
                 if(!retained)try{release();}catch(Exception failure){error="Bluetooth release was not confirmed";}
             }
             success=result!=null&&(closed||retained)&&error.isEmpty()&&!cancelled.get();
@@ -273,11 +317,19 @@ public class VlinkerVehicleConnection {
             try{if(core!=null){snapshot=connection(op("cancel"));if(snapshot.optString("state").equals("stopping"))snapshot=connection(op("transport_closed").put("bluetooth_closed",closed));}}catch(Exception ignored){}
             if(snapshot==null)try{snapshot=new JSONObject().put("state","failed").put("busy",false).put("message","Connection unavailable · "+failure.getMessage());}catch(Exception impossible){throw new AssertionError(impossible);}
         }finally{
+            if(!finishCore()){
+                retained=false;
+                try{
+                    snapshot=new JSONObject().put("state","failed").put("message","Shared workflow worker did not exit cleanly");
+                    if(startupReport!=null){startupReport.put("status","failed").put("error","Shared workflow worker did not exit cleanly").remove("native_transport_handoff");Files.write(new File(traceDirectory,"result.json").toPath(),startupReport.toString(2).getBytes(StandardCharsets.UTF_8));}
+                }catch(Exception ignored){}
+            }
+            discardSupplied();
             if(retained&&!cancelled.get()&&snapshot!=null&&snapshot.optString("state").equals("identified")){
                 synchronized(this){if(!cancelled.get()){preparedTransport=new MxNativeBridge.PreparedTransport(ownerToken,transportIdentity.optString("device_address"),transportIdentity.optString("connection_mode").equals("unauthenticated-spp"),(VlinkerSppTransport)link);preparedAttempt=ownerToken;link=null;}}
             }
             if(link!=null){link.shutdown();link=null;}
-            if(core!=null){core.destroy();core=null;}try{if(transcript!=null)transcript.close();}catch(Exception ignored){}
+            try{if(transcript!=null)transcript.close();}catch(Exception ignored){}
             final JSONObject terminal=snapshot;
             final JSONObject receipt=startupReport;
             ui.post(()->{busy=false;if(preparedTransport==null)OWNER.compareAndSet(this,null);if(terminal!=null){

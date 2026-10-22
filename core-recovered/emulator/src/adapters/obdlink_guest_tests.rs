@@ -10,6 +10,11 @@ static PEER_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy)]
 enum Mode {
     Success,
+    FinishParked,
+    FinishRejected,
+    FinishMissingAck,
+    FinishAndCloseRejected,
+    ProtocolCleanupRejected,
     ResetBluetoothLeak,
     DefaultsRejected,
     DefaultsMissingPrompt,
@@ -159,6 +164,7 @@ impl Peer {
                             continue;
                         }
                         let value = match c {
+                            "STPC" if matches!(mode, Mode::ProtocolCleanupRejected) => "?",
                             "ATD" if matches!(mode, Mode::DefaultsRejected) => "?",
                             "STDI" if matches!(mode, Mode::WrongStartupIdentity) => "Unknown adapter",
                             "STBC1" if matches!(mode, Mode::NoBatchCapability) => "?",
@@ -246,8 +252,16 @@ impl Peer {
                         replies.push_back(b"STOPPED\r\r>".to_vec());
                     }
                     "WRITTEN".to_string()
+                } else if command == "FINISH CLEAN" {
+                    if matches!(mode, Mode::FinishMissingAck) { break; }
+                    if matches!(mode, Mode::FinishRejected | Mode::FinishAndCloseRejected) {
+                        "PARKED CLOSED".to_string()
+                    } else {
+                        writeln!(reader.get_mut(), "{}", if matches!(mode, Mode::FinishParked) { "PARKED" } else { "CLOSED" }).unwrap();
+                        break;
+                    }
                 } else if command == "CLOSE" {
-                    writeln!(reader.get_mut(), "CLOSED").unwrap();
+                    writeln!(reader.get_mut(), "{}", if matches!(mode, Mode::FinishAndCloseRejected) { "BUSY" } else { "CLOSED" }).unwrap();
                     break;
                 } else {
                     panic!("Unknown byte operation {command}")
@@ -296,6 +310,72 @@ fn native_start_restores_defaults_without_rebooting_the_connected_radio() {
     assert!(!commands.iter().any(|s| s.starts_with("WRITE STPX")));
 }
 
+fn final_cleanup(peer: &Peer) -> serde_json::Value {
+    std::fs::read_to_string(peer.directory.join("obdlink-native-transcript-private.jsonl"))
+        .unwrap().lines().filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .map(|value| value["event"].clone()).filter(|event| event.get("cleanup").is_some())
+        .last().unwrap()
+}
+
+#[test]
+fn clean_finish_distinguishes_ordinary_stop_closure_from_explicit_security_parking() {
+    for (mode, expected) in [(Mode::Success, "closed"), (Mode::FinishParked, "parked")] {
+        let (peer, mut link) = Peer::open(mode);
+        link.setup().unwrap();
+        let (events, _) = mpsc::sync_channel(8);
+        link.cleanup(&events);
+        let record = final_cleanup(&peer);
+        let commands = peer.close();
+        assert_eq!(record["protocol_cleanup"], "succeeded");
+        assert_eq!(record["transport_disposition"], expected);
+        assert_eq!(record["cleanup"], "confirmed");
+        assert_eq!(commands.last().map(String::as_str), Some("FINISH CLEAN"));
+        let finish = commands.iter().position(|command| command == "FINISH CLEAN").unwrap();
+        let protocol_close = commands.iter().position(|command| command == "WRITE STPC").unwrap();
+        assert!(protocol_close < finish);
+        assert!(!commands.iter().any(|command| command.starts_with("WRITE STPX")));
+        assert!(record.get("bluetooth_released").is_none());
+        assert!(record.get("operation_success").is_none());
+    }
+}
+
+#[test]
+fn protocol_cleanup_failure_cannot_request_a_parked_transport() {
+    let (peer, mut link) = Peer::open(Mode::ProtocolCleanupRejected);
+    link.setup().unwrap();
+    let (events, _) = mpsc::sync_channel(8);
+    link.cleanup(&events);
+    let record = final_cleanup(&peer);
+    let commands = peer.close();
+    assert_eq!(record["protocol_cleanup"], "failed");
+    assert_eq!(record["transport_disposition"], "closed");
+    assert!(record["cleanup"].as_str().unwrap().starts_with("unconfirmed:"));
+    assert_eq!(commands.last().map(String::as_str), Some("CLOSE"));
+    assert!(!commands.iter().any(|command| command == "FINISH CLEAN"));
+}
+
+#[test]
+fn ambiguous_or_missing_finish_acknowledgement_fails_even_after_fallback_close() {
+    for (mode, expected) in [(Mode::FinishRejected, "closed"),
+                             (Mode::FinishMissingAck, "unknown"),
+                             (Mode::FinishAndCloseRejected, "unknown")] {
+        let (peer, mut link) = Peer::open(mode);
+        link.setup().unwrap();
+        let (events, _) = mpsc::sync_channel(8);
+        link.cleanup(&events);
+        let record = final_cleanup(&peer);
+        let commands = peer.close();
+        assert_eq!(record["protocol_cleanup"], "succeeded");
+        assert_eq!(record["transport_disposition"], expected);
+        assert!(record["transport_handoff_error"].is_string());
+        assert!(record["cleanup"].as_str().unwrap().starts_with("unconfirmed:"));
+        assert_eq!(commands.iter().filter(|command| command.as_str() == "FINISH CLEAN").count(), 1);
+        if !matches!(mode, Mode::FinishMissingAck) {
+            assert_eq!(commands.last().map(String::as_str), Some("CLOSE"));
+        }
+    }
+}
+
 #[test]
 fn active_idle_monitor_keeps_adapter_awake_without_extra_probe_or_vehicle_sender() {
     let (peer, link) = Peer::open(Mode::Success);
@@ -307,7 +387,7 @@ fn active_idle_monitor_keeps_adapter_awake_without_extra_probe_or_vehicle_sender
     assert_eq!(commands.iter().filter(|s| s.as_str() == "WRITE STM").count(),1);
     assert_eq!(commands.iter().filter(|s| s.as_str() == "WRITE ATI").count(),1);
     assert!(!commands.iter().any(|s| s.starts_with("WRITE STPX")));
-    assert_eq!(commands.last().map(String::as_str),Some("CLOSE"));
+    assert_eq!(commands.last().map(String::as_str),Some("FINISH CLEAN"));
 }
 
 #[test]
@@ -443,6 +523,7 @@ fn failure_case(mode: Mode, expected: &str) {
         (2, 41, "can-request")
     );
     backend.close();
+    let cleanup = final_cleanup(&peer);
     let commands = peer.close();
     assert_eq!(
         commands
@@ -456,7 +537,11 @@ fn failure_case(mode: Mode, expected: &str) {
         .position(|c| c == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM")
         .unwrap();
     assert!(!commands[first + 1..].iter().any(|c| c == "INTERRUPT"));
-    assert_eq!(commands.iter().filter(|c| *c == "CLOSE").count(), 1);
+    let terminal = if matches!(mode, Mode::CanError | Mode::Stopped) { "FINISH CLEAN" } else { "CLOSE" };
+    assert_eq!(commands.iter().filter(|c| c.as_str() == terminal).count(), 1);
+    // The runtime failure above remains observable even when later protocol
+    // cleanup succeeds. The host must still reject parking a failed child.
+    assert_eq!(cleanup["protocol_cleanup"], if terminal == "FINISH CLEAN" { "succeeded" } else { "failed" });
 }
 #[test]
 fn can_error_prevents_completion_and_the_queued_next_write() {
@@ -808,7 +893,7 @@ fn cancel_during_discovery_window_does_not_send_queued_cross_bus_request() {
     backend.close();
     let commands = peer.close();
     assert!(!commands.iter().any(|s| s == "WRITE STPXH:101,D:FE013E0000000000,R:0|STM"));
-    assert_eq!(commands.iter().filter(|s| *s == "CLOSE").count(), 1);
+    assert_eq!(commands.iter().filter(|s| *s == "FINISH CLEAN").count(), 1);
 }
 
 #[test]

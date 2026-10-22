@@ -1,7 +1,7 @@
 {
   "id": "session-lifecycle-outcomes-1",
   "date": "2026-10-22",
-  "candidate": "0.1.1-preview.33",
+  "candidate": "0.1.1-preview.34",
   "scope": "Android ARM64 candidate; other target binding, installed and physical verification pending",
   "rules": [
     "Operator Stop requests native stop, rejects new diagnostic work, and keeps the existing bridge available for bounded adapter cleanup. Forced termination is explicit; the card lease is not released before actual process death.",
@@ -15,7 +15,10 @@
     "MX+ shared startup drains only bounded pre-session bytes, confirms nonempty AT before two separately prompt-gated bare CR repeats of that confirmed AT, validates ATI, and restores runtime defaults using ATD without ATZ/ATWS. Uncertain readiness fails closed before vehicle requests; unknown prior commands are never repeated.",
     "Active MX+ firmware sessions keep the UART awake through continuous STM and original guest Tester Present. There is no extra host vehicle sender or keepalive monitor interruption, and this active-session policy ends on Stop.",
     "Confirmed SPP release requires the socket and both streams to close, the owned reader thread to terminate, and connect/write calls to finish. A socket-close return alone is not complete transport release.",
-    "Physical SPP admission retains the prior transport owner across workflow failure until its actual confirmed-release predicate succeeds. A pending reader/writer or sticky socket/stream close failure blocks another physical session; failed cleanup requires a full Android force stop and reopen. Synthetic transport fixtures do not establish a hardware pass."
+    "Physical SPP admission retains the prior transport owner across workflow failure until its actual confirmed-release predicate succeeds. A pending reader/writer or sticky socket/stream close failure blocks another physical session; failed cleanup requires a full Android force stop and reopen. Synthetic transport fixtures do not establish a hardware pass.",
+    "MX+ native cleanup sends FINISH CLEAN only after actual protocol cleanup succeeds, accepts exactly PARKED or CLOSED, and records protocol cleanup separately from transport disposition. Ordinary Stop closes the transport; protocol error uses CLOSE. An ambiguous finish acknowledgement falls back to full close and remains a failure.",
+    "Security processing may park the same SPP owner only when explicitly armed, native protocol cleanup succeeded, and the firmware child actually exited with code zero without forced termination. PARKED is not Bluetooth release, operation success, ECU authorization or a firmware/card lease. Failed or uncertain ownership closes the transport and preserves the failure.",
+    "A parked MX+ owner uses the rebuilt connection worker for serialized adapter-only ATI checks with a closed protocol. It must reach a validated prompt and actual worker death before one-use transfer for fresh VIN discovery. Same run, card/post-import hash, device, pairing compatibility and VIN remain bound; cancellation, backgrounding, expiry or failed import closes ownership. No extra vehicle sender, automatic retry or operation replay is introduced."
   ],
   "security": "No operator password; internal authentication, operation consent, exact VIN, authority profiles, firmware ownership and validated atomic SSA import remain required.",
   "qualification": "Source/software checks do not establish hardware protection or a vehicle workflow pass. All four adapters require exact-candidate common golden-path qualification.",

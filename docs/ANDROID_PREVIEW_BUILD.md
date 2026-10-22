@@ -28,7 +28,7 @@ non-debuggable private developer preview; this command does not install or publi
 ```sh
 python3 scripts/android/build-preview.py \
   --retained-apk /absolute/path/to/the-pinned-preview.30.apk \
-  --output /absolute/path/outside/the-checkout/preview33
+  --output /absolute/path/outside/the-checkout/preview34
 ```
 
 The default package is firmware-free. `--support-root /authorized/private/inputs`

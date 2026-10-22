@@ -218,7 +218,7 @@ def main():
                 'source_application_version': version, 'source_manifest': str(manifest.relative_to(REPO)),
                 'source_binary':executable,
                 'capabilities': ('Rebuilt MDI carrier with strict child-status reporting' if role=='mdi-carrier' else
-                                 'Rebuilt shared connection worker with owned MX+ readiness' if executable=='opensaab-connection' else
+                                 'Rebuilt shared connection worker with owned MX+ readiness and adapter-only security idle scope' if executable=='opensaab-connection' else
                                  'Rebuilt firmware engine') + '; installed and physical adapter verification pending'}
     write_json(output / 'cargo-dependency-receipt.json', {'schema': 1, 'engines': dependencies})
     dependency_archive=output/('OpenSAAB-'+version+'-cargo-source-inputs.tar.gz')

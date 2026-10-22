@@ -28,6 +28,15 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private final BooleanSupplier running;
     private BooleanSupplier firmwareRunning;
     private final Runnable stop,collect,resume;
+    public interface ProcessingLifecycle {
+        void stopping(File run)throws Exception;
+        void imported(File run,String beforeHash,String afterHash)throws Exception;
+        void failed();
+        String continuationMessage();
+    }
+    private ProcessingLifecycle processingLifecycle;
+    private String importedBeforeHash,importedAfterHash;
+    public void setProcessingLifecycle(ProcessingLifecycle lifecycle){processingLifecycle=lifecycle;}
     private IntPredicate menuKey;
     private SecurityMenuNavigator navigator;
     private boolean manualNavigation,manualCollection;
@@ -211,6 +220,10 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         if(!WORKFLOW_BUSY.compareAndSet(false,true))return;
         final File run=session.get();final byte[] selection=selectedSsa==null?null:selectedSsa.clone();busy=true;failure=null;action.setEnabled(false);
         SessionDiagnostics.record(run,process?SessionDiagnostics.Event.SECURITY_PROCESS_REQUESTED:SessionDiagnostics.Event.SECURITY_COLLECTION_REQUESTED);
+        if(processingLifecycle!=null){
+            if(process)try{processingLifecycle.stopping(run);}catch(Exception error){processingLifecycle.failed();}
+            else processingLifecycle.failed();
+        }
         message.setText("Closing the firmware session…");stop.run();
         worker.execute(()->{
             boolean released=false;
@@ -218,11 +231,12 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                 long deadline=SystemClock.elapsedRealtime()+15000;
                 while(running.getAsBoolean()&&SystemClock.elapsedRealtime()<deadline&&!closed)Thread.sleep(50);
                 if(closed)return;
-                if(running.getAsBoolean())throw new IOException("Session did not close. Stop USB, then retry.");
+                if(running.getAsBoolean())throw new IOException("Firmware shutdown or adapter cleanup was not confirmed. Preserve the session logs before recovery.");
                 if(session.get()!=run)throw new IOException("Session changed; collect again.");
                 if(!process){WORKFLOW_BUSY.set(false);released=true;activity.runOnUiThread(()->{busy=false;if(!closed)collect.run();});return;}
                 if(run==null)throw new IOException("No collected session");
                 try(FirmwareGate.Lease lease=FirmwareGate.change()){process(run,allowFallback,selection);}
+                if(processingLifecycle!=null)processingLifecycle.imported(run,importedBeforeHash,importedAfterHash);
                 SessionDiagnostics.record(run,SessionDiagnostics.Event.SECURITY_IMPORTED);
                 // Release the image lease and workflow gate before the new emulator opens the card.
                 WORKFLOW_BUSY.set(false);released=true;
@@ -234,10 +248,11 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
                             show("[POST-AUTH] — restarting firmware…","Restarting firmware");action.setEnabled(false);
                             android.widget.Toast.makeText(activity,"[POST-AUTH] — restarting firmware",android.widget.Toast.LENGTH_LONG).show();
                             resume.run();
-                        }else show("[POST-AUTH] Security data imported. Tap Continue firmware to reconnect and return to the original firmware in Full session. The VIN is checked again.","Continue firmware");
+                        }else show(processingLifecycle==null?"[POST-AUTH] Security data imported. Tap Continue firmware to reconnect and return to the original firmware in Full session. The VIN is checked again.":processingLifecycle.continuationMessage(),"Continue firmware");
                     }
                 });
             }catch(Exception e){
+                if(processingLifecycle!=null)processingLifecycle.failed();
                 SupportReports.recordError(activity,e,false);
                 String reason=e.getMessage()==null?e.getClass().getSimpleName():e.getMessage();
                 android.util.Log.w("OpenSaabSecurity","Security workflow stopped: "+reason);
@@ -282,6 +297,7 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
         SecurityAuthorization.bearer(activity);
         String updatedHash=SsaCardImport.apply(card,before,after,originalHash,evidence,
             ()->!closed&&!running.getAsBoolean()&&session.get()==run);
+        importedBeforeHash=originalHash;importedAfterHash=updatedHash;
         attempt.imported(after,java.time.Instant.now());attempt.save(receiptFile());
         JSONObject report=new JSONObject().put("started_utc",attempt.data.getProperty("started_utc"))
             .put("server_reply_validated_utc",attempt.data.getProperty("processed_utc"))
@@ -324,5 +340,5 @@ public final class SecurityAccessView extends LinearLayout implements AutoClosea
     private static String sha(byte[] bytes)throws Exception{
         StringBuilder s=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))s.append(String.format(Locale.ROOT,"%02x",b&255));return s.toString();
     }
-    @Override public void close(){closed=true;HttpURLConnection active=connection;if(active!=null)active.disconnect();worker.shutdown();}
+    @Override public void close(){closed=true;if(processingLifecycle!=null)processingLifecycle.failed();HttpURLConnection active=connection;if(active!=null)active.disconnect();worker.shutdown();}
 }

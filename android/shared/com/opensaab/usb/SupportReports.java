@@ -83,7 +83,7 @@ public final class SupportReports {
         report.put("privacy","Raw logs, CAN payloads, VIN, SSA, security responses, credentials, firmware and screenshots are excluded. Description is user-provided. Event counts and fixed failure categories cover bounded log tails only.");
         JSONArray runs=new JSONArray();File files=c.getFilesDir();
         for(File dir:sessions(files)){
-            JSONObject session=new JSONObject().put("adapter",dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":dir.getName().startsWith("mdi-")?"mdi":dir.getName().startsWith("mongoose-")?"mongoose":dir.getParentFile().getName().equals("mdi-sessions")?"mdi":"offline").put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
+            JSONObject session=new JSONObject().put("adapter",DiagnosticEvidence.adapter(dir,dir.getName().startsWith("chipsoft-")?"chipsoft":dir.getName().startsWith("native-")?"nano":dir.getName().startsWith("mdi-")?"mdi":dir.getName().startsWith("mongoose-")?"mongoose":dir.getParentFile().getName().equals("mdi-sessions")?"mdi":"offline")).put("modified_utc",java.time.Instant.ofEpochMilli(dir.lastModified()).toString());JSONArray logs=new JSONArray();
             for(String name:new String[]{"usb.log","native-process.log","rust.log","tech2.log","console.log"}){File f=new File(dir,name);if(f.isFile()&&f.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile()))try{logs.put(logSummary(f));}catch(IOException e){logs.put(new JSONObject().put("source",name).put("unavailable",true));}}
             File outcome=new File(dir,"report.json");
             if(outcome.isFile()&&outcome.length()<1048576)try{

@@ -29,7 +29,7 @@ public final class MainActivity extends Activity {
     private final AtomicBoolean stopping = new AtomicBoolean();
     private volatile java.lang.Process process;
     private volatile boolean running;
-    private boolean foreground;
+    private volatile boolean foreground;
     private boolean resumed,previewContinued;
     private com.opensaab.usb.StartupMeasurement startup;
     private long launchOrigin;
@@ -50,6 +50,11 @@ public final class MainActivity extends Activity {
     private final com.opensaab.usb.BluetoothFirmwareHandoff bluetoothHandoff=new com.opensaab.usb.BluetoothFirmwareHandoff();
     private volatile com.opensaab.usb.MxNativeBridge mxBridge;
     private volatile com.opensaab.usb.MxNativeBridge.PreparedTransport mxPreparedTransport;
+    private final Object mxSecurityLock=new Object();
+    private volatile com.opensaab.usb.MxSecurityTransport.Binding mxSecurityBinding;
+    private volatile com.opensaab.usb.MxSecurityTransport mxSecurityTransport;
+    private volatile boolean mxResumePending;
+    private long mxSecurityGeneration;
     private long sessionStarted,beatStamp,beatObserved,mxSecurityUiAt;
     private final com.opensaab.usb.McpMenuCache mcpMenuCache=new com.opensaab.usb.McpMenuCache();
     private final com.opensaab.usb.AndroidMcp.Owner mcpOwner=new com.opensaab.usb.AndroidMcp.Owner(){
@@ -57,11 +62,11 @@ public final class MainActivity extends Activity {
         public org.json.JSONObject inspect()throws Exception{return mcpState(false);}
         public void close(){mcpMenuCache.close();}
         public boolean key(int code){if(mxSecurityAccess!=null)mxSecurityAccess.manualNavigation();com.opensaab.usb.InteractiveKeyPump p=keyPump;boolean accepted=running&&!stopping.get()&&p!=null&&permitMxKey(code)&&p.offer(String.format(Locale.ROOT,"0x%02x",code));if(accepted)offlineEvidence.input();return accepted;}
-        public void startOffline(){mxDevice=null;startSession();}
+        public void startOffline(){if(!modeSelectionReady())return;cancelMxSecurityTransport();mxDevice=null;startSession();}
         public void stop(){stopSession("Stopped by AI control");}
     };
     private org.json.JSONObject mcpState(boolean fresh)throws Exception {
-        org.json.JSONObject j=new org.json.JSONObject().put("session",running&&session!=null?session.getName():"").put("session_running",running).put("emulator_alive",process!=null&&process.isAlive()).put("busy",(simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy)||com.opensaab.usb.FirmwareGate.busy()||com.opensaab.usb.SecurityAccessView.workflowBusy()).put("mode",mxDevice==null?"offline":mxModeName()).put("write_prompt_pending",mxWriteDialog!=null&&mxWriteDialog.isShowing()).put("input_idle",keyPump!=null&&keyPump.idle()).put("session_age_ms",running?android.os.SystemClock.elapsedRealtime()-sessionStarted:0);
+        org.json.JSONObject j=new org.json.JSONObject().put("session",running&&session!=null?session.getName():"").put("session_running",running).put("emulator_alive",process!=null&&process.isAlive()).put("mx_transport_retained",mxSecurityTransport!=null&&mxSecurityTransport.available()).put("busy",mxResumePending||(simulatorConnection!=null&&simulatorConnection.busy)||(hscanProbe!=null&&hscanProbe.busy)||com.opensaab.usb.FirmwareGate.busy()||com.opensaab.usb.SecurityAccessView.workflowBusy()).put("mode",mxDevice==null?"offline":mxModeName()).put("write_prompt_pending",mxWriteDialog!=null&&mxWriteDialog.isShowing()).put("input_idle",keyPump!=null&&keyPump.idle()).put("session_age_ms",running?android.os.SystemClock.elapsedRealtime()-sessionStarted:0);
         org.json.JSONObject cachedMenu=mcpMenuCache.get(running?session:null,fresh);
         if(running&&session!=null){
             File beat=new File(session,"emulator-heartbeat");if(beat.lastModified()!=beatStamp){beatStamp=beat.lastModified();beatObserved=android.os.SystemClock.elapsedRealtime();}
@@ -328,6 +333,8 @@ public final class MainActivity extends Activity {
         start.setText(label+modeSuffix());
     }
     private void selectAdapter(String mode,boolean allowEmulation) {
+        if(mxResumePending){status.setText("Preparing the retained MX+ connection…");return;}
+        if(!com.opensaab.usb.SecurityAccessView.workflowBusy())cancelMxSecurityTransport();
         if(com.opensaab.usb.MdiUsbActivity.sessionActive()||com.opensaab.usb.VlinkerVehicleConnection.active()){status.setText("Finish the current connection first");return;}
         if(com.opensaab.usb.FirmwareGate.busy()){status.setText("Finish firmware installation first");return;}
         String missing=new com.opensaab.usb.FirmwareStore(getFilesDir()).missing();
@@ -374,7 +381,7 @@ public final class MainActivity extends Activity {
         if(allowEmulation)picker.setNeutralButton("Run in emulation mode",(dialog,which)->{mxDevice=null;startSession();});
         adapterPicker=picker.show();
     }
-    private boolean modeSelectionReady(){return foreground&&resumed&&!isDestroyed()&&!running&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy()&&!com.opensaab.usb.VlinkerVehicleConnection.active();}
+    private boolean modeSelectionReady(){return foreground&&resumed&&!isDestroyed()&&!running&&!mxResumePending&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy()&&!com.opensaab.usb.VlinkerVehicleConnection.active();}
     private com.opensaab.usb.SessionModes.Mode selectedSessionMode(com.opensaab.usb.SessionModes.Capabilities caps){
         if(!modeSelectionReady())return null;
         com.opensaab.usb.SessionModes.Mode selected=sessionMode.selected();
@@ -391,8 +398,12 @@ public final class MainActivity extends Activity {
         if(selected!=null)beginBluetoothStartup(device,compatibility,selected);
     }
     private void beginBluetoothStartup(android.bluetooth.BluetoothDevice device,boolean compatibility,com.opensaab.usb.SessionModes.Mode selectedMode){
-        if(!modeSelectionReady())return;
-        if(selectedMode==null){status.setText("Choose a session mode before connecting");return;}
+        beginBluetoothStartup(device,compatibility,selectedMode,null);
+    }
+    private void beginBluetoothStartup(android.bluetooth.BluetoothDevice device,boolean compatibility,com.opensaab.usb.SessionModes.Mode selectedMode,com.opensaab.usb.MxNativeBridge.PreparedTransport retained){
+        if(!modeSelectionReady()){if(retained!=null)retained.close();return;}
+        if(selectedMode==null){if(retained!=null)retained.close();status.setText("Choose a session mode before connecting");return;}
+        if(retained==null&&mxSecurityTransport!=null)cancelMxSecurityTransport();
         final String consent=selectedMode!=com.opensaab.usb.SessionModes.Mode.READ?java.time.Instant.now().toString():null;
         final long attempt=bluetoothHandoff.begin();
         simulatorConnection=com.opensaab.usb.VlinkerVehicleConnection.directForNative(this,snapshot->{
@@ -424,7 +435,7 @@ public final class MainActivity extends Activity {
                 status.setText("Vehicle identified · Starting original firmware…");startSession();
                 if(!running&&mxPreparedTransport!=null){mxPreparedTransport.close();mxPreparedTransport=null;}
             }else{simulatorConnection.discardNativeTransport();simulatorChanged(snapshot);}
-        },device,compatibility);
+        },device,compatibility,retained);
         clearSimulatorIdentity();status.setText("Opening selected adapter · Reading a fresh vehicle VIN…");
         simulatorConnection.start();updateWorkspace();
     }
@@ -501,9 +512,38 @@ public final class MainActivity extends Activity {
             ()->running||!mxCleanupConfirmed,()->stopSession("Closing for security workflow"),
             ()->{if(modeSelectionReady()&&mxCleanupConfirmed){mxExpectedVin=mxVehicle==null?null:mxVehicle.vin;beginBluetoothStartup(mxDevice,mxCompatibility,com.opensaab.usb.SessionModes.Mode.SEEDS);}},this::resumeMxSecurity);
         mxSecurityAccess.manualResume();
+        mxSecurityAccess.setProcessingLifecycle(new com.opensaab.usb.SecurityAccessView.ProcessingLifecycle(){
+            public void stopping(File run)throws Exception{prepareMxSecurityTransport(run);}
+            public void imported(File run,String beforeHash,String afterHash){confirmMxSecurityImport(run,beforeHash,afterHash);}
+            public void failed(){cancelMxSecurityTransport();}
+            public String continuationMessage(){return mxSecurityTransport!=null&&mxSecurityTransport.available()
+                ?"[POST-AUTH] Security data imported. MX+ connection retained. Tap Continue firmware; the VIN is checked again before the original firmware starts."
+                :"[POST-AUTH] Security data imported. Tap Continue firmware to reconnect; the VIN is checked again.";}
+        });
         mxSecurityAccess.setFirmwareRunning(()->running);
         mxSecurityAccess.setMenuKey(code->{com.opensaab.usb.InteractiveKeyPump pump=keyPump;return foreground&&running&&!stopping.get()&&pump!=null&&pump.offer(String.format(Locale.ROOT,"0x%02x",code));});
         details.addView(mxSecurityAccess);
+    }
+    private void prepareMxSecurityTransport(File run)throws Exception{
+        cancelMxSecurityTransport();
+        com.opensaab.usb.MxNativeBridge bridge=mxBridge;
+        if(run==null||run!=session||!running||stopping.get()||bridge==null||mxDevice==null||mxVehicle==null)return;
+        com.opensaab.usb.MxSecurityTransport.Binding binding=new com.opensaab.usb.MxSecurityTransport.Binding(run,new File(getFilesDir(),"firmware/card.bin"),mxDevice.getAddress(),mxCompatibility,mxVehicle.vin);
+        synchronized(mxSecurityLock){bridge.armSecurityHandoff();mxSecurityBinding=binding;}
+    }
+    private void cancelMxSecurityTransport(){
+        com.opensaab.usb.MxSecurityTransport retained;com.opensaab.usb.MxNativeBridge bridge;
+        synchronized(mxSecurityLock){mxSecurityGeneration++;mxResumePending=false;mxSecurityBinding=null;retained=mxSecurityTransport;mxSecurityTransport=null;bridge=mxBridge;}
+        if(bridge!=null)bridge.cancelSecurityHandoff();if(retained!=null)retained.close();
+    }
+    private void confirmMxSecurityImport(File run,String beforeHash,String afterHash){
+        com.opensaab.usb.MxSecurityTransport retained=mxSecurityTransport;com.opensaab.usb.MxSecurityTransport.Binding binding=mxSecurityBinding;
+        if(retained==null||binding==null)return;
+        try{
+            if(run!=session||!binding.run.equals(run.getCanonicalFile())||com.opensaab.usb.FirmwareGate.sessionActive()
+                ||!com.opensaab.usb.SsaCardImport.hash(binding.card).equals(afterHash))throw new IOException("Security working card changed after import");
+            retained.imported(run,binding.card,beforeHash,afterHash);
+        }catch(Exception lost){cancelMxSecurityTransport();android.util.Log.w("OpenSaabMx","Imported data retained; Bluetooth handoff unavailable");}
     }
     private void resumeMxSecurity(){
         if(mxDevice==null||mxVehicle==null){status.setText("Security data imported · Connect and start to reconnect MX+. Vehicle identity will be checked again.");return;}
@@ -514,13 +554,31 @@ public final class MainActivity extends Activity {
             if(!modeSelectionReady()||!mxCleanupConfirmed||mxDevice==null||mxVehicle==null)return;
             if(resume==com.opensaab.usb.SessionModes.Mode.FULL){com.opensaab.usb.SessionModeControl.remember(this,resume);if(sessionMode!=null)sessionMode.reload();}
             mxExpectedVin=mxVehicle.vin;
-            status.setText("Security data imported · Reconnecting MX+ in "+resume.label+" · re-reading VIN…");
-            beginBluetoothStartup(mxDevice,mxCompatibility,resume);
+            com.opensaab.usb.MxSecurityTransport retained=mxSecurityTransport;com.opensaab.usb.MxSecurityTransport.Binding binding=mxSecurityBinding;
+            if(retained==null||binding==null||!retained.available()){
+                cancelMxSecurityTransport();status.setText("Security data imported · Reconnecting MX+ in "+resume.label+" · re-reading VIN…");
+                beginBluetoothStartup(mxDevice,mxCompatibility,resume);return;
+            }
+            final long generation;synchronized(mxSecurityLock){mxResumePending=true;generation=mxSecurityGeneration;}
+            status.setText("Security data imported · Preparing retained MX+ connection…");
+            new Thread(()->{
+                com.opensaab.usb.MxNativeBridge.PreparedTransport prepared=null;String error=null;
+                try(com.opensaab.usb.FirmwareGate.Lease lease=com.opensaab.usb.FirmwareGate.use()){
+                    prepared=retained.claim(session,binding.card,mxDevice.getAddress(),mxCompatibility,mxExpectedVin,com.opensaab.usb.SsaCardImport.hash(binding.card));
+                }catch(Exception failed){error=failed.getMessage();retained.close();}
+                final com.opensaab.usb.MxNativeBridge.PreparedTransport ready=prepared;final String failure=error;
+                ui.post(()->{
+                    synchronized(mxSecurityLock){if(generation!=mxSecurityGeneration||!foreground||isDestroyed()||session==null||!sameFile(session,binding.run)){
+                        if(ready!=null)ready.close();return;}mxResumePending=false;mxSecurityTransport=null;mxSecurityBinding=null;}
+                    if(ready==null){status.setText("Security data preserved · "+failure+". Tap Continue firmware to reconnect.");return;}
+                    status.setText("MX+ connection retained · Re-reading the vehicle VIN…");beginBluetoothStartup(mxDevice,mxCompatibility,resume,ready);
+                });
+            },"mx-security-resume").start();
         };
         if(resume==mxMode){go.run();return;}
         // Moving from Read/collection to Full is always an explicit, named choice.
         new android.app.AlertDialog.Builder(this).setTitle("Continue in Full session?")
-            .setMessage(com.opensaab.usb.SessionModes.headline(resume)+"\n"+com.opensaab.usb.SessionModes.detail(resume)+"\n\nMX+ reconnects and the VIN is checked again.")
+            .setMessage(com.opensaab.usb.SessionModes.headline(resume)+"\n"+com.opensaab.usb.SessionModes.detail(resume)+"\n\nThe MX+ connection is checked and the VIN is read again.")
             .setNegativeButton("Cancel",null).setPositiveButton("Continue in Full session",(d,w)->go.run()).show();
     }
     private boolean permitMxKey(int code){
@@ -562,13 +620,14 @@ public final class MainActivity extends Activity {
         mxWriteDialog.setOnCancelListener(d->{com.opensaab.usb.AndroidMcp.manual();com.opensaab.usb.SessionDiagnostics.record(current,com.opensaab.usb.SessionDiagnostics.Event.WRITE_ACCESS_DECLINED);});
         mxWriteDialog.setOnDismissListener(d->{mxWriteDialog=null;});mxWriteDialog.show();
     }
+    private static boolean sameFile(File a,File b){try{return a!=null&&b!=null&&a.getCanonicalFile().equals(b.getCanonicalFile());}catch(IOException unavailable){return false;}}
     private static boolean mxProtocolCleanupConfirmed(File run){
         try{
             File trace=new File(run,"obdlink-native-transcript-private.jsonl");
             try(java.io.RandomAccessFile input=new java.io.RandomAccessFile(trace,"r")){
                 input.seek(Math.max(0,input.length()-4096));byte[] tail=new byte[(int)(input.length()-input.getFilePointer())];input.readFully(tail);
                 String[] lines=new String(tail,StandardCharsets.UTF_8).trim().split("\n");
-                org.json.JSONObject event=new org.json.JSONObject(lines[lines.length-1]).optJSONObject("event");return event!=null&&event.optString("cleanup").equals("confirmed");
+                org.json.JSONObject event=new org.json.JSONObject(lines[lines.length-1]).optJSONObject("event");return event!=null&&event.optString("cleanup").equals("confirmed")&&event.optString("protocol_cleanup").equals("succeeded");
             }
         }catch(Exception unconfirmed){return false;}
     }
@@ -699,13 +758,37 @@ public final class MainActivity extends Activity {
             if(exitCode==null&&child!=null&&!child.isAlive())exitCode=child.exitValue();
             boolean unsupported=com.opensaab.usb.MxSessionOutcome.unsupported(mxSession,policyRejected.get(),forced,launchFailed);
             offlineEvidence.ended(exitCode,hostDeadline,forced,launchFailed,unsupported);
-            boolean cleanRelease=false,bluetoothReleased=false,protocolReleased=false;
+            boolean cleanRelease=false,bluetoothReleased=false,protocolReleased=false,retainedForSecurity=false;
+            org.json.JSONObject transportEvidence=null;String retentionFailure=null;
             if(mxPreparedTransport!=null){mxPreparedTransport.close();mxPreparedTransport=null;}
-            if(mxBridge!=null){mxBridge.close();bluetoothReleased=mxBridge.bluetoothClosed();protocolReleased=mxProtocolCleanupConfirmed(session);cleanRelease=bluetoothReleased&&protocolReleased;mxBridge=null;}
+            com.opensaab.usb.MxNativeBridge endingBridge=mxBridge;
+            if(endingBridge!=null){
+                protocolReleased=mxProtocolCleanupConfirmed(session);
+                com.opensaab.usb.MxSecurityTransport.Binding requested=mxSecurityBinding;
+                boolean cleanChild=child!=null&&!child.isAlive()&&!forced&&!launchFailed&&!hostDeadline&&!unsupported&&exitCode!=null&&exitCode==0;
+                if(requested!=null&&sameFile(requested.run,session)&&foreground&&stopping.get()&&cleanChild&&protocolReleased&&com.opensaab.usb.SecurityAccessView.workflowBusy()){
+                    com.opensaab.usb.MxSecurityTransport retained=null;
+                    try{
+                        // Snapshot the stopped working card, rather than inheriting a pre-run hash.
+                        com.opensaab.usb.MxSecurityTransport.Binding stoppedBinding=requested.stoppedCard();
+                        retained=endingBridge.takeSecurityTransport(this,stoppedBinding,true,true,true);
+                        synchronized(mxSecurityLock){
+                            if(mxSecurityBinding==requested&&mxBridge==endingBridge&&foreground&&com.opensaab.usb.SecurityAccessView.workflowBusy()){
+                                mxSecurityBinding=stoppedBinding;mxSecurityTransport=retained;retained=null;retainedForSecurity=true;
+                            }
+                        }
+                    }catch(Exception failed){retentionFailure=failed.getMessage();}
+                    finally{if(retained!=null)retained.close();}
+                }
+                endingBridge.close();bluetoothReleased=endingBridge.bluetoothClosed();try{transportEvidence=endingBridge.connectionEvidence();}catch(Exception unavailable){}mxBridge=null;
+                cleanRelease=cleanChild&&protocolReleased&&(bluetoothReleased||retainedForSecurity);
+                if(!retainedForSecurity){synchronized(mxSecurityLock){mxSecurityBinding=null;}}
+            }
             if(mxSession){
-                try{if(session!=null)publish(new File(session,"host-release.json"),new org.json.JSONObject().put("schema",1).put("adapter","mxplus").put("process_dead",child==null||!child.isAlive()).put("forced_termination",forced).put("child_exit_code",exitCode==null?org.json.JSONObject.NULL:exitCode).put("bluetooth_release",bluetoothReleased?"succeeded":"unknown").put("protocol_cleanup",protocolReleased?"succeeded":"unknown").put("workflow_qualified",false).toString(2)+"\n");}catch(Exception ignored){}
+                try{if(session!=null)publish(new File(session,"host-release.json"),new org.json.JSONObject().put("schema",2).put("adapter","mxplus").put("process_dead",child==null||!child.isAlive()).put("forced_termination",forced).put("child_exit_code",exitCode==null?org.json.JSONObject.NULL:exitCode).put("bluetooth_release",retainedForSecurity?"retained_for_security":bluetoothReleased?"succeeded":"unknown").put("protocol_cleanup",protocolReleased?"succeeded":"unknown").put("security_transport_retained",retainedForSecurity).put("retention_error",retentionFailure==null?org.json.JSONObject.NULL:retentionFailure).put("transport_evidence",transportEvidence==null?org.json.JSONObject.NULL:transportEvidence).put("workflow_qualified",false).toString(2)+"\n");}catch(Exception ignored){}
                 if(!end.contains("Changes not verified"))end+=" · Changes not verified; check saved session";
-                end+=" · Bluetooth release "+(bluetoothReleased?"confirmed":"unconfirmed")+" · Protocol cleanup "+(protocolReleased?"confirmed":"unconfirmed");
+                end+=retainedForSecurity?" · Bluetooth retained for security processing":" · Bluetooth release "+(bluetoothReleased?"confirmed":"unconfirmed");
+                end+=" · Protocol cleanup "+(protocolReleased?"confirmed":"unconfirmed");
             }
             process=null;
             if(unsupported)health.unsupportedOperation();
@@ -755,7 +838,7 @@ public final class MainActivity extends Activity {
         Files.move(tmp.toPath(),target.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
     }
     private static void remove(File file) { File[] children=file.listFiles(); if(children!=null)for(File child:children)remove(child);file.delete(); }
-    private void stopSession(String reason) { if(!reason.equals("Switching to code-clearing session")){mxWriteAccess.cancel();mxPendingConsentUtc=null;mxChoiceGeneration++;if(mxWriteDialog!=null)mxWriteDialog.dismiss();} if(running&&offlineBackgroundStop==null)offlineBackgroundStop="Stopped in background".equals(reason);offlineEvidence.requestStop("Stopped in background".equals(reason));if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
+    private void stopSession(String reason) { if(!reason.equals("Closing for security workflow")){cancelMxSecurityTransport();bluetoothHandoff.cancel();if(simulatorConnection!=null)simulatorConnection.stop();if(hscanProbe!=null)hscanProbe.stop();} if(!reason.equals("Switching to code-clearing session")){mxWriteAccess.cancel();mxPendingConsentUtc=null;mxChoiceGeneration++;if(mxWriteDialog!=null)mxWriteDialog.dismiss();} if(running&&offlineBackgroundStop==null)offlineBackgroundStop="Stopped in background".equals(reason);offlineEvidence.requestStop("Stopped in background".equals(reason));if(health!=null)health.expectedStop();if(running) { stopping.set(true);com.opensaab.usb.InteractiveKeyPump pump=keyPump;if(pump!=null)pump.cancel();status.setText(reason+"…"); } }
     @Override protected void onStart() { super.onStart();foreground=true;
         if(!previewContinued)return;
         startWorkspace();
@@ -788,7 +871,7 @@ public final class MainActivity extends Activity {
         });}catch(RejectedExecutionException stopped){historyPending.set(false);}
     }
     @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus&&connectionDate!=null)refreshVehicleHistory();}
-    @Override protected void onDestroy(){if(mxSecurityAccess!=null)mxSecurityAccess.close();ui.removeCallbacks(consoleRefresh);if(lcdPump!=null)lcdPump.close();ui.removeCallbacks(historyRefresh);historyWorker.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){cancelMxSecurityTransport();if(mxSecurityAccess!=null)mxSecurityAccess.close();ui.removeCallbacks(consoleRefresh);if(lcdPump!=null)lcdPump.close();ui.removeCallbacks(historyRefresh);historyWorker.shutdownNow();super.onDestroy();}
     @android.annotation.SuppressLint("GestureBackNavigation") // API 33+ uses BackNavigation; this handles older Android.
     @Override public void onBackPressed() { if(running)key(0x01);else super.onBackPressed(); }
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
