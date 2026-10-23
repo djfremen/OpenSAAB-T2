@@ -2,11 +2,25 @@
 
 **Head-unit development branch:** experimental 32-bit ARM work is isolated under the explicit `headunit-arm32` build profile. It has a separate APK and release schedule. See [build targets and separation rules](docs/ANDROID_BUILD_TARGETS.md).
 
-Original diagnostic menus on Android, powered by a Rust emulator and direct USB adapters.
+Original diagnostic menus on Android, powered by a Rust emulator and selected USB or Bluetooth adapters.
 
-**Public Android beta: v0.1.0-preview.98 (`OpenSAAB_64_16OCT26_v0.1.0-preview.98.apk`, versionCode `100098`).**
+**Public Android development preview: v0.1.1-preview.40 ARM64 (`OpenSAAB_64_22OCT26_v0.1.1-preview.40.apk`, versionCode `101040`). Known issues remain; this is not a qualified stable release.**
 
-[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.0-preview.98) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+[Download the signed ARM64 APK](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.1-preview.40) · [Release naming](docs/RELEASE_NAMING.md) · [Installation guide](docs/INSTALL.md) · [Website](https://www.opensaab.com/) · [Support on Ko-fi](https://ko-fi.com/djfremen)
+
+## Android 0.1.1-preview.40 — Full-session developer preview, October 22
+
+Normal MX+, Chipsoft Pro, Classic MDI and GM VCX Nano connections retain their existing Full-session bindings, without the old Read-only/Full picker or an inherited Read preference changing normal entry. Original confirmations, ECU authorization, cancellation and SSA integrity checks remain. No operator password is required.
+
+On the exact signed APK with a 2004 Saab 9-3 Sport (9440), Chipsoft completed fresh security collection/import and showed service-reset completion with matching oil-life/day readback. Its ordinary DTC scan issued 20 requests across 19 module screens, stopping at the final LOCK checkpoint before the final CIM read. Changing T8 traffic and one same-process warm reconnect were observed. MX+ separately reached key-status and Read Values screens.
+
+**Known issues:** Chipsoft normal Stop reports protocol cleanup failure despite confirmed Android USB release. MX+ reconnect reliability and complete ordinary DTC coverage remain unresolved. An implausible airflow value and unnamed row need investigation; changing traffic does not validate numeric accuracy. Exact preview.40 MDI/Nano golden-path repeats remain pending. Earlier results do not qualify this APK or complete beta hardware-protection behavior.
+
+Stop diagnostics before updating, keep important backups, and install over the same-key Android app. Same-package reinstall preserved 675 exported evidence files; direct preview.98 migration was not physically tested. Confirm **OpenSAAB 0.1.1-preview.40 ARM64** after installation. Retain evidence and stop the workflow if cleanup fails.
+
+[Release notes, APK, exact source and native-component archive](https://github.com/djfremen/OpenSAAB-T2/releases/tag/v0.1.1-preview.40) · [Download and install guide](https://www.opensaab.com/static/t2/download.html) · [Testing feedback](https://discord.gg/FxnFe8vQht)
+
+Exact build source: `c2e38ff69979d404b22457de709381a6fb8eb017`, retained on `android-v0.1.1-preview.40-source` and in the matching-source archive. APK SHA-256: `a84d2e9d1df9fa617f2629b6d0d95405696ca3c403c2de9ab6dfdb36f994fd0c`. All eight native payloads, source pins, dependency inputs and notices are retained. Other platform channels remain independent.
 
 ## Mac 0.2.28-mxplus.5 — Intel and Apple silicon, October 20
 
@@ -47,10 +61,11 @@ Android 8+ with a 64-bit ARM Android system is required. Pixel 7 is the current 
 
 | Adapter / feature | Preview status |
 |---|---|
-| Chipsoft Pro | Current test path; Pixel 7 verified on 2004 Saab 9-3 T8 for fresh VIN preflight, host HS-CAN engine DTC read, All Fault Codes, Check Ignition Key Status, security access import, and SPA Add |
-| VCX Nano | Public beta includes fresh session initialization, NRC 0x78 (`ResponsePending`) VIN handling (verified on 2008 9-3 V6 ME9.6), All Fault Codes, and bounded Read-mode Check Ignition Key Status (`0x241` `03 AE 03 02`) verified on 2004 9-3 T8 |
-| Classic GM MDI | Experimental native USB transport in the main app; configured Pixel 7 fixture completed All Fault Codes, Check Ignition Key Status, and original SPA Add on 2004 9-3 T8. MDI2 and universal setup are untested |
-| Live data and module programming | Incomplete coverage; success on one vehicle is not general compatibility |
+| Chipsoft Pro | Exact preview.40 service reset/readback, ordinary module reads, T8 traffic and one warm reconnect observed; normal Stop reports protocol cleanup failure despite host USB release |
+| OBDLink MX+ | Exact preview.40 key-status and Read Values screens observed; intermittent connection failures and incomplete ordinary DTC scanning remain unresolved |
+| VCX Nano | Included with its existing Full-session binding; earlier vehicle results retain their original build scope; exact preview.40 golden-path repeat pending |
+| Classic GM MDI | Included with native USB and its existing Full-session binding; earlier vehicle/USB-release results retain their original build scope; exact preview.40 golden-path repeat pending; MDI2 unqualified |
+| Live data and module programming | Numeric accuracy and wider coverage unqualified; implausible airflow/unnamed row under investigation; no dependable programming claim |
 
 Use **Run in emulation mode** to explore menus without connecting to a vehicle. Start physical testing with VIN/ECU information and DTC reading. A displayed DTC list is not proof every module was scanned. This preview does not promise universal module programming or configuration recovery.
 
