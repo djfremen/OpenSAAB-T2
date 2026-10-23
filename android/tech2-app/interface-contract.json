@@ -1417,7 +1417,7 @@
       "Security-data collection, explicit maintenance actions, offline tools and isolated research probes retain their own scoped workflows. They do not silently change a normal connection or replay a vehicle request.",
       "Removing the chooser does not itself send a vehicle command, grant security access, clear codes or qualify an adapter. Installed and physical verification remain separate on every target."
     ],
-    "candidate": "Android ARM64 preview.39 source adopted; build and installed verification recorded separately.",
+    "candidate": "Android ARM64 preview.40 source adopted; includes corrected Full-session help text. Build and installed verification recorded separately.",
     "other_targets": "Android ARM32, macOS ARM64/x86_64, iOS ARM64, Windows x64 and Linux x86_64 adoption/build/installed/physical checks pending. Existing executables retain their recorded behavior."
   },
   "android_mxplus_startup_preview25": {
