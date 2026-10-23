@@ -70,6 +70,10 @@ impl<T: DeviceIo> Session<'_, T> {
             self.sequence + 1
         };
         if r.opcode == 8 {
+            // Every native opcode-8 request in all three contributor captures
+            // carries this header word. Zeroing it changes the USB exchange.
+            // Preserve the captured profile without inferring undocumented bits.
+            r.auxiliary = [1, 0, 0, 0];
             if let Some(sw) = &mut self.sw {
                 sw.issued(&r, stage)?;
                 self.vehicle_transmits += 1;
@@ -78,6 +82,7 @@ impl<T: DeviceIo> Session<'_, T> {
         let since = Instant::now();
         let mut event = json!({"stage":stage,"opcode":format!("0x{:04x}",r.opcode),
             "destination":format!("0x{:04x}",r.destination),"sequence":r.sequence,
+            "request_auxiliary_word":format!("0x{:08x}",u32::from_le_bytes(r.auxiliary)),
             "request_body_bytes":r.body.len(),"at_ms":self.started.elapsed().as_millis()});
         self.pending.push(r.clone());
         let result = (|| {
@@ -576,6 +581,9 @@ mod tests {
     impl UsbTransport for Fake {
         fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
             let r = Record::decode(bytes)?;
+            if r.auxiliary != if r.opcode == 8 { [1, 0, 0, 0] } else { [0; 4] } {
+                return Err("Request header differs from captured transmit/command profile".into());
+            }
             if r.opcode == 8 {
                 assert_eq!(r.body, vin::REQUEST);
             }
@@ -813,6 +821,9 @@ mod sw_tests {
     impl UsbTransport for Fake {
         fn write(&mut self, b: &[u8]) -> Result<(), String> {
             let r = Record::decode(b)?;
+            if r.auxiliary != if r.opcode == 8 { [1, 0, 0, 0] } else { [0; 4] } {
+                return Err("Request header differs from captured transmit/command profile".into());
+            }
             self.writes.push(r.clone());
             let mut reply = incoming(
                 r.destination,

@@ -24,7 +24,7 @@ public final class MongoosePersonalInstrumentation extends Instrumentation {
  private static void put(byte[] b,int i,int n){b[i]=(byte)n;b[i+1]=(byte)(n>>8);}
  private static byte[] bytes(String s){byte[] b=new byte[s.length()/2];for(int i=0;i<b.length;i++)b[i]=(byte)Integer.parseInt(s.substring(i*2,i*2+2),16);return b;}
  private static String hex(byte[] b){StringBuilder s=new StringBuilder();for(byte v:b)s.append(String.format(Locale.ROOT,"%02x",v&255));return s.toString();}
- private static byte[] record(int src,int op,int seq,byte[] body){byte[] r=new byte[16+body.length];put(r,0,r.length-4);put(r,2,(r.length-4)^0x51e6);put(r,6,src);put(r,8,op);put(r,10,seq);System.arraycopy(body,0,r,16,body.length);return r;}
+ private static byte[] record(int src,int op,int seq,byte[] body){byte[] r=new byte[16+body.length];put(r,0,r.length-4);put(r,2,(r.length-4)^0x51e6);put(r,6,src);put(r,8,op);put(r,10,seq);if(op==8)r[12]=1;System.arraycopy(body,0,r,16,body.length);return r;}
  private static byte[] received(int src,int address,byte[] frame){byte[] b=new byte[24];put(b,8,12);put(b,10,12);b[14]=(byte)(address>>8);b[15]=(byte)address;System.arraycopy(frame,0,b,16,8);return record(src,9,0,b);}
  private JSONObject fixture(String mode,String fault)throws Exception{
   boolean sw=mode.startsWith("swcan");ArrayList<Integer> ops=new ArrayList<>();ArrayList<String> bodies=new ArrayList<>();ArrayList<Throwable> errors=new ArrayList<>();ArrayDeque<byte[]> rx=new ArrayDeque<>();ArrayList<Integer> controls=new ArrayList<>();
@@ -42,6 +42,7 @@ public final class MongoosePersonalInstrumentation extends Instrumentation {
      Thread.sleep(2);out.println(rx.isEmpty()?"EMPTY":"RX "+hex(rx.remove()));continue;
     }
     if(!c.startsWith("TX "))throw new IOException("Unexpected command");byte[] r=bytes(c.substring(3));if(!budget.admit(r,cancelled))throw new IOException("Production Run gate rejected "+mode+"/"+fault+" op "+word(r,8));
+    check(word(r,12)==(word(r,8)==8?1:0)&&word(r,14)==0,"Exact captured request header");
     int op=word(r,8),route=word(r,4);String body=hex(Arrays.copyOfRange(r,16,r.length));ops.add(op);bodies.add(body);out.println("TXOK");if(op==3&&fault.equals("drop_open"))continue;
     int size=op==0x100?0:op==0xc?16:op==0xd||op==8?12:4;byte[] reply=record(route,op|0x8000,word(r,10),new byte[size]);
     if(size>0)reply[16]=(byte)(op==0x103?7:op==5&&fault.equals("cleanup")?1:0);
@@ -90,6 +91,8 @@ public final class MongoosePersonalInstrumentation extends Instrumentation {
  private void physicalGateCases(){
   byte[] wake=record(0,8,1,bytes("00040000000000000400000000000100"));put(wake,4,0x1701);
   check(MongooseUsbGate.allowed(wake,false,"swcan_wake"),"Captured HV wake admitted");check(!MongooseUsbGate.allowed(wake,false,"swcan"),"Control cannot send HV wake");check(!MongooseUsbGate.allowed(wake,true,"swcan_wake"),"Cancelled wake blocked");
+  byte[] legacy=wake.clone();legacy[12]=0;check(!MongooseUsbGate.allowed(legacy,false,"swcan_wake"),"Legacy zero transmit header rejected");
+  for(int i=12;i<16;i++){byte[] bad=wake.clone();bad[i]=2;check(!MongooseUsbGate.allowed(bad,false,"swcan_wake"),"Unknown transmit header byte rejected");}
   MongooseUsbGate.Run budget=new MongooseUsbGate.Run("swcan_wake");check(budget.admit(wake,false),"First wake admitted");put(wake,10,2);check(!budget.admit(wake,false),"Second wake blocked despite fresh sequence");check(budget.transmitAttempts()==1,"Rejected wake did not spend or repeat TX");
   byte[] query=record(0,8,1,bytes("40000000000000000700000000000241aa0101"));put(query,4,0x1801);check(MongooseUsbGate.allowed(query,false,"swcan"),"Captured status admitted");query[query.length-1]=2;check(!MongooseUsbGate.allowed(query,false,"swcan"),"Uncaptured status selector blocked");
   byte[] stop=record(0,8,1,bytes("4000000000000000050000000000024120"));put(stop,4,0x1801);check(!new MongooseUsbGate.Run("swcan").admit(stop,true),"Stop forbidden without status attempt");
@@ -97,9 +100,9 @@ public final class MongoosePersonalInstrumentation extends Instrumentation {
  }
  private void uiAndSecurity()throws Exception{
   Context c=getTargetContext();PackageInfo pi=c.getPackageManager().getPackageInfo(c.getPackageName(),PackageManager.GET_ACTIVITIES|PackageManager.GET_PROVIDERS|PackageManager.GET_SERVICES|PackageManager.GET_RECEIVERS);
-  check(pi.versionName.equals("0.1.1-preview.3")&&pi.getLongVersionCode()==100003,"Packaged version/code");check(c.getApplicationInfo().loadLabel(c.getPackageManager()).toString().equals("OpenSAAB 0.1.1-preview.3 ARM64"),"Installed full program name");check((c.getApplicationInfo().flags&ApplicationInfo.FLAG_DEBUGGABLE)==0,"Nondebuggable");check(pi.activities.length==1&&pi.activities[0].name.equals("com.opensaab.usb.MongooseUsbActivity"),"Only Mongoose activity");check(pi.services==null&&pi.receivers==null&&pi.providers.length==1,"No security/automation services");
+  check(pi.versionName.equals("0.1.2-preview.1")&&pi.getLongVersionCode()==100004,"Packaged version/code");check(c.getApplicationInfo().loadLabel(c.getPackageManager()).toString().equals("OpenSAAB 0.1.2-preview.1 ARM64"),"Installed full program name");check((c.getApplicationInfo().flags&ApplicationInfo.FLAG_DEBUGGABLE)==0,"Nondebuggable");check(pi.activities.length==1&&pi.activities[0].name.equals("com.opensaab.usb.MongooseUsbActivity"),"Only Mongoose activity");check(pi.services==null&&pi.receivers==null&&pi.providers.length==1,"No security/automation services");
   Activity a=startActivitySync(new Intent().setClassName(c,"com.opensaab.usb.MongooseUsbActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
-  runOnMainSync(()->{View root=a.findViewById(android.R.id.content);check(find(root,"Developer Preview")!=null,"Fresh launch welcome");check(find(root,"Report issue")!=null,"Report issue welcome");check(a.getTitle().toString().equals("OpenSAAB 0.1.1-preview.3 ARM64"),"Main window title from package");check(find(root,"Wake I-Bus and read CIM")==null,"No test before Continue");find(root,"Continue").performClick();});waitForIdleSync();
+  runOnMainSync(()->{View root=a.findViewById(android.R.id.content);check(find(root,"Developer Preview")!=null,"Fresh launch welcome");check(find(root,"Report issue")!=null,"Report issue welcome");check(a.getTitle().toString().equals("OpenSAAB 0.1.2-preview.1 ARM64"),"Main window title from package");check(find(root,"Wake I-Bus and read CIM")==null,"No test before Continue");find(root,"Continue").performClick();});waitForIdleSync();
   for(String mode:new String[]{"Read I-Bus CIM without HV wake","Wake I-Bus and read CIM","Read vehicle VIN"}){runOnMainSync(()->{View root=a.findViewById(android.R.id.content);check(find(root,mode)!=null,"Scoped test button");find(root,mode).performClick();check(find(root,"No Mongoose GM II detected")!=null,"No-adapter failure");check(find(root,"Share test report").isEnabled(),"Failure share available");});waitForIdleSync();}
   runOnMainSync(()->{View root=a.findViewById(android.R.id.content);check(find(root,"Security access")==null&&find(root,"Import processed response")==null,"No security/import UI");a.finish();});waitForIdleSync();
   File folder=new File(c.getFilesDir(),"support-reports");File[] reports=folder.listFiles((d,n)->n.matches("android_support_[a-f0-9-]+\\.zip"));check(reports!=null&&reports.length>=3,"Saved unique report ZIPs");File report=null;for(File f:reports){try(java.util.zip.ZipInputStream z=new java.util.zip.ZipInputStream(new FileInputStream(f))){if(z.getNextEntry()==null)continue;ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] b=new byte[1024];int n;while((n=z.read(b))>0)bytes.write(b,0,n);JSONObject j=new JSONObject(bytes.toString("UTF-8"));if(j.optString("version").equals(pi.versionName)){report=f;check(j.getString("apk_sha256").equals(sha(new File(c.getApplicationInfo().sourceDir))),"Report exact installed APK hash");check(j.getString("source_revision").matches("[0-9a-f]{40}"),"Report full source revision");check(!j.getBoolean("sleep_verified")&&j.getInt("application_vehicle_transmits")==0,"No-adapter report semantics");}}}
@@ -111,9 +114,9 @@ public final class MongoosePersonalInstrumentation extends Instrumentation {
   System.out.println("INSTALLED_UI_SECURITY PASS; security processing/import/automation/fallback unavailable");
  }
  public void onStart(){Bundle result=new Bundle();try{
-  fixture("startup","none");fixture("hs_channel","none");fixture("vin","none");fixture("vin","early_ecu");fixture("startup","cancel_open");fixture("startup","cleanup");fixture("hs_channel","version");
+  fixture("startup","none");fixture("hs_channel","none");fixture("vin","none");fixture("vin","early_ecu");fixture("vin","no_completion");fixture("vin","acceptance");fixture("startup","cancel_open");fixture("startup","cleanup");fixture("hs_channel","version");
   fixture("swcan","none");fixture("swcan_wake","none");fixture("swcan_wake","on");fixture("swcan_wake","early_ecu");
-  for(String fault:new String[]{"version","raw_filter","acceptance","completion_route","wake_completion","no_status","status_route","bad_status","no_ecu","sequence","negative","cancel_status","cleanup","control_close","usb_close","stop_completion"})fixture("swcan_wake",fault);
+  for(String fault:new String[]{"version","raw_filter","acceptance","no_completion","completion_route","wake_completion","no_status","status_route","bad_status","no_ecu","sequence","negative","cancel_status","cleanup","control_close","usb_close","stop_completion"})fixture("swcan_wake",fault);
   physicalGateCases();uiAndSecurity();result.putString("stream","MONGOOSE_PERSONAL PASS: "+passed+" assertions; "+fixtures+" installed native fixtures; simulated USB only, physical Mongoose pending");finish(0,result);
  }catch(Throwable t){t.printStackTrace();result.putString("stream","MONGOOSE_PERSONAL FAIL: "+t);finish(1,result);}}
 }

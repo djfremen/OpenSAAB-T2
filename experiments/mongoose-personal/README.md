@@ -1,4 +1,7 @@
-# OpenSAAB personal Mongoose Developer Preview 0.1.1-preview.3 ARM64
+# OpenSAAB personal Mongoose Developer Preview 0.1.2-preview.1 ARM64
+
+This candidate corrects the opcode-8 auxiliary header from 00 00 00 00 to the captured 01 00 00 00, including HS VIN and every bounded I-Bus transmit. The physical Android gate requires that exact word. All 753 native transmissions across the three historical captures use it. Seven contributor preview.3 reports show six first-transmit I-Bus failures and one HS VIN acknowledgement timeout despite three reply frames and correlated completion. Those reports do not record the rejected completion code, so this is a demonstrated wire-format correction requiring a fresh physical retest, not a confirmed hardware fix. Reply acceptance/completion and ECU validation are not relaxed. No automatic retry is added.
+
 
 This separate Android test package uses the existing Mongoose beta namespace and official signing certificate so saved reports survive an in-place upgrade. It launches the required Developer Preview welcome, then only the Mongoose connection tests. It contains no firmware/card, general diagnostic backend, security processing, processed-response import, DTC clearing or programming.
 
@@ -16,7 +19,7 @@ Use JDK supplied with Android Studio, Android SDK build-tools36.0.0/platform36, 
 python3 experiments/mongoose-personal/build.py --output /absolute/outside-source/bundle
 cargo test --locked --manifest-path experiments/mongoose-personal/worker/Cargo.toml --lib
 python3 experiments/mongoose-personal/tests/build_tests.py --app-classes /absolute/outside-source/bundle/build/classes --output /absolute/test-output
-adb -s YOUR_OWN_TEST_DEVICE install -r /absolute/outside-source/bundle/OpenSAAB_64_14OCT26_v0.1.1-preview.3.apk
+adb -s YOUR_OWN_TEST_DEVICE install -r /absolute/outside-source/bundle/OpenSAAB_64_23OCT26_v0.1.2-preview.1.apk
 adb -s YOUR_OWN_TEST_DEVICE install -r /absolute/test-output/installed-tests.apk
 adb -s YOUR_OWN_TEST_DEVICE shell am instrument -w com.opensaab.mongoosepersonaltests/com.opensaab.mongoosepersonaltests.MongoosePersonalInstrumentation
 ```

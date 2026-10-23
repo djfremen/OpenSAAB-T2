@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "opensaab-mongoose-beta-worker"
-version = "0.1.1-preview.3"
+version = "0.1.2-preview.1"
 dependencies = [
  "opensaab-adapter-translation",
  "serde_json",

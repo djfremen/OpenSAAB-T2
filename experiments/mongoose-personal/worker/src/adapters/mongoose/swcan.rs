@@ -108,7 +108,8 @@ impl Exchange {
             if let Some(t) = self.tickets.iter_mut().find(|t| t.sequence == r.sequence) {
                 if r.source != t.route || r.body.len() != 8 || r.body[..4] != 0x106u32.to_le_bytes()
                 {
-                    return Err("SW-CAN completion route/code differs from captured request".into());
+                    let code = r.body.get(..4).map(|b| u32::from_le_bytes(b.try_into().unwrap()));
+                    return Err(format!("SW-CAN completion route/code differs from captured request (source=0x{:04x}, expected=0x{:04x}, bytes={}, code={code:?})", r.source, t.route, r.body.len()));
                 }
                 if t.completed {
                     return Err("Duplicate SW-CAN transmit completion".into());

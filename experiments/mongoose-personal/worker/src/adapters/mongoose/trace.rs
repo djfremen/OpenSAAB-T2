@@ -382,7 +382,11 @@ mod tests {
                 let actual = Record::decode(b)?;
                 let (mut expected, mut reply) =
                     self.pairs.pop_front().ok_or("Unexpected request")?;
-                expected.auxiliary = [0; 4];
+                // Preserve the captured opcode-8 header; only command headers
+                // have opaque upper bytes normalized by the startup reference.
+                if expected.opcode != 8 {
+                    expected.auxiliary = [0; 4];
+                }
                 expected.sequence = actual.sequence;
                 if actual != expected {
                     return Err("VIN beta request differs from captured command".into());
@@ -699,6 +703,9 @@ mod october14_tests {
                 })
                 .collect();
             assert_eq!(wakes.len(), expected_wakes);
+            for request in records.iter().filter(|r| r.opcode == 8 && r.source == 0) {
+                assert_eq!(request.auxiliary, [1, 0, 0, 0], "Captured TX header");
+            }
             assert!(records.iter().any(|r| r.opcode == 0xd
                 && r.destination == swcan::RAW_ROUTE
                 && r.body == swcan::RAW_FILTER));

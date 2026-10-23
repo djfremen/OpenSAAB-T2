@@ -11,7 +11,9 @@ public final class MongooseUsbGate {
   if(!(sw(mode)||"startup".equals(mode)||"hs_channel".equals(mode)||"vin".equals(mode)))return false;
   if(b.length<16||b.length>35||word(b,0)!=b.length-4||word(b,2)!=(word(b,0)^0x51e6))return false;
   int dst=word(b,4),op=word(b,8),seq=word(b,10);if(word(b,6)!=0||seq<1||seq>255)return false;
-  for(int i=12;i<16;i++)if(b[i]!=0)return false;
+  // Exact captured transmit header, distinct from zero-word command headers.
+  if(b[12]!=(op==8?1:0))return false;
+  for(int i=13;i<16;i++)if(b[i]!=0)return false;
   if(cancelled)return (b.length==16&&((dst==1&&op==5)||(dst==(sw(mode)?0x1801:0x601)&&op==7)))||(sw(mode)&&dst==0x1801&&op==8&&body(b,"4000000000000000050000000000024120"));
   if(dst==1){
    if(op==0x100||op==0x109||op==0x111||op==0x103||op==3||op==5)return b.length==16;
