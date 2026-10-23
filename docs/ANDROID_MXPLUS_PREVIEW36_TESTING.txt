@@ -1,0 +1,11 @@
+OpenSAAB 0.1.1-preview.36 ARM64: bounded Bluetooth socket recovery
+
+The vendor-app HCI comparison captured one 12814 ms Page Timeout followed 35 ms later by a fresh open that succeeded in 6017 ms. This supports testing one fresh socket on the matching Android pre-stream failure; it does not prove sleep or long-term reliability.
+
+The authenticated already-bonded MX+ path closes the failed socket before creating a replacement. Only the exact captured Android failure permits one retry. Bluetooth enabled/bond guards, cancellation, sticky release errors and the existing overall 20-second deadline remain binding. No streams or commands are available until connect succeeds. Nothing replays vehicle requests, changes pairing, resets the adapter or presses its button.
+
+Before a physical test, preserve older evidence and verify the installed full version, APK and all eight native hashes. Record each socket attempt and its release evidence, time since the last confirmed release, actual adapter writes and HCI status separately. Do not infer radio sleep from a timeout.
+
+Authorized targeted read: Read-only original-firmware All > DTC > Vehicle Check and Read DTCs. The earlier completed preview.30 run had preliminary key/missing-module warnings before its module code scan. Continue those preliminary warnings as appropriate, then press firmware EXIT at the final Turn ignition key to LOCK / CIM check, as explicitly confirmed by the owner. Do not move the physical key, clear codes, reset counters or perform security/programming operations. Preserve actual DTC displays and raw console, then Stop normally and verify protocol/transport release.
+
+A targeted read or fixture pass is not all-adapter qualification. Before each independent security golden-path run, reset that card to INIT_AUTH; preserve the same run through retries/import/reconnect. Chipsoft must complete service reset from reset card, Nano must boot and pass Full release-build path, MDI must start from reset card and cleanly release USB, and MX+ must pass the common path with measured no-button sleep reconnect. Shared-code changes require all four full paths; adapter-specific changes require that adapter full path and other-adapter smoke checks.

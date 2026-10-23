@@ -17,8 +17,9 @@ import org.json.*;
 /** Direct Android RFCOMM SPP. Sends shared-core commands as ASCII + CR, never JSON. */
 final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmission.Owner {
     static final UUID SPP_UUID=UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
-    interface Endpoint {void connect()throws IOException;InputStream input()throws IOException;OutputStream output()throws IOException;void close()throws IOException;}
+    interface Endpoint extends SppConnectRecovery.Endpoint {}
     private final Endpoint endpoint;
+    private SppConnectRecovery recovery;
     private static final SppTransportAdmission PHYSICAL_ADMISSION=new SppTransportAdmission();
     private static final SppReleaseTiming.Ledger RELEASE_TIMING=new SppReleaseTiming.Ledger();
     private final boolean physical;
@@ -56,12 +57,28 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
         timing=RELEASE_TIMING.attempt(deviceAddress,bootId,SystemClock::elapsedRealtime);
         // No automatic fallback: unauthenticated SPP is an explicit picker choice.
         PHYSICAL_ADMISSION.reserve(this);
-        BluetoothSocket socket;
-        try{socket=compatibility?device.createInsecureRfcommSocketToServiceRecord(SPP_UUID):device.createRfcommSocketToServiceRecord(SPP_UUID);}
+        Endpoint initial;
+        try{initial=socketEndpoint(device,compatibility);}
         catch(IOException|RuntimeException error){PHYSICAL_ADMISSION.constructionFailed(this);throw error;}
-        endpoint=new Endpoint(){public void connect()throws IOException{socket.connect();}public InputStream input()throws IOException{return socket.getInputStream();}public OutputStream output()throws IOException{return socket.getOutputStream();}public void close()throws IOException{socket.close();}};
+        // Scope the measured recovery to the tested bonded MX+ authenticated path.
+        // The existing 20s watchdog bounds both opens, not 20s per attempt.
+        if(!compatibility&&bondState==BluetoothDevice.BOND_BONDED&&deviceName.startsWith("OBDLink MX+")){
+            recovery=new SppConnectRecovery(initial,()->socketEndpoint(device,false),
+                ()->adapter.isEnabled()&&device.getBondState()==BluetoothDevice.BOND_BONDED,
+                SystemClock::elapsedRealtime);
+            endpoint=recoveryEndpoint(recovery);
+        }else endpoint=initial;
         PHYSICAL_ADMISSION.constructed(this);
     }
+    private static Endpoint socketEndpoint(BluetoothDevice device,boolean compatibility)throws IOException{
+        BluetoothSocket socket=compatibility?device.createInsecureRfcommSocketToServiceRecord(SPP_UUID):device.createRfcommSocketToServiceRecord(SPP_UUID);
+        return new Endpoint(){public void connect()throws IOException{socket.connect();}public InputStream input()throws IOException{return socket.getInputStream();}public OutputStream output()throws IOException{return socket.getOutputStream();}public void close()throws IOException{socket.close();}};
+    }
+    static Endpoint recoveryEndpoint(SppConnectRecovery value){return new Endpoint(){
+        public void connect()throws IOException{value.connect();}public InputStream input()throws IOException{return value.input();}
+        public OutputStream output()throws IOException{return value.output();}public void close()throws IOException{value.close();}
+    };}
+    VlinkerSppTransport(SppConnectRecovery value){this(recoveryEndpoint(value));recovery=value;}
     VlinkerSppTransport(Endpoint endpoint){this(endpoint,"");}
     VlinkerSppTransport(Endpoint endpoint,String name){this(endpoint,name,new SppReleaseTiming.Ledger().attempt("fixture","fixture-boot",SystemClock::elapsedRealtime));}
     VlinkerSppTransport(Endpoint endpoint,String name,SppReleaseTiming.Attempt timing){this.endpoint=endpoint;this.timing=timing;physical=false;deviceName=name;deviceAddress="";connectionMode="fixture";}
@@ -77,7 +94,8 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
                 if(failure!=null)throw failure;
                 if(stopped){connectPhase="cancelled";throw new IOException("Bluetooth connection cancelled",refused);}
                 connectPhase="connect_failed";
-                failure=new IOException("Bluetooth connection was not established. No adapter or vehicle requests were sent. Check adapter power and pairing, then retry.",refused);
+                boolean retried=recovery!=null&&recovery.attempts().size()>1;
+                failure=new IOException("Bluetooth connection was not established"+(retried?" after two socket attempts":"")+". No adapter or vehicle requests were sent. Check adapter power and pairing, then retry.",refused);
                 throw failure;
             }
             limit.close();connectElapsedMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
@@ -98,7 +116,12 @@ final class VlinkerSppTransport implements VlinkerTransport,SppTransportAdmissio
         finally{timing.connectFinished();connecting=false;limit.close();if(stopped&&connectPhase.equals("connecting"))connectPhase="cancelled";if(connectElapsedMs<0)connectElapsedMs=TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);if(stopped)closeEndpoint();}
     }
     private JSONObject baseConnectionEvidence()throws JSONException{return new JSONObject().put("phase",connectPhase).put("connect_elapsed_ms",connectElapsedMs).put("connect_deadline_ms",BluetoothConnectDeadline.TIMEOUT_MS).put("device_name",deviceName).put("device_address",deviceAddress).put("connection_mode",connectionMode).put("bond_state",bondState).put("discovery_before_connect",discoveryBeforeConnect==null?JSONObject.NULL:discoveryBeforeConnect).put("bluetooth_closed",closeConfirmed()).put("automatic_replay",false).put("platform_error",connectError).put("transport_write_attempts",writeAttempts.get()).put("failed_before_commands",connectPhase.equals("connect_failed")||connectPhase.equals("connect_timeout")).put("radio_sleep_state","unverified").put("hci_failure_status",JSONObject.NULL).put("failure",failure==null?"":failure.getMessage()).put("release_failure",releaseFailure());}
-    JSONObject connectionEvidence()throws JSONException{JSONObject value=baseConnectionEvidence();for(Map.Entry<String,Object> field:timing.snapshot().entrySet())value.put(field.getKey(),field.getValue()==null?JSONObject.NULL:field.getValue());return value;}
+    JSONObject connectionEvidence()throws JSONException{
+        JSONObject value=baseConnectionEvidence();for(Map.Entry<String,Object> field:timing.snapshot().entrySet())value.put(field.getKey(),field.getValue()==null?JSONObject.NULL:field.getValue());
+        JSONArray attempts=new JSONArray();
+        if(recovery!=null)for(SppConnectRecovery.Attempt a:recovery.attempts())attempts.put(new JSONObject().put("ordinal",a.ordinal).put("started_elapsed_ms",a.started).put("finished_elapsed_ms",a.finished).put("elapsed_ms",a.finished-a.started).put("outcome",a.outcome).put("platform_error",a.error).put("socket_close_confirmed",a.closeConfirmed()));
+        return value.put("socket_attempts",attempts).put("connect_retry_count",Math.max(0,attempts.length()-1)).put("connect_recovery_scope","pre_stream_same_bonded_MXplus_authenticated_socket_only");
+    }
     public void send(JSONObject request)throws Exception{
         if(request.optString("op").equals("close")){closeEndpoint();packets.clear();enqueue(new JSONObject().put("type","closed").put("bluetooth_closed",closeConfirmed()));return;}
         boolean interrupt=request.optString("op").equals("interrupt");
