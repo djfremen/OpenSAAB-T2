@@ -1,7 +1,7 @@
 {
   "id": "session-lifecycle-outcomes-1",
   "date": "2026-10-22",
-  "candidate": "0.1.1-preview.36",
+  "candidate": "0.1.1-preview.37",
   "scope": "Android ARM64 candidate; other target binding, installed and physical verification pending",
   "rules": [
     "Operator Stop requests native stop, rejects new diagnostic work, and keeps the existing bridge available for bounded adapter cleanup. Forced termination is explicit; the card lease is not released before actual process death.",

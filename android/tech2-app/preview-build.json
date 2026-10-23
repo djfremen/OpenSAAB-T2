@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "application_version": "0.1.1-preview.36",
-  "version_code": 101036,
+  "application_version": "0.1.1-preview.37",
+  "version_code": 101037,
   "architecture": "arm64-v8a",
   "release_date": "2026-10-22",
   "retained_package": {

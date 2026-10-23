@@ -1467,8 +1467,8 @@
     "lifecycle": "Background/manual takeover/cancel revokes commit permission; durable request IDs prevent replay after lost replies or restart; interrupted requests remain unverified",
     "qualification": "Source candidate only at commit time; build, installed and physical checks recorded separately. Other platform MCP bindings are pending."
   },
-  "android_mxplus_bounded_connect_preview36": {
-    "version": "0.1.1-preview.36",
+  "android_mxplus_bounded_connect_preview37": {
+    "version": "0.1.1-preview.37",
     "date": "2026-10-22",
     "scope": "Android authenticated SPP for an already bonded OBDLink MX+ only; other targets require separate source/binding/build/installed/physical adoption.",
     "recovery": "One fresh socket after the exact captured Android read-ret-minus-one connect failure, only following confirmed first-socket close and while Bluetooth remains enabled, bonded and uncancelled. The original 20-second deadline covers both attempts.",
@@ -1479,34 +1479,7 @@
       "No retry after an authentication/permission/unknown failure, Stop, failed close, expired deadline or lost bond",
       "No unpairing, insecure fallback, adapter reboot or physical button automation"
     ],
-    "qualification": "Software fixtures do not establish hardware reliability, radio sleep or completion of a vehicle workflow. All four adapters retain the same golden-path bar."
-  },
-  "session_lifecycle_outcomes": {
-    "id": "session-lifecycle-outcomes-1",
-    "date": "2026-10-22",
-    "candidate": "0.1.1-preview.36",
-    "scope": "Android ARM64 candidate; other target binding, installed and physical verification pending",
-    "rules": [
-      "Operator Stop requests native stop, rejects new diagnostic work, and keeps the existing bridge available for bounded adapter cleanup. Forced termination is explicit; the card lease is not released before actual process death.",
-      "General Stop invalidates queued startup generations even after VIN cleanup marks the worker idle. Stale VIN, permission and start callbacks cannot launch firmware. A clean idle security handoff preserves only explicit continuation.",
-      "Process stopped, diagnostic operation completed, protocol cleanup, host transport release and qualification are separate facts. Operator Stop is not a diagnostic pass. Unknown changes or cleanup remain unknown; existing errors remain visible.",
-      "Final reporting follows native cleanup and merges actual host release evidence; early snapshots cannot override final failed cleanup.",
-      "Imported security data shows Firmware running while already active, Waiting for cleanup while ownership remains, and Continue firmware only for an admissible stopped session. Same-run data survives retry/import/reconnect.",
-      "Hide new-connection actions during an active session; retain working original-firmware menu navigation. No shortcut, resume, retry or reconnect replays a vehicle change request or physical confirmation.",
-      "Radio sleep and Bluetooth failure layer are not inferred from elapsed time. Retain platform error, each socket attempt timing, write attempts and cleanup. Only the already bonded, authenticated MX+ path may retry the captured Android pre-stream read-ret-minus-one socket-open failure once, after confirmed close of the first socket and while pairing, power and cancellation permit. Both attempts share the original 20-second deadline. No request replay, insecure fallback, re-pairing or adapter reboot.",
-      "Original POST failures and UART timeouts remain observable. Do not fabricate a POST pass or classify all timeouts as harmless. Manual screen images retain the latest, final and fault captures while console text retains navigation history.",
-      "MX+ shared startup drains bounded pre-session bytes, accepts AT rejection with a prompt as an alive channel, then requires validated ATI with at most one adapter-only ATI retry for a lost first character. Only after known ATI may separately prompt-gated CR repeats run. Restore runtime defaults using ATD without ATZ/ATWS. Uncertain readiness fails closed before vehicle requests; unknown prior commands are never repeated.",
-      "Active MX+ firmware sessions keep the UART awake through continuous STM and original guest Tester Present. There is no extra host vehicle sender or keepalive monitor interruption, and this active-session policy ends on Stop.",
-      "Confirmed SPP release requires the socket and both streams to close, the owned reader thread to terminate, and connect/write calls to finish. A socket-close return alone is not complete transport release.",
-      "Physical SPP admission retains the prior transport owner across workflow failure until its actual confirmed-release predicate succeeds. A pending reader/writer or sticky socket/stream close failure blocks another physical session; failed cleanup requires a full Android force stop and reopen. Synthetic transport fixtures do not establish a hardware pass.",
-      "MX+ native cleanup sends FINISH CLEAN only after actual protocol cleanup succeeds, accepts exactly PARKED or CLOSED, and records protocol cleanup separately from transport disposition. Ordinary Stop closes the transport; protocol error uses CLOSE. An ambiguous finish acknowledgement falls back to full close and remains a failure.",
-      "Security processing may park the same SPP owner only when explicitly armed, native protocol cleanup succeeded, and the firmware child actually exited with code zero without forced termination. PARKED is not Bluetooth release, operation success, ECU authorization or a firmware/card lease. Failed or uncertain ownership closes the transport and preserves the failure.",
-      "A parked MX+ owner uses the rebuilt connection worker for serialized adapter-only ATI checks with a closed protocol. It must reach a validated prompt and actual worker death before one-use transfer for fresh VIN discovery. Same run, card/post-import hash, device, pairing compatibility and VIN remain bound; cancellation, backgrounding, expiry or failed import closes ownership. No extra vehicle sender, automatic retry or operation replay is introduced."
-    ],
-    "security": "No operator password; internal authentication, operation consent, exact VIN, authority profiles, firmware ownership and validated atomic SSA import remain required.",
-    "qualification": "Source/software checks do not establish hardware protection or a vehicle workflow pass. All four adapters require exact-candidate common golden-path qualification.",
-    "supersedes": {
-      "0.1.1-preview.31": "Rejected before installation: queued VIN-success callback could start firmware after operator Stop."
-    }
+    "qualification": "Software fixtures do not establish hardware reliability, radio sleep or completion of a vehicle workflow. All four adapters retain the same golden-path bar.",
+    "lifecycle_contract": "session-lifecycle-contract.json"
   }
 }
