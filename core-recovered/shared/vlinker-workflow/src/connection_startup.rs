@@ -86,6 +86,13 @@ pub fn from_probe(adapter: &str, report: &Value) -> Result<Value, String> {
     from_probe_for_native(adapter, report, None)
 }
 fn from_probe_for_native(adapter: &str, report: &Value, native_attempt: Option<&str>) -> Result<Value, String> {
+    // A pre-request failure must retain its actual transport/readiness reason.
+    // The one-request checks below validate success; zero writes on a failed
+    // socket open are expected and must not replace the original error.
+    if report["status"] == "failed" {
+        let error = text(report, "error");
+        return Err(if error.is_empty() { "Vehicle discovery failed".into() } else { error });
+    }
     let (closed, origin, vin) = match adapter {
         "vcx_nano_bridge" => {
             if report["channel_cleanup"] != true || report["hardware"] != "VCX-NANO"
@@ -436,6 +443,19 @@ impl Drop for Session {
 mod tests {
     use super::*;
     static OWNERSHIP_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    #[test]
+    fn failed_socket_open_preserves_reason_before_success_request_checks() {
+        let report = json!({"status":"failed","error":"Bluetooth connect timed out","host_vehicle_request_attempts":0,"host_vehicle_requests_written":0,"automatic_replay":false,"bluetooth_closed":true});
+        for adapter in ["bluetooth_mic", "vlinker_mc_plus", "chipsoft", "vcx_nano_bridge"] {
+            assert_eq!(from_probe(adapter, &report).unwrap_err(), "Bluetooth connect timed out");
+        }
+        let mut empty = report.clone(); empty["error"] = json!("");
+        assert_eq!(from_probe("bluetooth_mic", &empty).unwrap_err(), "Vehicle discovery failed");
+        let mut claimed_success = report.clone(); claimed_success["status"] = json!("vin_received");
+        assert_eq!(from_probe("bluetooth_mic", &claimed_success).unwrap_err(), "Vehicle discovery did not complete exactly one request");
+        let mut unsafe_text = report.clone(); unsafe_text["error"] = json!("Bluetooth\nconnect failed");
+        assert_eq!(from_probe("bluetooth_mic", &unsafe_text).unwrap_err(), "Bluetooth connect failed");
+    }
     #[test]
     fn startup_and_probe_share_owner_before_transport_and_through_cleanup() {
         let _serial = OWNERSHIP_TEST.lock().unwrap();

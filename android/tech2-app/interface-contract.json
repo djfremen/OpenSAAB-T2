@@ -1481,5 +1481,11 @@
     ],
     "qualification": "Software fixtures do not establish hardware reliability, radio sleep or completion of a vehicle workflow. All four adapters retain the same golden-path bar.",
     "lifecycle_contract": "session-lifecycle-contract.json"
+  },
+  "startup_error_preservation_preview38": {
+    "version": "0.1.1-preview.38",
+    "failed_probe": "Display sanitized bounded original failure before applying successful-discovery request-count checks. Zero writes on a failed socket open must not mask Bluetooth connect timed out.",
+    "success": "Exactly one request, fresh VIN and confirmed cleanup or explicit handoff remain mandatory.",
+    "adoption": "Shared candidate workflow source; other installed targets need independent binding/build/installed/physical verification."
   }
 }

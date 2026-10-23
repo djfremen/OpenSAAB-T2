@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "opensaab-mdi-android"
-version = "0.1.1-preview.37"
+version = "0.1.1-preview.38"
 dependencies = [
  "jni",
  "libc",
