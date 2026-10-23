@@ -37,7 +37,7 @@ public final class MainActivity extends Activity {
     private volatile File session;
     private android.bluetooth.BluetoothDevice mxDevice;
     private boolean mxCompatibility;
-    private com.opensaab.usb.SessionModes.Mode mxMode=com.opensaab.usb.SessionModes.Mode.READ;
+    private com.opensaab.usb.SessionModes.Mode mxMode=com.opensaab.usb.SessionModes.Mode.FULL;
     private com.opensaab.usb.VehicleIdentity mxVehicle;
     private com.opensaab.usb.SecurityAccessView mxSecurityAccess;
     private boolean mxCleanupConfirmed;
@@ -312,15 +312,7 @@ public final class MainActivity extends Activity {
         if(mxSecurityAccess!=null)mxSecurityAccess.manualNavigation(); enqueue(String.format(Locale.ROOT,"0x%02x",code)); }
     /** The primary button always names the mode it will start. */
     private String modeSuffix(){
-        if(sessionMode==null)return "";
-        if(sessionMode.selected()==com.opensaab.usb.SessionModes.Mode.FULL)return " · Full session";
-        // MDI has no read-only guard in this build, so never label its button Read-only.
-        try{
-            android.hardware.usb.UsbManager usb=(android.hardware.usb.UsbManager)getSystemService(USB_SERVICE);
-            for(android.hardware.usb.UsbDevice d:usb.getDeviceList().values())
-                if(com.opensaab.usb.MdiAdapter.candidate(com.opensaab.usb.AdapterCatalog.identify(d.getVendorId(),d.getProductId())))return " · MDI: Full session only";
-        }catch(RuntimeException unavailable){}
-        return " · Read-only";
+        return " · Full session";
     }
     private void refreshAdapterLabel(){
         if(start==null||running)return;
@@ -384,9 +376,9 @@ public final class MainActivity extends Activity {
     private boolean modeSelectionReady(){return foreground&&resumed&&!isDestroyed()&&!running&&!mxResumePending&&!com.opensaab.usb.FirmwareGate.busy()&&!com.opensaab.usb.SecurityAccessView.workflowBusy()&&!com.opensaab.usb.VlinkerVehicleConnection.active();}
     private com.opensaab.usb.SessionModes.Mode selectedSessionMode(com.opensaab.usb.SessionModes.Capabilities caps){
         if(!modeSelectionReady())return null;
-        com.opensaab.usb.SessionModes.Mode selected=sessionMode.selected();
-        if(!caps.allows(selected)){
-            status.setText(selected.label+" is unavailable for "+caps.adapter+". "+caps.explanation+" Choose a supported Session Mode on the main screen.");
+        com.opensaab.usb.SessionModes.Mode selected=com.opensaab.usb.SessionModes.normalConnectionMode(caps);
+        if(selected==null){
+            status.setText("Full firmware sessions are unavailable for "+caps.adapter+". "+caps.explanation);
             return null;
         }
         return selected;

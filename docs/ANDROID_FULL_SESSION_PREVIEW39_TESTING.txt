@@ -1,0 +1,11 @@
+OpenSAAB 0.1.1-preview.39 ARM64 — one normal Full-session connection
+
+Connect and start uses the existing Full native binding for MX+, MDI, Chipsoft and Nano. The main screen shows Full session as information; the Read-only/Full chooser is removed. Old saved READ preferences do not narrow a normal connection. No adapter protocol, reconnect algorithm or electrical-route policy is changed in this candidate. Missing Full bindings remain explicitly unavailable.
+
+Original firmware confirmations, ECU security authorization, service authentication, SSA validation/import integrity, cancellation, confirmed cleanup and fresh vehicle identity remain. Separate security collection, explicit maintenance actions, offline tools and isolated research probes keep their recorded scope. Full session enables supported changes; entering it does not itself clear codes, reset modules or perform programming.
+
+Verify the installed name OpenSAAB 0.1.1-preview.39 ARM64, APK hash and all eight native components before testing. Software checks exercise a saved READ preference, fresh/recreated normal UI, supported adapter bindings and launch layout without opening an adapter. They do not qualify vehicle operations.
+
+Targeted comparison on the owner's 2004 Saab 9-3 Sport (9440): normal Full session -> Diagnostics -> 2004 -> Saab 9-3 Sport (9440) -> All -> DTC -> Vehicle Check and Read DTCs. Preserve preliminary missing-module and key-position evidence. Press firmware EXIT at the final Turn ignition key to LOCK / CIM check as confirmed by the owner. Do not clear codes, reset counters, program modules or change the physical ignition during this targeted read. Stop normally and verify native protocol and Bluetooth release. Compare module coverage with preview.38 and the archived preview.37 result; do not assume Full fixes the missing modules or intermittent Page Timeout.
+
+Before each independent golden-path run reset its card to INIT_AUTH, then preserve that run's data through retries, import and reconnect. All four adapters retain the same bar. Shared UI/binding changes require their full paths; pending physical checks remain visible. Logs and videos stay private on the M4 research archive and in the Garage working folder.

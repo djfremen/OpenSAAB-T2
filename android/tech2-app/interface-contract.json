@@ -178,7 +178,7 @@
     "CANdi starts only when the first guest command needs it.",
     "Firmware selection stays reachable during emulation. Changing software offers to stop and release the adapter first; cancelling keeps the current session and selection. Selecting software never silently reconnects the vehicle.",
     "Security seed collection is a distinct connection mode. It reads challenges through original diagnostic menus; it never implies completed security processing or ECU authorization. A locally blocked request must be distinguished from an ECU rejection or application crash.",
-    "Adapter session mode is an explicit foreground choice. Read-only defaults only where enforced; Read + write binds existing full native authority. Separate security collection retains its own authority. Transport ownership never silently changes command policy. A stopped session clears live claims and offers a fresh connection."
+    "Normal product connections use Full session on the supported adapter binding. No Read-only/Full choice changes diagnostic behavior. Original confirmations, security authorization, cancellation and release checks remain; explicit security collection and isolated research tools keep their own scope."
   ],
   "allowed_platform_differences": [
     "OS installer, permission and file-picker dialogs",
@@ -197,7 +197,7 @@
     "advanced_actions": "Compare every reference Actions/app-menu entry and its behavior; record unsupported functionality as a gap, never a parity pass.",
     "branding": "Official logo and always-visible Donate \u00b7 Support OpenSAAB footer in compact, wide and expanded views; donation dialog requires explicit Continue and never interrupts an active session. No diagnostic data in URL. About / Support also offers an explicit Discord community action using the permanent invite; no automatic navigation, appended vehicle data or interruption of an active session.",
     "security_status": "Display cleared, PRE-AUTH, POST-AUTH/Fresh, POST-AUTH/Stale, invalid and unavailable states using isolated synthetic data. Verify the three-hour boundary, changed card/vehicle, missing receipt, future timestamp and reopen without rejuvenating old data. Show details in expanded mode. Separately qualify real processing/import; no simulated ECU authorization claim. Collect seed data, verify PRE-AUTH refresh, stop/reopen and retain the state for the same firmware/vehicle; verify another vehicle or firmware cannot inherit it.",
-    "session_modes": "Select Chipsoft full native control and complete the original Check Ignition Key Status test. In restricted mode verify the same command is blocked before USB, the ended session is clearly displayed, and reconnect works. Keep seed-only and offline modes isolated from inherited environment flags. Qualify separately on each installed target.",
+    "session_modes": "On each of MX+, MDI, Chipsoft and Nano verify normal Connect and start binds Full native control, including after upgrading with a saved READ preference. No mode checkboxes remain. Missing Full bindings stay unavailable. Read DTCs and EXIT at the confirmed final LOCK/CIM check for the targeted Saab 9-3 test; operation writes require their original confirmations. Security collection and offline tools remain distinct. Qualify every exact installed target separately.",
     "security_processing": "Collect on the installed app, follow physical key prompts, consent, process, validate/import and resume. Separately test denial, outage with/without fallback consent, TLS/redirect/oversize/malformed response, cancel, changed context and reopen without rejuvenating the receipt. Hardware authorization requires observed ECU evidence. Reopen with valid PRE-AUTH at the splash screen or offline: offer Process existing data without another VIN read. POST-AUTH offers Continue firmware. Mismatched/partial/changed data must not be substituted from history. Process after a clean operator Stop, preserve idle handoff eligibility, reject obsolete refreshes after return/import, and offer Continue firmware from the matching imported card while retaining PRE evidence. Unconfirmed cleanup, explicit cancellation, changed USB target and background state cannot silently restart diagnostics.",
     "saved_dtc_reports": "Passively capture original numbered DTC Information screens; mark partial coverage, deduplicate by module/code/suffix, retain raw observations and full detail text; reopen after restart, review/export/share without sending diagnostic commands. Do not claim a complete vehicle scan or inherit another session VIN.",
     "report_restoration": "Prepare synthetic report, confirm review, rotate, dismiss/reopen, lose background process, restore exact ID/JSON/hash, reset process-loss consent, restore matching sent receipt with disabled Send, then prepare new incident. No routine production upload.",
@@ -1403,26 +1403,22 @@
     }
   },
   "session_mode_selection": {
-    "id": "session-mode-selection-2",
-    "date": "2026-10-21",
-    "workflow": "Finish setup -> main screen Session Mode: Read-only / Full session -> Connect and start -> select adapter -> validate selected mode before opening transport.",
+    "id": "normal-full-session-1",
+    "date": "2026-10-22",
+    "workflow": "Finish setup -> Connect and start -> select adapter -> Full session on the supported firmware binding. No Read-only/Full chooser in the normal connection flow.",
     "labels": [
-      "Read-only",
       "Full session"
     ],
     "rules": [
-      "Show Session Mode prominently on the main screen above Connect and start after setup. Both choices are visible; USB and Bluetooth use the same selection. Do not hide the primary choice in an adapter dialog or advanced tools.",
-      "Begin a new application instance in Read-only. Full session requires an explicit foreground selection. If the selected binding cannot enforce the chosen mode, explain that limitation and open no transport; never silently substitute another mode.",
-      "Full session binds the existing full native authority where implemented, including Android Chipsoft, Nano and MX+. Unsupported bindings keep the choice visible and explain why connecting is unavailable. Bounded clearing is a separate action, not a substitute for Full session.",
-      "Show the selected mode in the normal session header and retain original firmware confirmations. Choosing a mode never replays a diagnostic action.",
-      "Changing the Ready-screen choice sends no command. Lock the control during connection, firmware changes, security processing and a running session; show the actual active mode. Stop and reconnect to change authority. Keep launch details scrollable independently of firmware controls on small screens.",
-      "Mode selection is scoped to the selected adapter and current foreground attempt. Cancel, background and stale callbacks start no connection. Internal service authentication, command policies and operation-specific consent remain.",
-      "Counter reset and security-data collection keep their separate existing workflows. No new driver or packet permission is granted by this UI.",
-      "Android security collection includes Bluetooth MX+ and uses the common collection/process/validated-import workflow with fresh vehicle identity and confirmed release. No operator password.",
-      "Full native control removes the diagnostic-service allowlist only. Standard CAN frames, supported electrical routes, authenticated role, cancellation, original confirmations and ECU authorization remain. No implicit command replay."
+      "Normal product connections on MX+, MDI, Chipsoft and Nano use their existing Full native binding. A saved Read-only preference cannot change the connection or its diagnostic request policy.",
+      "Show Full session and vehicle changes possible as information. Connect and start is the foreground action; no separate authority checkbox or mode dialog is required.",
+      "A missing Full firmware binding remains unavailable. Never substitute a limited read profile or claim an unsupported adapter capability.",
+      "Keep standard CAN frame and electrical-route validation, foreground ownership, cancellation, confirmed cleanup, fresh vehicle identity, original firmware confirmations and ECU security authorization.",
+      "Security-data collection, explicit maintenance actions, offline tools and isolated research probes retain their own scoped workflows. They do not silently change a normal connection or replay a vehicle request.",
+      "Removing the chooser does not itself send a vehicle command, grant security access, clear codes or qualify an adapter. Installed and physical verification remain separate on every target."
     ],
-    "candidate": "Android primary-control candidate under implementation; exact artifact checks recorded separately.",
-    "other_targets": "Primary-control source bindings tracked separately for all seven declared targets. Capability and installed/physical qualification are not inferred from labels."
+    "candidate": "Android ARM64 preview.39 source adopted; build and installed verification recorded separately.",
+    "other_targets": "Android ARM32, macOS ARM64/x86_64, iOS ARM64, Windows x64 and Linux x86_64 adoption/build/installed/physical checks pending. Existing executables retain their recorded behavior."
   },
   "android_mxplus_startup_preview25": {
     "version": "0.1.1-preview.25",

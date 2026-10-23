@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "application_version": "0.1.1-preview.38",
-  "version_code": 101038,
+  "application_version": "0.1.1-preview.39",
+  "version_code": 101039,
   "architecture": "arm64-v8a",
   "release_date": "2026-10-22",
   "retained_package": {
@@ -21,5 +21,10 @@
       "source_application_version": "0.1.1-preview.1",
       "capabilities": "Unchanged Chipsoft USB probe; firmware workflow uses the rebuilt common engine"
     }
-  }
+  },
+  "capabilities": [
+    "Normal MX+, MDI, Chipsoft and Nano connections use existing Full native bindings; no Read-only/Full chooser or inherited READ preference",
+    "Original confirmations, ECU security authorization, cancellation, electrical-route validation and cleanup retained",
+    "Exact rebuilt engines, MDI carrier and shared connection worker; hash-pinned unchanged Nano/Chipsoft probes; physical qualification pending"
+  ]
 }

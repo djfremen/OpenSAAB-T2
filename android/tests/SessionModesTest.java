@@ -3,6 +3,9 @@ package com.opensaab.usb;
 public final class SessionModesTest {
  private static void check(boolean ok,String reason){if(!ok)throw new AssertionError(reason);}
  public static void main(String[] args){
+  for(String family:new String[]{"mxplus","mdi","chipsoft","nano"})
+   check(SessionModes.normalConnectionMode(SessionModes.forAdapter(family,false))==SessionModes.Mode.FULL,"Normal connection is not Full: "+family);
+  check(SessionModes.normalConnectionMode(SessionModes.forAdapter("unverified",false))==null,"Unknown adapter inherited a Full firmware binding");
   check(SessionModes.forAdapter("chipsoft",false).allows(SessionModes.Mode.READ),"Chipsoft read missing");
   check(SessionModes.forAdapter("chipsoft",false).allows(SessionModes.Mode.FULL),"Chipsoft full native missing");
   check(!SessionModes.forAdapter("mdi",false).allows(SessionModes.Mode.READ),"MDI falsely claims read enforcement");

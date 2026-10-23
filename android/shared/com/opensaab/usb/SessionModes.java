@@ -27,6 +27,8 @@ public final class SessionModes {
         if("mxplus".equals(family))return new Capabilities("OBDLink MX+ Bluetooth",true,Mode.FULL,"Full native control is available on the supported HS-CAN and SW-CAN routes. Security access requires collection, processing and valid import; follow original firmware confirmations. Other buses and unavailable operations remain unavailable.");
         return new Capabilities("Bluetooth adapter",true,null,"Write access is unavailable for this adapter. Its model and supported connection are checked after connecting.");
     }
+    /** Normal product connections have one authority, independent of saved UI preferences. */
+    public static Mode normalConnectionMode(Capabilities caps){return caps.allows(Mode.FULL)?Mode.FULL:null;}
     public static String emulationProfile(Mode mode){
         if(mode==Mode.FULL)return "mxp_full_native";if(mode==Mode.SEEDS)return "mxp_seeds";if(mode==Mode.CLEAR)return "mxp_clear_dtc";if(mode==Mode.RESET)return "mxp_reset_counters";return "mxp_native_read";
     }
